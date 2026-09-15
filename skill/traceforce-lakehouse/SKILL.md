@@ -78,8 +78,8 @@ for the decision. Do not try to reconstruct all writes and deletes from `tool_ar
 truncated and redacted, so any count you derive that way is a guess and will disagree with the
 findings the console shows. Say the answer covers flagged risky operations, not every write.
 
-The `operation` column is empty on these rows: read the actual command from the joined
-event's `tool_args`. It is not masked unless the command itself contains a detected secret,
+Read the actual command from the joined event's `tool_args` (the finding's `operation`
+column, when set, is only a short summary). It is not masked unless the command itself contains a detected secret,
 and it is truncated if very long. A finding's matched sensitive *value* is never in the lake.
 See "Redaction and evidence".
 
