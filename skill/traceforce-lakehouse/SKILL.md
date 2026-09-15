@@ -78,8 +78,9 @@ for the decision. Do not try to reconstruct all writes and deletes from `tool_ar
 truncated and redacted, so any count you derive that way is a guess and will disagree with the
 findings the console shows. Say the answer covers flagged risky operations, not every write.
 
-The verbatim command is not in the lake (`operation` is empty here) and neither is a
-finding's matched value; both live in per-finding evidence objects the lake never ingests.
+The `operation` column is empty on these rows: read the actual command from the joined
+event's `tool_args`. It is not masked unless the command itself contains a detected secret,
+and it is truncated if very long. A finding's matched sensitive *value* is never in the lake.
 See "Redaction and evidence".
 
 ## The agent_events columns you will use most
@@ -129,10 +130,12 @@ See "Redaction and evidence".
   run of `*`; everything around it is intact. With redaction off they are verbatim.
 - The findings tables say what was found (`type`, `category`), where (`conversation_id`,
   `file_id`, offsets, lines), when, and the triage state. They never contain the value.
-- The verbatim value is in an evidence object outside the lake, at the finding's
-  `customer_storage` pointer (`findings/<agent>/<serial>/<account>/<session>/evidence/…`).
-  Do not try to recover it from the logs. If the user needs it, point them to the TraceForce
-  console or `GET /api/v1/sensitive-data-findings/{id}/content` (containment:
+- The matched sensitive *value* is in an evidence object outside the lake, at the finding's
+  `customer_storage` pointer (`findings/<agent>/<serial>/<account>/<session>/evidence/…`);
+  it is masked everywhere in the logs, so do not try to recover it from them. A containment
+  finding's *command* is not a value and is not masked: recover it from the joined event's
+  `tool_args` (above). For anything evidence-only, point the user to the TraceForce console or
+  `GET /api/v1/sensitive-data-findings/{id}/content` (containment:
   `/api/v1/connector-containment-findings/{id}/content`), which are authorized and audited.
 
 ## Enforcement outcomes
