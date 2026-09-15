@@ -1,6 +1,10 @@
 -- Flatten raw OTLP-JSON activity objects into the Iceberg table agent_events.
 -- Rendered by Terraform (templatefile) and run by Step Functions on a schedule.
 -- Idempotent: an object is loaded once, keyed by its full s3:// path (source_object).
+-- Bounded: only the last N upload-day folders are listed and read, N being the single query
+-- parameter (lookback_days) the state machine passes: 3 on the schedule, larger for a manual
+-- catch-up after an outage. The anti-join makes the window exact. The placeholder must stay
+-- the only question mark in this file: Athena counts them.
 -- One row per log record / span. Attribute values keep their OTLP encoding for
 -- arrays and kvlists; scalars are decoded to text.
 WITH objects AS (
@@ -9,6 +13,7 @@ WITH objects AS (
   SELECT r."$path" AS src_path, r.agent, r.doc
   FROM ${raw} r
   WHERE r.agent IN (${agent_in_list})
+    AND r.dt >= date_format(date_add('day', -?, current_date), '%Y%m%d')
     AND NOT EXISTS (SELECT 1 FROM ${target} t WHERE t.source_object = r."$path")
 ),
 parts AS (

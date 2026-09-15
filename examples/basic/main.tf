@@ -14,7 +14,7 @@ provider "aws" {
 }
 
 module "traceforce_lakehouse" {
-  source      = "../../terraform" # customers: github.com/traceforce/traceforce-lakehouse//terraform?ref=v0.1.0
+  source      = "../../terraform" # customers: github.com/traceforce/traceforce-lakehouse//terraform?ref=v0.2.0
   logs_bucket = "acme-traceforce-logs"
   logs_prefix = "traceforce"
 }

@@ -42,8 +42,7 @@ resource "aws_athena_workgroup" "lakehouse" {
   configuration {
     enforce_workgroup_configuration    = true
     publish_cloudwatch_metrics_enabled = true
-    # A runaway query (or a raw prefix that has grown far past what the 15-minute rescan
-    # was sized for) fails loudly instead of billing quietly. 50 GB is well above any
+    # A runaway query fails loudly instead of billing quietly. 50 GB is well above any
     # sane single query here.
     bytes_scanned_cutoff_per_query = 53687091200
 

@@ -150,7 +150,7 @@ risky writes and deletes, agents and accounts per device.
 - Claude Code authenticated through Vertex AI emits no user identity; use the device owner.
 - Cursor emits no token counts or cost; Copilot emits tokens but no cost.
 - ChatGPT is not in this table.
-- Rows arrive up to 15 minutes after upload; devices offline for a while upload late.
+- Rows arrive within about an hour of upload; devices offline for a while upload late.
 - Findings link to the logs only when the event's `session_id` equals the conversation's
   external id; findings without a matching conversation exist.
 - Copilot tool calls: `tool_call_id` and `tool_name` come from the span; count
