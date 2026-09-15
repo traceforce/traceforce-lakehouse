@@ -1,0 +1,24 @@
+-- Upsert the newest daily snapshot of one TraceForce metadata table into its Iceberg mirror.
+-- "Newest" = the lexically greatest object path within the last 7 days of dt partitions
+-- (paths embed the date and the time of day, so a same-day retry wins over the earlier file).
+MERGE INTO ${target} t
+USING (
+  SELECT
+%{ for c in columns ~}
+    %{ if c.type == "timestamp" }TRY(CAST(from_iso8601_timestamp(${c.name}) AT TIME ZONE 'UTC' AS timestamp(6)))%{ else }%{ if c.type == "string" }${c.name}%{ else }TRY_CAST(${c.name} AS ${c.type == "long" ? "BIGINT" : c.type == "int" ? "INTEGER" : upper(c.type)})%{ endif }%{ endif } AS ${c.name}%{ if c.name != columns[length(columns) - 1].name },%{ endif }
+%{ endfor ~}
+  FROM ${source}
+  WHERE dt >= date_format(current_date - interval '7' day, '%Y-%m-%d')
+    AND "$path" = (SELECT max("$path") FROM ${source}
+                   WHERE dt >= date_format(current_date - interval '7' day, '%Y-%m-%d'))
+    AND id IS NOT NULL
+) s
+ON t.id = s.id
+WHEN MATCHED THEN UPDATE SET
+%{ for c in columns ~}
+%{ if c.name != "id" ~}
+  ${c.name} = s.${c.name}%{ if c.name != columns[length(columns) - 1].name },%{ endif }
+%{ endif ~}
+%{ endfor ~}
+WHEN NOT MATCHED THEN INSERT (${join(", ", [for c in columns : c.name])})
+  VALUES (${join(", ", [for c in columns : "s.${c.name}"])})

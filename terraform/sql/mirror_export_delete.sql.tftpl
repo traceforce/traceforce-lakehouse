@@ -1,0 +1,18 @@
+-- Rows that left the newest snapshot (hard-deleted at TraceForce) leave the mirror too.
+-- Guarded: with no snapshot in the window (export job not deployed yet, or failing) the
+-- NOT IN subquery would be empty and delete every row, so nothing is deleted unless a
+-- snapshot with at least one row exists. Known consequence: a table that genuinely
+-- dropped to zero rows keeps its stale rows until one row exists again.
+DELETE FROM ${target}
+WHERE EXISTS (
+    SELECT 1 FROM ${source}
+    WHERE dt >= date_format(current_date - interval '7' day, '%Y-%m-%d')
+      AND id IS NOT NULL
+  )
+  AND id NOT IN (
+    SELECT id FROM ${source}
+    WHERE dt >= date_format(current_date - interval '7' day, '%Y-%m-%d')
+      AND "$path" = (SELECT max("$path") FROM ${source}
+                     WHERE dt >= date_format(current_date - interval '7' day, '%Y-%m-%d'))
+      AND id IS NOT NULL
+  )

@@ -1,0 +1,12 @@
+terraform/.terraform/
+terraform/*.tfstate*
+terraform/.terraform.lock.hcl
+examples/**/.terraform/
+examples/**/*.tfstate*
+examples/**/.terraform.lock.hcl
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+__pycache__/
+*.pyc
+.DS_Store

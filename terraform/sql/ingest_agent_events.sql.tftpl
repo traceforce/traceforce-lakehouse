@@ -1,0 +1,171 @@
+-- Flatten raw OTLP-JSON activity objects into the Iceberg table agent_events.
+-- Rendered by Terraform (templatefile) and run by Step Functions on a schedule.
+-- Idempotent: an object is loaded once, keyed by its full s3:// path (source_object).
+-- One row per log record / span. Attribute values keep their OTLP encoding for
+-- arrays and kvlists; scalars are decoded to text.
+WITH objects AS (
+  -- r."$path" is qualified on purpose: Iceberg tables expose their own hidden "$path",
+  -- so an unqualified reference inside the subquery would bind to t and never match.
+  SELECT r."$path" AS src_path, r.agent, r.doc
+  FROM ${raw} r
+  WHERE r.agent IN (${agent_in_list})
+    AND NOT EXISTS (SELECT 1 FROM ${target} t WHERE t.source_object = r."$path")
+),
+parts AS (
+  SELECT src_path, agent, doc,
+    split(src_path, '/') AS seg,
+    -- TRY: a hand-placed non-JSON object must not fail the whole INSERT (it yields no rows)
+    CASE WHEN TRY(json_extract(doc, '$.resourceLogs')) IS NOT NULL THEN 'log' ELSE 'span' END AS signal,
+    COALESCE(TRY(json_extract(doc, '$.resourceLogs')), TRY(json_extract(doc, '$.resourceSpans'))) AS blocks
+  FROM objects
+),
+blocks AS (
+  SELECT p.src_path, p.agent, p.signal, p.seg,
+    element_at(p.seg, -1) AS fname,
+    element_at(p.seg, -2) AS path_session_raw,
+    element_at(p.seg, -3) AS path_account,
+    element_at(p.seg, -4) AS path_serial,
+    -- upload time from the filename: <YYYYMMDD_HHMMSS.mmm>_<uuid>_... (current), or a
+    -- 10-digit unix-seconds prefix on the first days of the current layout
+    COALESCE(
+      TRY(CAST(date_parse(regexp_extract(element_at(p.seg, -1), '^([0-9]{8}_[0-9]{6}\.[0-9]{3})_', 1),
+                          '%Y%m%d_%H%i%S.%f') AS timestamp(6))),
+      TRY(CAST(from_unixtime(CAST(regexp_extract(element_at(p.seg, -1), '^([0-9]{10})_', 1) AS BIGINT))
+               AT TIME ZONE 'UTC' AS timestamp(6)))) AS upload_ts,
+    -- resource attributes -> map (first value wins on duplicate keys)
+    transform_values(multimap_from_entries(transform(
+      filter(COALESCE(TRY(CAST(json_extract(b, '$.resource.attributes') AS ARRAY(JSON))), ARRAY[]),
+             a -> json_extract_scalar(a, '$.key') IS NOT NULL),
+      a -> ROW(json_extract_scalar(a, '$.key'),
+               COALESCE(json_extract_scalar(a, '$.value.stringValue'),
+                        json_extract_scalar(a, '$.value.intValue'),
+                        json_extract_scalar(a, '$.value.doubleValue'),
+                        json_extract_scalar(a, '$.value.boolValue'),
+                        json_format(json_extract(a, '$.value.arrayValue.values')),
+                        -- kvlist (Cursor tool args are one): decode one level into a JSON object
+                        CASE WHEN json_extract(a, '$.value.kvlistValue') IS NOT NULL THEN
+                          json_format(CAST(transform_values(multimap_from_entries(transform(
+                            filter(COALESCE(TRY(CAST(json_extract(a, '$.value.kvlistValue.values') AS ARRAY(JSON))), ARRAY[]),
+                                   e -> json_extract_scalar(e, '$.key') IS NOT NULL),
+                            e -> ROW(json_extract_scalar(e, '$.key'),
+                                     COALESCE(json_extract_scalar(e, '$.value.stringValue'),
+                                              json_extract_scalar(e, '$.value.intValue'),
+                                              json_extract_scalar(e, '$.value.doubleValue'),
+                                              json_extract_scalar(e, '$.value.boolValue'),
+                                              json_format(json_extract(e, '$.value')))))),
+                            (k, v) -> v[1]) AS JSON))
+                        END)))),
+      (k, v) -> v[1]) AS res,
+    COALESCE(json_extract(b, '$.scopeLogs'), json_extract(b, '$.scopeSpans')) AS scopes
+  FROM parts p
+  CROSS JOIN UNNEST(COALESCE(TRY(CAST(p.blocks AS ARRAY(JSON))), ARRAY[])) AS t(b)
+),
+records AS (
+  SELECT bl.*, sc.scope_json,
+    -- record / span attributes -> map (first value wins on duplicate keys)
+    transform_values(multimap_from_entries(transform(
+      filter(COALESCE(TRY(CAST(json_extract(rec, '$.attributes') AS ARRAY(JSON))), ARRAY[]),
+             a -> json_extract_scalar(a, '$.key') IS NOT NULL),
+      a -> ROW(json_extract_scalar(a, '$.key'),
+               COALESCE(json_extract_scalar(a, '$.value.stringValue'),
+                        json_extract_scalar(a, '$.value.intValue'),
+                        json_extract_scalar(a, '$.value.doubleValue'),
+                        json_extract_scalar(a, '$.value.boolValue'),
+                        json_format(json_extract(a, '$.value.arrayValue.values')),
+                        -- kvlist (Cursor tool args are one): decode one level into a JSON object
+                        CASE WHEN json_extract(a, '$.value.kvlistValue') IS NOT NULL THEN
+                          json_format(CAST(transform_values(multimap_from_entries(transform(
+                            filter(COALESCE(TRY(CAST(json_extract(a, '$.value.kvlistValue.values') AS ARRAY(JSON))), ARRAY[]),
+                                   e -> json_extract_scalar(e, '$.key') IS NOT NULL),
+                            e -> ROW(json_extract_scalar(e, '$.key'),
+                                     COALESCE(json_extract_scalar(e, '$.value.stringValue'),
+                                              json_extract_scalar(e, '$.value.intValue'),
+                                              json_extract_scalar(e, '$.value.doubleValue'),
+                                              json_extract_scalar(e, '$.value.boolValue'),
+                                              json_format(json_extract(e, '$.value')))))),
+                            (k, v) -> v[1]) AS JSON))
+                        END)))),
+      (k, v) -> v[1]) AS a,
+    rec
+  FROM blocks bl
+  CROSS JOIN UNNEST(COALESCE(TRY(CAST(bl.scopes AS ARRAY(JSON))), ARRAY[])) AS s(scope_json)
+  CROSS JOIN UNNEST(COALESCE(TRY(CAST(COALESCE(json_extract(s.scope_json, '$.logRecords'),
+                                                 json_extract(s.scope_json, '$.spans')) AS ARRAY(JSON))), ARRAY[])) AS r(rec)
+),
+flat AS (
+SELECT
+  agent,
+  CASE agent ${agent_type_case} END                                     AS agent_type,
+  COALESCE(element_at(res, 'traceforce.device.native_id'), path_serial)  AS device_native_id,
+  element_at(res, 'traceforce.device.uuid')                              AS device_uuid,
+  element_at(res, 'traceforce.sandbox.native_id')                        AS sandbox_native_id,
+  CASE WHEN path_account = 'unknown-account' THEN NULL
+       ELSE regexp_replace(path_account, '_[0-9a-f-]{36}$', '') END      AS path_email,
+  regexp_extract(path_account, '_([0-9a-f-]{36})$', 1)                   AS path_org,
+  CASE WHEN path_session_raw = 'unknown-session' THEN NULL
+       ELSE path_session_raw END                                         AS path_session,
+  upload_ts,
+  src_path                                                               AS source_object,
+  signal,
+  element_at(a, 'user.email')                                            AS user_email,
+  element_at(a, 'organization.id')                                       AS agent_org_id,
+  element_at(a, 'user.id')                                               AS user_id,
+  COALESCE(element_at(a, 'gen_ai.conversation.id'), element_at(a, 'session.id'),
+           element_at(res, 'session.id'),
+           CASE WHEN path_session_raw = 'unknown-session' THEN NULL ELSE path_session_raw END)
+                                                                         AS session_id,
+  element_at(res, 'session.id')                                          AS resource_session_id,
+  -- ts is required: record time, else observed time, else the upload time from the filename
+  -- (minted by our exporter, so always present). 0 means "unknown" in OTLP and is skipped.
+  COALESCE(
+    CAST(from_unixtime_nanos(NULLIF(TRY_CAST(COALESCE(json_extract_scalar(rec, '$.timeUnixNano'),
+                                                      json_extract_scalar(rec, '$.startTimeUnixNano'),
+                                                      json_extract_scalar(rec, '$.observedTimeUnixNano')) AS BIGINT), 0))
+         AT TIME ZONE 'UTC' AS timestamp(6)),
+    upload_ts)                                                           AS ts,
+  CAST(from_unixtime_nanos(NULLIF(TRY_CAST(json_extract_scalar(rec, '$.endTimeUnixNano') AS BIGINT), 0))
+       AT TIME ZONE 'UTC' AS timestamp(6))                               AS end_ts,
+  element_at(a, 'event.name')                                            AS event_name,
+  CASE WHEN signal = 'span' THEN json_extract_scalar(rec, '$.name') END  AS span_name,
+  element_at(a, 'gen_ai.operation.name')                                 AS operation,
+  element_at(a, 'prompt.id')                                             AS prompt_id,
+  element_at(a, 'generation.id')                                         AS generation_id,
+  element_at(a, 'gen_ai.tool.name')                                      AS tool_name,
+  element_at(a, 'gen_ai.tool.type')                                      AS tool_type,
+  element_at(a, 'gen_ai.tool.call.id')                                   AS tool_call_id,
+  COALESCE(element_at(a, 'mcp.server.name'),
+           TRY(json_extract_scalar(element_at(a, 'gen_ai.tool.call.arguments'), '$.mcp_server_name')),
+           TRY(json_extract_scalar(element_at(a, 'tool_parameters'), '$.mcp_server_name')),
+           element_at(a, 'github.copilot.tool.parameters.mcp_server_name'))
+                                                                         AS mcp_server_name,
+  element_at(a, 'gen_ai.tool.call.arguments')                            AS tool_args,
+  element_at(a, 'gen_ai.tool.call.result')                               AS tool_result,
+  COALESCE(element_at(a, 'decision'), element_at(a, 'github.copilot.permission.result'),
+           element_at(a, 'hook.result.permission'))                      AS decision,
+  element_at(a, 'traceforce.sd_enforcement')                             AS sd_enforcement,
+  element_at(a, 'traceforce.containment_enforcement')                    AS containment_enforcement,
+  COALESCE(element_at(a, 'error.type'), element_at(a, 'error_type'))     AS error_type,
+  element_at(a, 'gen_ai.request.model')                                  AS model,
+  TRY_CAST(element_at(a, 'gen_ai.usage.input_tokens') AS BIGINT)         AS input_tokens,
+  TRY_CAST(element_at(a, 'gen_ai.usage.output_tokens') AS BIGINT)        AS output_tokens,
+  TRY_CAST(COALESCE(element_at(a, 'cache_read_tokens'),
+                    element_at(a, 'gen_ai.usage.cache_read.input_tokens')) AS BIGINT)
+                                                                         AS cache_read_tokens,
+  TRY_CAST(element_at(a, 'cost_usd') AS DOUBLE)                          AS cost_usd,
+  element_at(a, 'gen_ai.input.messages')                                 AS content_input,
+  element_at(a, 'gen_ai.output.messages')                                AS content_output,
+  element_at(res, 'service.name')                                        AS service_name,
+  element_at(res, 'service.version')                                     AS service_version,
+  element_at(res, 'os.type')                                             AS os_type,
+  -- everything else, minus the four big content keys already in their own columns
+  json_format(CAST(map_filter(a, (k, v) -> k NOT IN
+    ('gen_ai.input.messages', 'gen_ai.output.messages',
+     'gen_ai.tool.call.arguments', 'gen_ai.tool.call.result')) AS JSON))  AS attrs_json,
+  json_format(CAST(res AS JSON))                                         AS resource_json,
+  CAST(now() AT TIME ZONE 'UTC' AS timestamp(6))                         AS ingested_at
+FROM records
+)
+-- Bind by name: a column of the Iceberg table with no matching alias above fails loudly.
+INSERT INTO ${target} (${cols})
+SELECT ${cols} FROM flat
+WHERE ts IS NOT NULL -- a record with no time and a filename without one is dropped, never given a fabricated time
