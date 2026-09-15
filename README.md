@@ -13,7 +13,7 @@ Provider in TraceForce Settings). This Terraform module adds, in the same accoun
 | `agent_events` | one row per log record / span from every agent, flattened from the raw objects |
 | `devices`, `agent_accounts`, `agent_conversations`, findings, MCP inventory, ... (17 tables, see `docs/EXPORT_CONTRACT.md`) | daily mirrors of your TraceForce metadata (written by TraceForce as JSON snapshots into your bucket) |
 | Athena workgroup `traceforce-lakehouse` + a results bucket | where the ingest runs and where you query; results expire after 7 days |
-| Step Functions + EventBridge Scheduler | every 15 minutes: load new objects; daily: refresh the mirrors |
+| Step Functions + EventBridge Scheduler | hourly: load the last few days of new objects; daily: refresh the mirrors |
 | IAM | ingest role (reads your TraceForce prefix only, writes only to the results bucket and the Iceberg tables), scheduler role, and a read-only query policy (output) to attach to your engineers' identities |
 | CloudWatch alarm | raised when a scheduled run fails; optional SNS notification |
 | Glue federated catalog `s3tablescatalog` | the account-level object that lets Athena see S3 Tables (skip with `create_glue_integration = false` if you already have it) |
@@ -46,7 +46,7 @@ logs bucket's region) and the state backend; the module never chooses where your
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform?ref=v0.1.0"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform?ref=1.0.0"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce"                       # "" if TraceForce writes at the bucket root
      # only if they apply to your account:
@@ -64,8 +64,14 @@ logs bucket's region) and the state backend; the module never chooses where your
    `glue:PassConnection` for the account-level S3 Tables catalog (skip with
    `create_glue_integration = false` if it already exists).
 
-3. The first ingest starts within 15 minutes. Backfill of everything already in the bucket
-   happens in the first runs (Athena reads objects in bulk; a few hundred MB takes minutes).
+3. The first ingest starts within the hour and loads the last three upload days. To load
+   older day-partitioned objects, start the state machine once with
+   `{"job":"ingest","lookback_days":400}` (`lookback_days` = day folders to read, today
+   included; a JSON number from 1 to 4000).
+   Order matters: devices must be on TraceForce collector 1.0.42 or later first. Objects
+   written by older collectors have no `dt=` folder in the key and are not read, and a
+   lake with no eligible objects looks healthy: hourly runs succeed with zero rows and
+   the alarm stays quiet. Check `max(upload_ts)` after the first day.
 
 4. Attach `terraform output -raw query_policy_json` to the IAM users or roles your engineers
    use, copy `skill/traceforce-lakehouse/` into `.claude/skills/` (project or home), and ask
@@ -139,19 +145,24 @@ or `skill/traceforce-lakehouse/scripts/athena_query.sh "SELECT ..."`.
 
 ## How the ingest works
 
-- `raw_conversations` is a Glue table over `s3://<bucket>/<prefix>/conversations/AGENT_IDENTITY_*/`
-  with one string column holding each object's whole OTLP-JSON document. Partition projection
-  limits listing to the four supported agent folders.
-- The scheduled Athena statement (`terraform/sql/ingest_agent_events.sql.tftpl`) unnests
-  resource → scope → record, turns attribute lists into maps, and INSERTs into
-  `agent_events`. An object is loaded once: rows keep their source path and new runs
-  anti-join on it. Two runs never overlap (the state machine checks for a running execution).
-- Late uploads (offline laptops) are picked up whenever they land; no time window is assumed.
-- Every run re-reads every object under the agent folders to find new ones, so cost scales
-  with object count, not with new data: roughly $40 a month at 20k objects, $200 at 100k,
-  $750 at 400k (S3 requests plus Athena scan, 96 runs a day). Above about 50k objects, lower
-  the ingest schedule to hourly in `terraform/ingest.tf`; a date folder in the object layout
-  is the planned fix.
+- The collector writes activity objects as
+  `s3://<bucket>/<prefix>/conversations/<agent>/dt=<YYYYMMDD>/<serial>/<account>/<session>/<file>`,
+  where `dt` is the UTC upload day. `raw_conversations` is a Glue table over that layout with
+  one string column holding each object's whole OTLP-JSON document, and projected partitions
+  for the four supported agents and the day.
+- Every hour the state machine runs one Athena statement
+  (`terraform/sql/ingest_agent_events.sql.tftpl`): it lists the last three day folders (today
+  and the two before it, plus anything a fast device clock filed under tomorrow), unnests
+  resource → scope → record, and INSERTs into `agent_events`. An object is loaded once: rows
+  keep their source path and the statement anti-joins on it, so re-reading yesterday is
+  harmless. Two runs never overlap (the state machine checks for a running execution).
+- Why three folders: today alone would miss objects uploaded just before midnight; the third
+  covers a few failed runs and device clocks a day off. Late uploads from offline laptops land
+  in a fresh day folder and are picked up normally. `lookback_days` is that folder count.
+- Cost stays flat as history grows: each run reads only a few days of raw objects, plus the
+  `source_object` column of `agent_events` for the anti-join (dictionary-encoded, well under
+  a dollar a month at a year of data). For the largest tenant we have measured (about 2,700
+  objects a day) the whole ingest is a few dollars a month.
 
 ## How the metadata mirrors work
 
@@ -165,16 +176,20 @@ prefix if you want; they are small.
 
 TraceForce writes the snapshots around 04:00 UTC; the mirror runs at 06:00 UTC. A file that
 lands later is merged the next day, or immediately if you start the state machine with
-`{"job":"exports"}`. To run the ingest by hand use `{"job":"ingest"}` (or an empty input).
+`{"job":"exports"}`. To run the ingest by hand use `{"job":"ingest"}` (or an empty input); it reads the last three days.
 
 ## When it breaks
 
 - Any failed scheduled run raises the CloudWatch alarm `traceforce-lakehouse-runs-failed`;
   set `alarm_sns_topic_arn` to be notified. The cause is in the state machine's execution
   history (Step Functions console).
+- If the ingest was down for more than two days, start the state machine once with
+  `{"job":"ingest","lookback_days":<days since the outage began, plus 2>}`. Nothing is loaded
+  twice.
 - Freshness check from Claude Code or Athena: `SELECT max(ingested_at), max(upload_ts) FROM
-  agent_events`. More than an hour behind the newest object in your bucket means the ingest
-  is failing or the schedule is disabled.
+  agent_events`. More than two hours behind the newest object in your bucket means the
+  ingest is failing, the schedule is disabled, or the devices are still on a collector older
+  than 1.0.42 (their objects are not read).
 - One malformed object under `conversations/AGENT_IDENTITY_*/` cannot stop the ingest (it
   yields no rows), but a corrupt gzip can. To find it, run with credentials that can read
   the raw prefix (the ingest role or an admin):

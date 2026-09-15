@@ -36,7 +36,8 @@ Unqualified table names resolve in the `traceforce` namespace.
 1. Pick the tables the question needs and read only their files under `reference/tables/`.
 2. Run a cheap aggregate first (counts, distinct values, date range) to see the data exists,
    including `SELECT max(ingested_at), max(upload_ts) FROM agent_events`: if the lake is more
-   than an hour behind, say so before answering (the ingest may be failing).
+   than two hours behind, say so before answering (the ingest may be failing, or devices may
+   still be on a collector older than 1.0.42, whose objects are not read).
 3. Write the targeted query with `ts` bounds; take join rules from `reference/joins.md`.
 4. If Athena fails with "column cannot be resolved" or a type error: `DESCRIBE traceforce.<table>`,
    fix, rerun. If it returns 0 rows: widen the window and check `deleted_at` before concluding.
@@ -150,7 +151,7 @@ risky writes and deletes, agents and accounts per device.
 - Claude Code authenticated through Vertex AI emits no user identity; use the device owner.
 - Cursor emits no token counts or cost; Copilot emits tokens but no cost.
 - ChatGPT is not in this table.
-- Rows arrive up to 15 minutes after upload; devices offline for a while upload late.
+- Rows arrive within about an hour of upload; devices offline for a while upload late.
 - Findings link to the logs only when the event's `session_id` equals the conversation's
   external id; findings without a matching conversation exist.
 - Copilot tool calls: `tool_call_id` and `tool_name` come from the span; count

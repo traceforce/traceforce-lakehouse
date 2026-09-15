@@ -1,7 +1,9 @@
 # One Step Functions state machine runs both jobs, chosen by input:
-#   {"job":"ingest"}  every 15 minutes   -> flatten new raw objects into agent_events
-#   {"job":"exports"} daily at 06:00 UTC -> MERGE the newest TraceForce metadata snapshots into their mirrors
-# An input without "job" (the console default) runs the ingest.
+#   {"job":"ingest","lookback_days":3} hourly           -> flatten the last 3 upload-day folders (today + 2) of raw objects into agent_events
+#   {"job":"exports"}                  daily 06:00 UTC  -> MERGE the newest TraceForce metadata snapshots into their mirrors
+# An input without "job" (the console default) runs the ingest; lookback_days defaults to 3.
+# A manual {"job":"ingest","lookback_days":400} re-reads a year of folders (catch-up after an
+# outage longer than two days); the anti-join keeps it exact.
 # Athena does all the work; Step Functions only sequences statements and waits for them.
 
 locals {
@@ -44,8 +46,31 @@ locals {
           And  = [{ Variable = "$.job", IsPresent = true }, { Variable = "$.job", StringEquals = "exports" }]
           Next = "MirrorExports"
         }]
-        Default = "CheckOverlap"
+        Default = "IngestDefaults"
       }
+      # lookback_days defaults to 3 when the input omits it (console default, or {"job":"ingest"}).
+      IngestDefaults = {
+        Type       = "Pass"
+        Parameters = { "in.$" = "States.JsonMerge(States.StringToJson('{\"lookback_days\":3}'), $, false)" }
+        OutputPath = "$.in"
+        Next       = "CheckLookback"
+      }
+      # Athena splices the parameter into the statement as text, so only a number in a sane
+      # range may reach it (the statement casts it to an integer; fractions round). Anything
+      # else fails the execution before any query runs.
+      CheckLookback = {
+        Type = "Choice"
+        Choices = [{
+          And = [
+            { Variable = "$.lookback_days", IsNumeric = true },
+            { Variable = "$.lookback_days", NumericGreaterThanEquals = 1 },
+            { Variable = "$.lookback_days", NumericLessThanEquals = 4000 },
+          ]
+          Next = "CheckOverlap"
+        }]
+        Default = "BadLookback"
+      }
+      BadLookback = { Type = "Fail", Error = "BadLookback", Cause = "lookback_days must be a JSON number between 1 and 4000 (day folders to read, today included)" }
       # Two ingests running at once would both pass the anti-join and load the same objects
       # twice, so a run that finds another RUNNING execution simply ends. The daily exports
       # run counts too, so the ingest scheduled during it is skipped once; the next one catches up.
@@ -71,9 +96,10 @@ locals {
         Type     = "Task"
         Resource = "arn:aws:states:::athena:startQueryExecution.sync"
         Parameters = {
-          QueryString           = local.ingest_sql
-          WorkGroup             = aws_athena_workgroup.lakehouse.name
-          QueryExecutionContext = { Database = aws_glue_catalog_database.lakehouse.name }
+          QueryString             = local.ingest_sql
+          "ExecutionParameters.$" = "States.Array(States.Format('{}', $.lookback_days))"
+          WorkGroup               = aws_athena_workgroup.lakehouse.name
+          QueryExecutionContext   = { Database = aws_glue_catalog_database.lakehouse.name }
         }
         Retry = local.ingest_retry
         End   = true
@@ -357,13 +383,13 @@ resource "aws_iam_role_policy" "scheduler" {
 resource "aws_scheduler_schedule" "ingest" {
   name                         = "${local.name}-ingest"
   description                  = "TraceForce lakehouse: load new activity objects into agent_events"
-  schedule_expression          = "rate(15 minutes)"
+  schedule_expression          = "rate(1 hour)"
   schedule_expression_timezone = "UTC"
   flexible_time_window { mode = "OFF" }
   target {
     arn      = aws_sfn_state_machine.ingest.arn
     role_arn = aws_iam_role.scheduler.arn
-    input    = jsonencode({ job = "ingest" })
+    input    = jsonencode({ job = "ingest", lookback_days = 3 })
   }
 }
 
