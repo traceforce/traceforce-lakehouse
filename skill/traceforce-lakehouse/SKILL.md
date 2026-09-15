@@ -36,7 +36,8 @@ Unqualified table names resolve in the `traceforce` namespace.
 1. Pick the tables the question needs and read only their files under `reference/tables/`.
 2. Run a cheap aggregate first (counts, distinct values, date range) to see the data exists:
    `SELECT max(ingested_at), max(upload_ts) FROM agent_events` (more than two hours behind
-   means the ingest is failing, or devices are still on a collector older than 1.0.42), and
+   means the ingest is failing or the schedule is disabled; if neither, the collector side
+   needs TraceForce's attention), and
    `SELECT count(*) FROM <mirror>` for each metadata table the question joins. An empty mirror
    means the daily export has not delivered yet; say so instead of answering from a join that
    returns nothing. Mirror staleness: `SELECT max(committed_at) FROM "<mirror>$snapshots"`
@@ -73,8 +74,8 @@ risky writes and deletes, agents and accounts per device.
 
 - `agent`, `agent_type`: AGENT_IDENTITY_CLAUDE_CODE (111), AGENT_IDENTITY_CLAUDE (1, the Claude
   desktop app), AGENT_IDENTITY_CURSOR (2), AGENT_IDENTITY_GITHUB_COPILOT (8).
-- `device_native_id` (serial), `device_uuid` (Windows GUID; NULL until the collector release
-  that stamps it ships, so today the device join is by serial).
+- `device_native_id` (serial), `device_uuid` (Windows GUID; NULL on most rows today, so the
+  device join is by serial).
 - `user_email`: NULL for Copilot and for Vertex-authenticated Claude Code.
 - `session_id`: joins `agent_conversations.conversation_external_id`.
 - `ts`, `operation` (chat / execute_tool / invoke_agent), `event_name`, `tool_name`,
