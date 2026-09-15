@@ -70,6 +70,12 @@ touched; which installed MCP servers are actually called; what was blocked or re
 and tokens by person and model. Also, from TraceForce's own data: findings by person and type,
 risky writes and deletes, agents and accounts per device.
 
+For "which tool calls wrote or deleted something" start from `connector_containment_findings`
+(`op` 1 = write, 2 = delete: TraceForce's own classification of the command) and join
+`agent_events` on `tool_call_id = tool_use_id` for the approval. Do not classify commands
+yourself from `tool_args`; it is truncated and redacted, and your regex will disagree with the
+findings the console shows.
+
 ## The agent_events columns you will use most
 
 - `agent`, `agent_type`: AGENT_IDENTITY_CLAUDE_CODE (111), AGENT_IDENTITY_CLAUDE (1, the Claude
