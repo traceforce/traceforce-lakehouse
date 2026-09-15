@@ -55,6 +55,7 @@ FROM connector_containment_findings f
 JOIN agent_conversations c ON c.id = f.conversation_id
 LEFT JOIN agent_events e ON e.session_id = c.conversation_external_id
                         AND e.tool_call_id = f.tool_use_id AND e.event_name = 'tool_decision'
+                        AND e.ts BETWEEN f.detected_at - interval '1' hour AND f.detected_at + interval '1' hour
 ```
 
 ## Installed MCP servers to their actual use
