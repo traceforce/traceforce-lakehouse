@@ -13,7 +13,8 @@ locals {
 
   # Where TraceForce's collector writes activity objects, per agent and upload day (UTC):
   #   s3://<bucket>/<prefix>/conversations/<AGENT_IDENTITY_*>/dt=<YYYYMMDD>/<serial>/<email>[_<org>]/<session>/<ts>_<uuid>_logs|traces.json.gz
-  # First day the collector wrote the day-partitioned layout; the projection enumerates from here.
+  # Floor for the projected day range: no collector wrote the day-partitioned layout before
+  # this date, so the projection never needs to enumerate earlier days. Never move it forward.
   day_layout_since = "20260915"
   prefix_slash     = var.logs_prefix == "" ? "" : "${var.logs_prefix}/"
   raw_root         = "s3://${var.logs_bucket}/${local.prefix_slash}conversations/"

@@ -53,8 +53,23 @@ locals {
         Type       = "Pass"
         Parameters = { "in.$" = "States.JsonMerge(States.StringToJson('{\"lookback_days\":3}'), $, false)" }
         OutputPath = "$.in"
-        Next       = "CheckOverlap"
+        Next       = "CheckLookback"
       }
+      # Athena splices the parameter into the statement as text, so only a whole number in a
+      # sane range may reach it. Anything else fails the execution before any query runs.
+      CheckLookback = {
+        Type = "Choice"
+        Choices = [{
+          And = [
+            { Variable = "$.lookback_days", IsNumeric = true },
+            { Variable = "$.lookback_days", NumericGreaterThanEquals = 1 },
+            { Variable = "$.lookback_days", NumericLessThanEquals = 4000 },
+          ]
+          Next = "CheckOverlap"
+        }]
+        Default = "BadLookback"
+      }
+      BadLookback = { Type = "Fail", Error = "BadLookback", Cause = "lookback_days must be a JSON number between 1 and 4000" }
       # Two ingests running at once would both pass the anti-join and load the same objects
       # twice, so a run that finds another RUNNING execution simply ends. The daily exports
       # run counts too, so the ingest scheduled during it is skipped once; the next one catches up.

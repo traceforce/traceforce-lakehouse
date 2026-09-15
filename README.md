@@ -66,8 +66,11 @@ logs bucket's region) and the state backend; the module never chooses where your
 
 3. The first ingest starts within the hour and loads the last three upload days. To load
    older day-partitioned objects, start the state machine once with
-   `{"job":"ingest","lookback_days":400}`. Objects written by collectors older than 1.0.42
-   (no `dt=` folder in the key) are not read.
+   `{"job":"ingest","lookback_days":400}` (`lookback_days` is a JSON number, 1 to 4000).
+   Order matters: devices must be on TraceForce collector 1.0.42 or later first. Objects
+   written by older collectors have no `dt=` folder in the key and are not read, and a
+   lake with no eligible objects looks healthy: hourly runs succeed with zero rows and
+   the alarm stays quiet. Check `max(upload_ts)` after the first day.
 
 4. Attach `terraform output -raw query_policy_json` to the IAM users or roles your engineers
    use, copy `skill/traceforce-lakehouse/` into `.claude/skills/` (project or home), and ask
@@ -154,8 +157,10 @@ or `skill/traceforce-lakehouse/scripts/athena_query.sh "SELECT ..."`.
 - Why three days: the folders are days, so today alone would miss objects uploaded just
   before midnight; the extra day covers a few failed runs and device clocks a day off. Late
   uploads from offline laptops land in a fresh day folder and are picked up normally.
-- Cost does not grow with history: each run reads only a few days of objects. For the largest
-  tenant we have measured (about 2,700 objects a day) that is a few dollars a month.
+- Cost stays flat as history grows: each run reads only a few days of raw objects, plus the
+  `source_object` column of `agent_events` for the anti-join (dictionary-encoded, well under
+  a dollar a month at a year of data). For the largest tenant we have measured (about 2,700
+  objects a day) the whole ingest is a few dollars a month.
 
 ## How the metadata mirrors work
 
@@ -180,8 +185,9 @@ lands later is merged the next day, or immediately if you start the state machin
   `{"job":"ingest","lookback_days":<days since the outage began, plus 2>}`. Nothing is loaded
   twice.
 - Freshness check from Claude Code or Athena: `SELECT max(ingested_at), max(upload_ts) FROM
-  agent_events`. More than an hour behind the newest object in your bucket means the ingest
-  is failing or the schedule is disabled.
+  agent_events`. More than two hours behind the newest object in your bucket means the
+  ingest is failing, the schedule is disabled, or the devices are still on a collector older
+  than 1.0.42 (their objects are not read).
 - One malformed object under `conversations/AGENT_IDENTITY_*/` cannot stop the ingest (it
   yields no rows), but a corrupt gzip can. To find it, run with credentials that can read
   the raw prefix (the ingest role or an admin):
