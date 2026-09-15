@@ -70,11 +70,17 @@ touched; which installed MCP servers are actually called; what was blocked or re
 and tokens by person and model. Also, from TraceForce's own data: findings by person and type,
 risky writes and deletes, agents and accounts per device.
 
-For "which tool calls wrote or deleted something" start from `connector_containment_findings`
-(`op` 1 = write, 2 = delete: TraceForce's own classification of the command) and join
-`agent_events` on `tool_call_id = tool_use_id` for the approval. Do not classify commands
-yourself from `tool_args`; it is truncated and redacted, and your regex will disagree with the
-findings the console shows.
+`connector_containment_findings` is the set of **risky** file writes and deletes that
+TraceForce's containment engine flagged (`op` 1 = write, 2 = delete), not a complete list of
+everything an agent wrote or deleted. For "which risky writes or deletes happened, and how was
+each approved", start from this table and join `agent_events` on `tool_call_id = tool_use_id`
+for the decision. Do not try to reconstruct all writes and deletes from `tool_args`: it is
+truncated and redacted, so any count you derive that way is a guess and will disagree with the
+findings the console shows. Say the answer covers flagged risky operations, not every write.
+
+The verbatim command is not in the lake (`operation` is empty here) and neither is a
+finding's matched value; both live in per-finding evidence objects the lake never ingests.
+See "Redaction and evidence".
 
 ## The agent_events columns you will use most
 
