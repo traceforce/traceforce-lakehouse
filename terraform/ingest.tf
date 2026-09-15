@@ -1,5 +1,5 @@
 # One Step Functions state machine runs both jobs, chosen by input:
-#   {"job":"ingest","lookback_days":3} hourly           -> flatten the last 3 upload days of raw objects into agent_events
+#   {"job":"ingest","lookback_days":3} hourly           -> flatten the last 3 upload-day folders (today + 2) of raw objects into agent_events
 #   {"job":"exports"}                  daily 06:00 UTC  -> MERGE the newest TraceForce metadata snapshots into their mirrors
 # An input without "job" (the console default) runs the ingest; lookback_days defaults to 3.
 # A manual {"job":"ingest","lookback_days":400} re-reads a year of folders (catch-up after an
@@ -55,8 +55,9 @@ locals {
         OutputPath = "$.in"
         Next       = "CheckLookback"
       }
-      # Athena splices the parameter into the statement as text, so only a whole number in a
-      # sane range may reach it. Anything else fails the execution before any query runs.
+      # Athena splices the parameter into the statement as text, so only a number in a sane
+      # range may reach it (the statement casts it to an integer; fractions round). Anything
+      # else fails the execution before any query runs.
       CheckLookback = {
         Type = "Choice"
         Choices = [{
@@ -69,7 +70,7 @@ locals {
         }]
         Default = "BadLookback"
       }
-      BadLookback = { Type = "Fail", Error = "BadLookback", Cause = "lookback_days must be a JSON number between 1 and 4000" }
+      BadLookback = { Type = "Fail", Error = "BadLookback", Cause = "lookback_days must be a JSON number between 1 and 4000 (day folders to read, today included)" }
       # Two ingests running at once would both pass the anti-join and load the same objects
       # twice, so a run that finds another RUNNING execution simply ends. The daily exports
       # run counts too, so the ingest scheduled during it is skipped once; the next one catches up.

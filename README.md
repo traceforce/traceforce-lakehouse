@@ -66,7 +66,8 @@ logs bucket's region) and the state backend; the module never chooses where your
 
 3. The first ingest starts within the hour and loads the last three upload days. To load
    older day-partitioned objects, start the state machine once with
-   `{"job":"ingest","lookback_days":400}` (`lookback_days` is a JSON number, 1 to 4000).
+   `{"job":"ingest","lookback_days":400}` (`lookback_days` = day folders to read, today
+   included; a JSON number from 1 to 4000).
    Order matters: devices must be on TraceForce collector 1.0.42 or later first. Objects
    written by older collectors have no `dt=` folder in the key and are not read, and a
    lake with no eligible objects looks healthy: hourly runs succeed with zero rows and
@@ -150,13 +151,14 @@ or `skill/traceforce-lakehouse/scripts/athena_query.sh "SELECT ..."`.
   one string column holding each object's whole OTLP-JSON document, and projected partitions
   for the four supported agents and the day.
 - Every hour the state machine runs one Athena statement
-  (`terraform/sql/ingest_agent_events.sql.tftpl`): it lists the last three day folders, unnests
+  (`terraform/sql/ingest_agent_events.sql.tftpl`): it lists the last three day folders (today
+  and the two before it, plus anything a fast device clock filed under tomorrow), unnests
   resource → scope → record, and INSERTs into `agent_events`. An object is loaded once: rows
   keep their source path and the statement anti-joins on it, so re-reading yesterday is
   harmless. Two runs never overlap (the state machine checks for a running execution).
-- Why three days: the folders are days, so today alone would miss objects uploaded just
-  before midnight; the extra day covers a few failed runs and device clocks a day off. Late
-  uploads from offline laptops land in a fresh day folder and are picked up normally.
+- Why three folders: today alone would miss objects uploaded just before midnight; the third
+  covers a few failed runs and device clocks a day off. Late uploads from offline laptops land
+  in a fresh day folder and are picked up normally. `lookback_days` is that folder count.
 - Cost stays flat as history grows: each run reads only a few days of raw objects, plus the
   `source_object` column of `agent_events` for the anti-join (dictionary-encoded, well under
   a dollar a month at a year of data). For the largest tenant we have measured (about 2,700
