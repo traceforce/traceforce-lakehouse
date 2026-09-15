@@ -13,7 +13,7 @@ Provider in TraceForce Settings). This Terraform module adds, in the same accoun
 | `agent_events` | one row per log record / span from every agent, flattened from the raw objects |
 | `devices`, `agent_accounts`, `agent_conversations`, findings, MCP inventory, ... (17 tables, see `docs/EXPORT_CONTRACT.md`) | daily mirrors of your TraceForce metadata (written by TraceForce as JSON snapshots into your bucket) |
 | Athena workgroup `traceforce-lakehouse` + a results bucket | where the ingest runs and where you query; results expire after 7 days |
-| Step Functions + EventBridge Scheduler | hourly: load the last few days of new objects; daily: refresh the mirrors |
+| Step Functions + EventBridge Scheduler | hourly: load the last few days of new objects; daily at 06:30 UTC: refresh the mirrors |
 | IAM | ingest role (reads your TraceForce prefix only, writes only to the results bucket and the Iceberg tables), scheduler role, and a read-only query policy (output) to attach to your engineers' identities |
 | CloudWatch alarm | raised when a scheduled run fails; optional SNS notification |
 | Glue federated catalog `s3tablescatalog` | the account-level object that lets Athena see S3 Tables (skip with `create_glue_integration = false` if you already have it) |
@@ -174,7 +174,7 @@ and deletes rows that are no longer in it (except when the newest snapshot is em
 contract). See `docs/EXPORT_CONTRACT.md`. Expire old snapshots with a lifecycle rule on that
 prefix if you want; they are small.
 
-TraceForce writes the snapshots around 04:00 UTC; the mirror runs at 06:00 UTC. A file that
+TraceForce writes the snapshots around 04:00 UTC; the mirror runs at 06:30 UTC. A file that
 lands later is merged the next day, or immediately if you start the state machine with
 `{"job":"exports"}`. To run the ingest by hand use `{"job":"ingest"}` (or an empty input); it reads the last three days.
 
@@ -193,9 +193,9 @@ lands later is merged the next day, or immediately if you start the state machin
 - One malformed object under `conversations/AGENT_IDENTITY_*/` cannot stop the ingest (it
   yields no rows), but a corrupt gzip can. To find it, run with credentials that can read
   the raw prefix (the ingest role or an admin):
-  `SELECT r."$path" FROM traceforce_lakehouse_raw.raw_conversations r WHERE ... ` narrowing by
-  agent folder and date, then move the object out of the prefix; the anti-join never touches
-  loaded objects, so nothing else is affected.
+  `SELECT r."$path" FROM awsdatacatalog.traceforce_lakehouse_raw.raw_conversations r WHERE r.agent = '<AGENT_IDENTITY_...>' AND r.dt = '<YYYYMMDD>'`
+  (the catalog qualifier is required through the skill's script), then move the object out of
+  the prefix; the anti-join never touches loaded objects, so nothing else is affected.
 - Rotating the logs bucket means re-applying with the new `logs_bucket`; the module does not
   detect a moved bucket by itself.
 

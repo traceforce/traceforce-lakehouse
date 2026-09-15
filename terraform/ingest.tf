@@ -1,6 +1,6 @@
 # One Step Functions state machine runs both jobs, chosen by input:
 #   {"job":"ingest","lookback_days":3} hourly           -> flatten the last 3 upload-day folders (today + 2) of raw objects into agent_events
-#   {"job":"exports"}                  daily 06:00 UTC  -> MERGE the newest TraceForce metadata snapshots into their mirrors
+#   {"job":"exports"}                  daily 06:30 UTC  -> MERGE the newest TraceForce metadata snapshots into their mirrors
 # An input without "job" (the console default) runs the ingest; lookback_days defaults to 3.
 # A manual {"job":"ingest","lookback_days":400} re-reads a year of folders (catch-up after an
 # outage longer than two days); the anti-join keeps it exact.
@@ -38,7 +38,9 @@ locals {
 
   sfn_definition = {
     Comment = "TraceForce lakehouse: Athena ingest of raw activity objects and mirror of daily exports"
-    StartAt = "Route"
+    # Every job first checks that no other execution is running (two ingests would load the
+    # same objects twice; two exports would MERGE the same table concurrently), then routes.
+    StartAt = "CheckOverlap"
     States = merge({
       Route = {
         Type = "Choice"
@@ -66,14 +68,12 @@ locals {
             { Variable = "$.lookback_days", NumericGreaterThanEquals = 1 },
             { Variable = "$.lookback_days", NumericLessThanEquals = 4000 },
           ]
-          Next = "CheckOverlap"
+          Next = "IngestAgentEvents"
         }]
         Default = "BadLookback"
       }
       BadLookback = { Type = "Fail", Error = "BadLookback", Cause = "lookback_days must be a JSON number between 1 and 4000 (day folders to read, today included)" }
-      # Two ingests running at once would both pass the anti-join and load the same objects
-      # twice, so a run that finds another RUNNING execution simply ends. The daily exports
-      # run counts too, so the ingest scheduled during it is skipped once; the next one catches up.
+      # A run that finds another RUNNING execution of this state machine simply ends.
       CheckOverlap = {
         Type     = "Task"
         Resource = "arn:aws:states:::aws-sdk:sfn:listExecutions"
@@ -89,15 +89,16 @@ locals {
       IsAlone = {
         Type    = "Choice"
         Choices = [{ Variable = "$.overlap.running", NumericGreaterThan = 1, Next = "SkippedOverlapping" }]
-        Default = "IngestAgentEvents"
+        Default = "Route"
       }
       SkippedOverlapping = { Type = "Succeed" }
       IngestAgentEvents = {
         Type     = "Task"
         Resource = "arn:aws:states:::athena:startQueryExecution.sync"
         Parameters = {
-          QueryString             = local.ingest_sql
-          "ExecutionParameters.$" = "States.Array(States.Format('{}', $.lookback_days))"
+          QueryString = local.ingest_sql
+          # The statement uses the parameter twice (raw-side day window, target-side anti-join bound).
+          "ExecutionParameters.$" = "States.Array(States.Format('{}', $.lookback_days), States.Format('{}', $.lookback_days))"
           WorkGroup               = aws_athena_workgroup.lakehouse.name
           QueryExecutionContext   = { Database = aws_glue_catalog_database.lakehouse.name }
         }
@@ -113,9 +114,11 @@ locals {
           Next       = "ForEachTable"
         }
         ForEachTable = {
-          Type           = "Map"
-          ItemsPath      = "$.exports.tables"
-          MaxConcurrency = 3
+          Type      = "Map"
+          ItemsPath = "$.exports.tables"
+          # One iteration per table, all at once: Athena's default DML concurrency is 20 and
+          # each .sync task costs about a minute of polling for a two-second query.
+          MaxConcurrency = length(local.export_sql)
           ItemProcessor = {
             ProcessorConfig = { Mode = "INLINE" }
             StartAt         = "Merge"
@@ -396,7 +399,7 @@ resource "aws_scheduler_schedule" "ingest" {
 resource "aws_scheduler_schedule" "exports" {
   name                         = "${local.name}-exports"
   description                  = "TraceForce lakehouse: mirror the daily TraceForce metadata snapshots"
-  schedule_expression          = "cron(0 6 * * ? *)" # TraceForce writes the snapshots around 04:00 UTC
+  schedule_expression          = "cron(30 6 * * ? *)" # TraceForce writes the snapshots around 04:00 UTC; off the hour so the hourly ingest is not skipped
   schedule_expression_timezone = "UTC"
   flexible_time_window { mode = "OFF" }
   target {

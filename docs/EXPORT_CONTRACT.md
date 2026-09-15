@@ -11,9 +11,10 @@ Consumer: this module's `export_<table>` Glue tables and the daily MERGE/DELETE.
 ```
 
 - `dt` and `HHMMSS` are UTC at the start of the run (around 04:00 UTC; the consumer merges at
-  06:00 UTC, so a later file is merged the next day or on a manual `{"job":"exports"}` run). A manual re-run the same day writes a
-  second file; the consumer takes the lexically greatest path within the last 7 days of `dt`,
-  so the newest file always wins and nothing is ever overwritten or deleted. Failures are not
+  06:30 UTC, so a later file is merged the next day or on a manual `{"job":"exports"}` run). A manual re-run the same day writes a
+  second file; the consumer takes the lexically greatest path among the files with at least one
+  row within the last 7 days of `dt` (see the empty-file note below), so the newest file wins and
+  nothing is ever overwritten or deleted. Failures are not
   retried automatically; the next daily run supersedes them.
 - Permissions: the job runs under the TraceForce role the customer's Storage Provider grant
   already trusts and only ever calls PutObject on a new key; it never overwrites or deletes.

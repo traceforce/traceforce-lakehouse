@@ -34,13 +34,17 @@ Unqualified table names resolve in the `traceforce` namespace.
 ## Workflow
 
 1. Pick the tables the question needs and read only their files under `reference/tables/`.
-2. Run a cheap aggregate first (counts, distinct values, date range) to see the data exists,
-   including `SELECT max(ingested_at), max(upload_ts) FROM agent_events`: if the lake is more
-   than two hours behind, say so before answering (the ingest may be failing, or devices may
-   still be on a collector older than 1.0.42, whose objects are not read).
+2. Run a cheap aggregate first (counts, distinct values, date range) to see the data exists:
+   `SELECT max(ingested_at), max(upload_ts) FROM agent_events` (more than two hours behind
+   means the ingest is failing, or devices are still on a collector older than 1.0.42), and
+   `SELECT count(*) FROM <mirror>` for each metadata table the question joins. An empty mirror
+   means the daily export has not delivered yet; say so instead of answering from a join that
+   returns nothing. Mirror staleness: `SELECT max(committed_at) FROM "<mirror>$snapshots"`
+   (not `max(updated_at)`, which is a source-side time).
 3. Write the targeted query with `ts` bounds; take join rules from `reference/joins.md`.
 4. If Athena fails with "column cannot be resolved" or a type error: `DESCRIBE traceforce.<table>`,
-   fix, rerun. If it returns 0 rows: widen the window and check `deleted_at` before concluding.
+   fix, rerun. If it returns 0 rows: widen the window, check `deleted_at`, and check that every
+   joined mirror has rows (0 rows from an empty mirror is a delivery gap, not an absence).
 5. Decode codes, state gaps, answer.
 
 ## Schema reference (each one level from here)
@@ -76,7 +80,8 @@ risky writes and deletes, agents and accounts per device.
 - `ts`, `operation` (chat / execute_tool / invoke_agent), `event_name`, `tool_name`,
   `tool_call_id` (equals a containment finding's `tool_use_id`), `mcp_server_name`, `decision`,
   `model`, `input_tokens`, `output_tokens`, `cost_usd`.
-- `attrs_json`: everything else, as JSON text; the decision source is `$.source`.
+- `attrs_json`: everything else, as JSON text. On `tool_decision` rows the decision source is
+  `$.source`; `tool_result` rows carry it as `$.decision_source` with `$.decision_type`.
 
 ## Identity rules
 
@@ -91,8 +96,10 @@ risky writes and deletes, agents and accounts per device.
 - **Corporate account** = an `agent_email` whose domain is the customer's own email domain.
   Ask for the domain if you do not know it; list the distinct domains seen if in doubt.
 - **Agent, as the console counts it** = an install's (`agent_type`, `coalesce(plan, 0)`): start
-  from `agent_instances`, `LEFT JOIN agent_instances_accounts`, `LEFT JOIN agent_accounts` (put
-  `deleted_at IS NULL` in the ON clauses, or account-less installs vanish). No signed-in account
+  from `agent_instances` (`WHERE deleted_at IS NULL`), `LEFT JOIN agent_instances_accounts` (it
+  has no `deleted_at`), `LEFT JOIN agent_accounts a ON a.id = ia.agent_account_id AND
+  a.deleted_at IS NULL` (that filter must be in the ON clause, or account-less installs vanish).
+  No signed-in account
   = plan 0; that is how Copilot appears. Never count agents from `agent_accounts` alone. A
   device's MCP count in the console is `COUNT(DISTINCT mcp_server_type)` over its live
   `mcp_server_instances`; the console hides `mcp_servers` rollups with `active_users = 0`.
