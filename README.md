@@ -46,7 +46,7 @@ logs bucket's region) and the state backend; the module never chooses where your
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform?ref=v0.2.0"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform?ref=1.0.0"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce"                       # "" if TraceForce writes at the bucket root
      # only if they apply to your account:
