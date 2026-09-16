@@ -1,11 +1,11 @@
 # Minimal root configuration; mirrors the README. Replace the backend and values.
 terraform {
-  required_version = ">= 1.5"
+  required_version = ">= 1.10" # native S3 state locking (use_lockfile)
   backend "s3" {
     bucket       = "acme-terraform-state" # NOT the logs bucket
     key          = "traceforce-lakehouse/terraform.tfstate"
     region       = "us-east-1"
-    use_lockfile = true # Terraform >= 1.10; use dynamodb_table on older versions
+    use_lockfile = true
   }
 }
 
