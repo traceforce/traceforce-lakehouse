@@ -399,7 +399,7 @@ resource "aws_scheduler_schedule" "ingest" {
 resource "aws_scheduler_schedule" "exports" {
   name                         = "${local.name}-exports"
   description                  = "TraceForce lakehouse: mirror the daily TraceForce metadata snapshots"
-  schedule_expression          = "cron(30 6 * * ? *)" # TraceForce writes the snapshots around 04:00 UTC; off the hour so the hourly ingest is not skipped
+  schedule_expression          = "cron(30 12 * * ? *)" # source snapshots land ~11:00 UTC; run at 12:30 UTC (~8:30am ET) so metadata is fresh for the US business day, off the hour so the hourly ingest is not skipped
   schedule_expression_timezone = "UTC"
   flexible_time_window { mode = "OFF" }
   target {
