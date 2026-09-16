@@ -13,10 +13,10 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `id` | string | Primary key (uuid as text). |
 | `org_id` | string | Your TraceForce org id. Constant within this lakehouse. |
 | `device_native_id` | string | OS-reported serial (e.g. C02XXXXXXXXX on macOS). Same value as agent_events.device_native_id. Windows serials can be placeholders shared by many machines. |
-| `device_uuid` | string | Windows per-install GUID; NULL on macOS/Linux. Prefer it over the serial when present. agent_events.device_uuid is NULL on every row until the collector release that stamps it ships, so today the device join degenerates to the serial. |
+| `device_uuid` | string | Windows per-install GUID; NULL on macOS/Linux. Prefer it over the serial for the device join when present. |
 | `friendly_name` | string | Human-readable name (e.g. Jane's MacBook Pro). |
 | `platform` | string | darwin / windows / linux. |
-| `architecture` | string | CPU architecture (arm64, x86_64). |
+| `architecture` | string | CPU architecture (arm64, amd64). |
 | `os_version` | string | OS version string. |
 | `chip_model` | string | Chip model when reported. |
 | `account_metadata` | string | JSON text keyed by OS uid/SID with the OS username; how agent_instances.tenant resolves to a username. |

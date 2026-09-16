@@ -11,46 +11,46 @@ No key: a session has many rows, a tool call has 2-3 rows (decision, result, spa
 | `agent` | string | AGENT_IDENTITY_CLAUDE_CODE (Claude Code), AGENT_IDENTITY_CLAUDE (the claude.ai chat agent, any deployment — not the desktop app specifically), AGENT_IDENTITY_CURSOR, AGENT_IDENTITY_GITHUB_COPILOT. |
 | `agent_type` | int | Integer code of `agent` (111, 1, 2, 8). Joins agent_catalog.agent_type and the agent_type columns of the metadata tables. |
 | `device_native_id` | string | Device serial. Joins devices.device_native_id. |
-| `device_uuid` | string | Windows per-install GUID; NULL elsewhere. Prefer it over the serial when present. NULL on every row until the collector release that stamps it ships. |
-| `sandbox_native_id` | string | Reserved; NULL today. Will join sandboxes.sandbox_native_id. |
-| `path_email` | string | Account segment of the object path (email as the collector saw it); NULL when unknown. |
-| `path_org` | string | Vendor org id from the object path when present. |
-| `path_session` | string | Session segment of the object path; NULL when unknown. |
-| `upload_ts` | timestamp | When the object was uploaded (from its filename), UTC. |
+| `device_uuid` | string | A stable per-install device GUID; NULL when the agent doesn't provide one. Prefer it over the serial when present. |
+| `sandbox_native_id` | string | Sandbox identifier; will join sandboxes.sandbox_native_id. Reserved: always NULL on events today (the collector is host-only and stamps no sandbox id). |
+| `path_email` | string | Account email associated with the source object; NULL when unknown. Independent of `user_email`. |
+| `path_org` | string | Vendor org id associated with the source object; NULL when absent. |
+| `path_session` | string | Session id associated with the source object; NULL when unknown. |
+| `upload_ts` | timestamp | When the source object was uploaded, UTC. |
 | `source_object` | string | s3://bucket/key of the raw object this row came from. Equals a finding's conversation_storage pointer (see joins.md). |
-| `signal` | string | log or span. Claude Code emits both; Copilot only spans. |
-| `user_email` | string | As emitted by the agent. Claude Code/Cowork/Cursor; NULL for Copilot and for Vertex-authenticated Claude Code. |
-| `agent_org_id` | string | The AI vendor's org id (Anthropic org for Claude); NULL for Cursor/Copilot. |
-| `user_id` | string | Vendor user id (Claude family only). |
-| `session_id` | string | The conversation/session: gen_ai.conversation.id, else record session.id, else resource session.id, else the path. Joins agent_conversations.conversation_external_id. |
-| `resource_session_id` | string | The OTLP resource-level session.id (Copilot: one per VS Code window). session_id falls back to it; compare the two to tell a real conversation id from a window-level fallback. |
-| `ts` | timestamp | Event time, UTC. Record time, else observed time, else upload time. |
+| `signal` | string | Whether the row is an OTLP `log` record or a `span`. |
+| `user_email` | string | End-user email as reported by the agent; NULL when the agent reports none (fall back to the device owner for a person — see joins.md). |
+| `agent_org_id` | string | The AI vendor's org id for the user (e.g. the Anthropic org for Claude); NULL when the agent reports none. |
+| `user_id` | string | The AI vendor's user id; NULL when the agent reports none. |
+| `session_id` | string | The conversation/session identifier. Joins agent_conversations.conversation_external_id. Can resolve to a window-level fallback rather than a true conversation id (see resource_session_id). |
+| `resource_session_id` | string | A resource-level session id that may be coarser than one conversation (e.g. one per editor window). `session_id` falls back to it; compare the two to tell a real conversation id from a window-level fallback. |
+| `ts` | timestamp | Event time, UTC. |
 | `end_ts` | timestamp | Span end time, UTC; NULL on logs. |
 | `event_name` | string | Agent-specific event name (user_prompt, tool_decision, tool_result, api_request, api_error, preToolUse, ...). Vocabularies differ per agent. |
 | `span_name` | string | Span name (spans only). |
-| `operation` | string | chat, execute_tool, invoke_agent (GenAI semconv), all agents except Claude-family mcp_server_connection and Cursor sessionStart/sessionEnd rows. The cross-agent grouping key. |
-| `prompt_id` | string | Per-turn id (Claude family). |
-| `generation_id` | string | Per-turn id (Cursor). |
-| `tool_name` | string | Tool identity, all agents. MCP tool calls appear as mcp_tool with mcp_server_name set (Claude family) or with the server name in mcp_server_name (Copilot). |
+| `operation` | string | Operation type per GenAI semconv (`chat`, `execute_tool`, `invoke_agent`); the cross-agent grouping key. NULL on non-GenAI rows (e.g. connection/session-lifecycle events). |
+| `prompt_id` | string | Per-turn (request/response) identifier; NULL when the agent emits none. Count distinct to count prompts. |
+| `generation_id` | string | Per-turn identifier emitted by agents that use a separate generation id, distinct from `prompt_id`; NULL otherwise. |
+| `tool_name` | string | The tool invoked. MCP tool calls surface as `mcp_tool` with the server in `mcp_server_name`. |
 | `tool_type` | string | Tool type (function, ...). |
-| `tool_call_id` | string | Per-call id; equals connector_containment_findings.tool_use_id. Present on Claude family and Copilot; Cursor's synthesized shell/read/edit records have none. Repeats within a session (decision, result, span rows), never a key. |
+| `tool_call_id` | string | Per-call id; equals connector_containment_findings.tool_use_id (join key). NULL when the agent emits none. Repeats across the decision/result/span rows of one call, so it is not unique. |
 | `mcp_server_name` | string | MCP server as configured on the device; joins lower(mcp_server_instances.mcp_native_id). |
-| `tool_args` | string | Tool input as JSON text (Cursor shell records: plain command text). Large. |
-| `tool_result` | string | Tool output (Claude Code spans, Cursor, Copilot); Cowork never carries it. Large. |
-| `decision` | string | Permission decision as the agent recorded it: accept/reject (Claude family), approved/denied-interactively-by-user (Copilot). NULL on Cursor rows. |
-| `sd_enforcement` | string | TraceForce sensitive-data policy MODE in force on the prompt (warn/block), not the outcome. Claude Code only. |
-| `containment_enforcement` | string | TraceForce containment policy MODE in force on the tool call, not the outcome. Claude Code and Cursor. |
-| `error_type` | string | Error class (error.type / error_type / permission_denied / 403 ...). |
-| `model` | string | Model requested (gen_ai.request.model). |
-| `input_tokens` | long | Input tokens (Claude family, Copilot). NULL for Cursor. |
-| `output_tokens` | long | Output tokens (Claude family, Copilot). NULL for Cursor. |
-| `cache_read_tokens` | long | Cache-read tokens (Claude family, Copilot). |
-| `cost_usd` | double | Cost as reported by the agent (Claude family only; Copilot and Cursor emit none). |
+| `tool_args` | string | Tool input, JSON text; occasionally plain text (e.g. a raw shell command). Large. |
+| `tool_result` | string | Tool output; NULL when the agent doesn't emit it. Large. |
+| `decision` | string | Permission decision as the agent recorded it (e.g. `accept`/`reject`, `approved`/`denied-interactively-by-user`); NULL when the agent records none. |
+| `sd_enforcement` | string | TraceForce sensitive-data policy mode in force on the prompt (`warn` or `block`), not the outcome; NULL when no policy applied. |
+| `containment_enforcement` | string | TraceForce containment policy mode in force on the tool call (`warn` or `block`), not the outcome; NULL when no policy applied. |
+| `error_type` | string | Error class/type on error rows (e.g. `permission_denied`, `403`); NULL otherwise. |
+| `model` | string | The model requested for the turn. |
+| `input_tokens` | long | Input tokens for the request; NULL when the agent reports no token counts. |
+| `output_tokens` | long | Output tokens for the request; NULL when the agent reports no token counts. |
+| `cache_read_tokens` | long | Cache-read tokens for the request; NULL when the agent reports no token counts. |
+| `cost_usd` | double | Turn cost in USD as reported by the agent; NULL when the agent reports none. |
 | `content_input` | string | Prompt as a JSON message array; masked per matched value when the org redacts. Large. |
 | `content_output` | string | Response as a JSON message array; masked per matched value when the org redacts. Large. |
-| `service_name` | string | Emitter service name (Cursor rows name the TraceForce collector). |
-| `service_version` | string | Agent version (Claude family, Copilot) or collector version (Cursor). |
-| `os_type` | string | OS from the resource attributes (Claude family only). |
+| `service_name` | string | The emitting service's name (OTLP resource attribute); may name the collector rather than the agent. |
+| `service_version` | string | Version string of the emitter — the agent, or the collector when it emits on the agent's behalf. |
+| `os_type` | string | Operating system of the device; NULL when not reported. |
 | `attrs_json` | string | Every other record attribute as JSON text: json_extract_scalar(attrs_json, '$["cursor.version"]'). The decision source lives here: $.source. |
 | `resource_json` | string | Every resource attribute as JSON text. |
 | `ingested_at` | timestamp | When the row was loaded, UTC. |

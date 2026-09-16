@@ -7,8 +7,8 @@ filter, time window or extra column because an example has it.
 ## Event to person
 
 Use when a result should be per person. Email on the event when the agent emitted one,
-otherwise the MDM owner of the device. Copilot and Vertex-authenticated Claude Code never
-carry an email, so without this fallback they vanish from per-person answers.
+otherwise the MDM owner of the device. Some agents (e.g. GitHub Copilot) report no end-user email, so without this
+fallback those events vanish from per-person answers.
 
 ```sql
 SELECT coalesce(lower(e.user_email), lower(m.owner_email)) AS person, ...
@@ -41,9 +41,8 @@ ORDER BY e.ts
 
 Use when asking how a write or delete was approved. `tool_use_id` on the finding equals
 `tool_call_id` on the events of the same session, and the `tool_decision` row carries the
-source. Claude family only: Cursor emits no `tool_decision`, so for Cursor read the finding's
-own `outcome` and, for a failed write, the `postToolUseFailure` row with the same
-`tool_call_id`. On rows that reached the findings table, `source = 'hook'` means the user's own
+source. Cursor rows carry no `tool_decision`, so join the finding's `tool_use_id` to its
+`tool_result`/span row instead. On rows that reached the findings table, `source = 'hook'` means the user's own
 PreToolUse hook approved (TraceForce's hook never returns allow); `config` means Claude's own
 permission rules; `user_*` means a person clicked. Denied attempts never reach this table;
 they are `decision = 'reject'` events only.
@@ -65,7 +64,7 @@ is per (device serial, agent type, server name), matched case-insensitively. The
 name can have several live inventory rows per device (one per project path or location), so
 aggregate the inventory side or the counts multiply. `LEFT JOIN` so a NULL count means
 installed and never called. The `calls` side is per serial: a Windows placeholder serial
-shared by several devices repeats its count on each of them (see Identity rules). Product name and category come through `mcp_server_type` against
+shared by several devices repeats its count on each of them (see identity.md). Product name and category come through `mcp_server_type` against
 both catalogs, never through `mcp_servers.mcp_catalog_id` for org-private servers.
 
 ```sql

@@ -27,7 +27,7 @@ Point your agent at `skills/traceforce-lakehouse/`:
   (Cursor: add `SKILL.md` under `.cursor/rules`. Copilot: reference it from
   `.github/copilot-instructions.md`. Others: add it to your system prompt.)
 
-Only Claude Code is verified end to end so far; the content is the same for every agent.
+Only Claude Code is verified end to end so far. The skill content is identical for every agent; only how you load it and invoke the script differs (Claude Code injects `${CLAUDE_SKILL_DIR}`; other agents use the path shown above).
 
 ## Prerequisites
 

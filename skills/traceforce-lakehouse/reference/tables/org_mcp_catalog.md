@@ -19,8 +19,8 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `website` | string | Vendor website. |
 | `logo_url` | string | Logo URL. |
 | `mcp_server_type` | int | Product code. |
-| `category_id` | string | → mcp_categories.id |
-| `source_type` | int | Who publishes it. Codes: `MCPSourceType` in ../enums.md. |
+| `category_id` | string | → mcp_categories.id; NULL until a category is assigned. |
+| `source_type` | string | Publisher/provenance as text ('official' / 'community' / 'reference' / 'archived' / 'openai' / 'anthropic' / 'unknown'); never NULL, 'unknown' = unset. |
 | `execution_environment` | string | JSON text. |
 | `authentication_methods` | string | JSON text. |
 | `detection_patterns` | string | JSON text. |

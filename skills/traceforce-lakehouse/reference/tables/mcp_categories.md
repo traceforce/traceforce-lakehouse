@@ -13,6 +13,6 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `id` | string | Primary key (uuid as text). |
 | `name` | string | Category name. |
 | `description` | string | Category description. |
-| `resource_type` | int | Sensitivity class of what servers in this category reach. Codes: `MCP category resource_type (IssueDetail subset)` in ../enums.md. |
+| `resource_type` | string | Sensitivity class of what servers in this category reach, as text ('public' / 'internal_apps' / 'dev_tools' / 'database_infrastructure' / 'local_system'). |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |

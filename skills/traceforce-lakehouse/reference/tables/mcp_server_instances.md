@@ -18,19 +18,19 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `org_id` | string | Your TraceForce org id. Constant within this lakehouse. |
 | `device_id` | string | → devices.id |
 | `sandbox_id` | string | → sandboxes.id; NULL when the row is about the host device itself. |
-| `agent_account_id` | string | → agent_accounts.id. Set for account-scoped agents (Claude = 1, ChatGPT = 3); NULL for Claude Code (111) and Cursor (2), whose MCP inventory is device-scoped: resolve those through device_id or the junction tables. |
+| `agent_account_id` | string | → agent_accounts.id: the account a browser-connector MCP belongs to. NULL for filesystem-discovered MCPs — attribute those via mcp_server_agent_instances → agent_instances_accounts → agent_accounts (take the greatest agent_accounts.last_seen_at when several match). |
 | `mcp_server_id` | string | → mcp_servers.id (org rollup). |
 | `mcp_server_type` | int | Integer product code; join the catalogs for the name. Not an enum. |
 | `mcp_server_location` | string | URL for remote servers, command/path for local ones. |
 | `mcp_native_id` | string | The server's key in the host config (mcp.json). Equals agent_events.mcp_server_name (case-insensitive). |
-| `transport_type` | int | Transport protocol. Codes: `MCPTransportType` in ../enums.md. |
-| `deployment_model` | int | Where the server runs. Codes: `MCPDeploymentModel` in ../enums.md. |
-| `auth_type` | int | Authentication method. Codes: `IdentityControlType (auth_type)` in ../enums.md. |
-| `transport_security_type` | int | TLS or none. Codes: `TransportSecurityType` in ../enums.md. |
-| `distribution_channel` | int | Who installed it (admin vs user). Codes: `MCPDistributionChannel` in ../enums.md. |
-| `agent_type` | int | Agent it is configured for. Codes: `AgentIdentity (lake agents)` in ../enums.md. |
-| `project_path` | string | Project/workspace path that configured it; NULL for global config. |
-| `linked_plans` | string | JSON array of AgentPlanType codes (e.g. [2,3]) derived from the accounts signed in through this install; [0] = no signed-in account. The console attributes an MCP instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(integer))) AS t(plan). |
+| `transport_type` | string | Transport protocol as text ('stdio' / 'http' / 'sse' / 'unknown'); never NULL, 'unknown' = unclassified. |
+| `deployment_model` | string | Where the server runs, as text ('local_process' / 'local_container' / 'local_service' / 'remote' / 'unknown'); never NULL, 'unknown' = unclassified. |
+| `auth_type` | string | Authentication method as text ('oauth' / 'token' / 'basic_auth' / 'no_auth' / 'unknown'); never NULL, 'unknown' = no method detected. |
+| `transport_security_type` | string | Transport encryption as text ('none' / 'tls' / 'unknown'); never NULL, 'unknown' = unclassified. |
+| `distribution_channel` | string | Who provisioned it, as text ('platform' / 'tenant' / 'user' / 'unknown'); never NULL, filesystem MCPs are 'user', 'unknown' = unmatched. |
+| `agent_type` | int | Agent it is configured for. |
+| `project_path` | string | Project/workspace path the MCP is scoped to; NULL for global-scope configs and browser connectors. |
+| `linked_plans` | string | JSON array of AgentPlanType text the instance is reachable through — its direct account plus junction-linked installs (e.g. ["personal","enterprise"]). NULL when it has neither a direct account nor an active junction link. Attribute an instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan). |
 | `metadata` | string | JSON text; vendor-specific extras (e.g. version). |
 | `security_findings` | string | JSON text; TraceForce's security observations for this instance. |
 | `tools` | string | JSON text; tools the server exposes, as discovered on this install. |

@@ -16,18 +16,17 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `org_id` | string | Your TraceForce org id. Constant within this lakehouse. |
 | `mcp_catalog_id` | string | → mcp_catalog.id (FK); NULL for products without a global catalog row |
 | `mcp_server_type` | int | Product code; same as the catalogs' mcp_server_type. |
-| `mcp_server_status` | int | TraceForce internal lifecycle code. |
-| `active_users` | int | Users seen using it. |
-| `total_incidents` | int | Incidents raised. |
-| `active_issues` | int | Open issues. |
-| `affected_devices` | int | Devices with an instance. |
-| `base_score` | double | Baseline risk score 0-100 for the product. |
-| `actual_score` | double | Risk score 0-100 from your org's usage. |
-| `agent_names` | string | JSON text; agents using it. |
+| `active_users` | int | MISNOMER: despite the name, the count of DISTINCT active devices running this MCP type (devices, not users); NULL when the org has none. |
+| `total_incidents` | int | Count of open issue rows for this type (not deduped by type); NULL (not 0) when none are open. |
+| `active_issues` | int | Count of distinct open issue types; NULL (not 0) when none are open. |
+| `affected_devices` | int | Count of distinct devices with an open issue of this type; NULL (not 0) when none. |
+| `base_score` | double | Baseline risk score (0-100) for the product; NULL (not 0) when no baseline scores exist yet. |
+| `actual_score` | double | Risk score (0-100) from your org's usage; NULL (not 0) when no scores for this org+type yet. |
+| `agent_names` | string | JSON array of agent display names with an active instance of this type; NULL when there are none. |
 | `distribution_channels` | string | JSON text. |
 | `auth_types` | string | JSON text. |
 | `sandbox_runtime_types` | string | JSON text. |
-| `instance_count` | int | Number of instances. |
+| `instance_count` | int | Count of distinct active instances of this type; NULL (not 0) when none. |
 | `has_host_instances` | boolean | Any instance on a host (not only sandboxes). |
 | `first_seen_at` | timestamp | First observed (UTC). |
 | `last_reviewed` | timestamp | Last reviewed (UTC). |
