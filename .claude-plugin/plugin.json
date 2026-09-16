@@ -1,0 +1,10 @@
+{
+  "name": "traceforce-lakehouse",
+  "description": "Query your TraceForce AI-agent activity lakehouse (read-only Athena over Apache Iceberg in your own AWS account) in plain language.",
+  "version": "1.0.0",
+  "author": {
+    "name": "TraceForce"
+  },
+  "homepage": "https://github.com/traceforce/traceforce-lakehouse",
+  "license": "Apache-2.0"
+}

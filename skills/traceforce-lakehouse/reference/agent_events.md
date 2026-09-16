@@ -8,7 +8,7 @@ No key: a session has many rows, a tool call has 2-3 rows (decision, result, spa
 
 | column | type | meaning |
 |---|---|---|
-| `agent` | string | AGENT_IDENTITY_CLAUDE_CODE, AGENT_IDENTITY_CLAUDE (the Claude desktop app), AGENT_IDENTITY_CURSOR, AGENT_IDENTITY_GITHUB_COPILOT. |
+| `agent` | string | AGENT_IDENTITY_CLAUDE_CODE (Claude Code), AGENT_IDENTITY_CLAUDE (the claude.ai chat agent, any deployment — not the desktop app specifically), AGENT_IDENTITY_CURSOR, AGENT_IDENTITY_GITHUB_COPILOT. |
 | `agent_type` | int | Integer code of `agent` (111, 1, 2, 8). Joins agent_catalog.agent_type and the agent_type columns of the metadata tables. |
 | `device_native_id` | string | Device serial. Joins devices.device_native_id. |
 | `device_uuid` | string | Windows per-install GUID; NULL elsewhere. Prefer it over the serial when present. NULL on every row until the collector release that stamps it ships. |

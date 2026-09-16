@@ -23,6 +23,7 @@ bucket this module owns, which TraceForce cannot read.
 
    ```hcl
    terraform {
+     required_version = ">= 1.10" # native S3 state locking (use_lockfile)
      backend "s3" {
        bucket       = "acme-terraform-state"
        key          = "traceforce-lakehouse/terraform.tfstate"
@@ -53,8 +54,14 @@ bucket this module owns, which TraceForce cannot read.
 
 3. Attach `terraform output -raw query_policy_json` to the IAM users or roles that will query.
 
-4. Copy `skill/traceforce-lakehouse/` into `.claude/skills/` (project or home) and ask
-   questions in Claude Code.
+4. Install the skill in your coding agent. Claude Code:
+
+   ```
+   /plugin marketplace add traceforce/traceforce-lakehouse
+   /plugin install traceforce-lakehouse@traceforce
+   ```
+
+   Any other agent (Cursor, Copilot, Codex): see [`AGENTS.md`](AGENTS.md). Then ask questions.
 
 The first load runs within the hour and covers the last three days. To load older data, start
 the state machine `traceforce-lakehouse-ingest` once with `{"job":"ingest","lookback_days":400}`.
@@ -70,7 +77,7 @@ the state machine `traceforce-lakehouse-ingest` once with `{"job":"ingest","look
 
 By hand, in the Athena console (data source `AwsDataCatalog`, catalog
 `s3tablescatalog/traceforce-lakehouse`, database `traceforce`) or with
-`skill/traceforce-lakehouse/scripts/athena_query.sh "SELECT ..."`:
+`skills/traceforce-lakehouse/scripts/athena_query.sh "SELECT ..."`:
 
 ```sql
 SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1;
@@ -78,11 +85,11 @@ SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1
 
 ## What is in the lake
 
-- `agent_events`: one row per log record or span from every agent (Claude Code, Cursor,
-  Claude desktop and Cowork, GitHub Copilot), loaded hourly.
+- `agent_events`: one row per log record or span from every agent (Claude Code, Claude
+  (claude.ai), Cursor, GitHub Copilot), loaded hourly.
 - 17 metadata tables mirrored daily from TraceForce: devices, accounts, installs,
   conversations, findings, MCP inventory and catalog. Columns and joins are documented in
-  `skill/traceforce-lakehouse/reference/`.
+  `skills/traceforce-lakehouse/reference/`.
 - Logs are stored exactly as TraceForce writes them, with sensitive values redacted according
   to your policy. Finding evidence (the matched value itself) is never loaded; review it in
   the TraceForce console.
@@ -99,6 +106,5 @@ SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1
 
 ## More
 
-- `CHANGELOG.md`: what each version changes, including any table that is rebuilt on upgrade.
 - `docs/EXPORT_CONTRACT.md`: the snapshot format TraceForce writes into your bucket.
 - Licence: Apache 2.0, see `LICENSE`.

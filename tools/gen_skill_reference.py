@@ -4,18 +4,18 @@
 Single source of truth for column names/types is terraform/ (exports.tf for the mirrors,
 s3tables.tf for agent_events). This script adds meaning: per-column notes, enum
 decodings (from TraceForce's public enums and API vocabulary) and join
-rules, and writes skill/traceforce-lakehouse/reference/*.md. Re-run after changing
+rules, and writes skills/traceforce-lakehouse/reference/*.md. Re-run after changing
 either .tf file; commit the output.
 """
 import re, pathlib, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TF = ROOT / "terraform"
-OUT = ROOT / "skill" / "traceforce-lakehouse" / "reference"
+OUT = ROOT / "skills" / "traceforce-lakehouse" / "reference"
 
 # ----------------------------------------------------------------------------- enums
 ENUMS = {
-    "AgentIdentity (lake agents)": {1: "Claude (catalog name \"Claude\": the Claude desktop app)", 2: "Cursor", 8: "GitHub Copilot", 111: "Claude Code",
+    "AgentIdentity (lake agents)": {1: "Claude (the claude.ai chat agent \u2014 any deployment; distinct from Claude Code, 111)", 2: "Cursor", 8: "GitHub Copilot", 111: "Claude Code",
                                     "…": "every other value: join agent_catalog on agent_type for the name"},
     "AgentPlanType": {0: "unspecified", 1: "personal", 2: "enterprise", 3: "small_business"},
     "AgentDeploymentType": {0: "unknown", 1: "desktop_app", 2: "vscode_extension", 3: "cli", 4: "browser", 5: "ai_browser", 6: "service"},
@@ -195,7 +195,7 @@ TABLES = {
                "account: agent_account_id when set; else mcp_server_agent_instances → agent_instances_accounts → agent_accounts, taking the greatest agent_accounts.last_seen_at when several match (the console's rule)",
                "mcp_server_id → mcp_servers.id", "mcp_server_type → mcp_catalog.mcp_server_type or org_mcp_catalog.mcp_server_type (product name)",
                "mcp_server_agent_instances links to the install it is configured in"],
-        notes={"agent_account_id": "→ agent_accounts.id. Set for account-scoped agents (Claude desktop = 1, ChatGPT = 3); NULL for Claude Code (111) and Cursor (2), whose MCP inventory is device-scoped: resolve those through device_id or the junction tables.", "mcp_server_id": "→ mcp_servers.id (org rollup).",
+        notes={"agent_account_id": "→ agent_accounts.id. Set for account-scoped agents (Claude = 1, ChatGPT = 3); NULL for Claude Code (111) and Cursor (2), whose MCP inventory is device-scoped: resolve those through device_id or the junction tables.", "mcp_server_id": "→ mcp_servers.id (org rollup).",
                "mcp_server_type": "Integer product code; join the catalogs for the name. Not an enum.",
                "mcp_server_location": "URL for remote servers, command/path for local ones.",
                "mcp_native_id": "The server's key in the host config (mcp.json). Equals agent_events.mcp_server_name (case-insensitive).",
@@ -240,7 +240,7 @@ TABLES = {
 
 # agent_events column meanings (hand-maintained; the generator asserts every column has one).
 EVENT_NOTES = {
-    "agent": "AGENT_IDENTITY_CLAUDE_CODE, AGENT_IDENTITY_CLAUDE (the Claude desktop app), AGENT_IDENTITY_CURSOR, AGENT_IDENTITY_GITHUB_COPILOT.",
+    "agent": "AGENT_IDENTITY_CLAUDE_CODE (Claude Code), AGENT_IDENTITY_CLAUDE (the claude.ai chat agent, any deployment \u2014 not the desktop app specifically), AGENT_IDENTITY_CURSOR, AGENT_IDENTITY_GITHUB_COPILOT.",
     "agent_type": "Integer code of `agent` (111, 1, 2, 8). Joins agent_catalog.agent_type and the agent_type columns of the metadata tables.",
     "device_native_id": "Device serial. Joins devices.device_native_id.",
     "device_uuid": "Windows per-install GUID; NULL elsewhere. Prefer it over the serial when present. NULL on every row until the collector release that stamps it ships.",

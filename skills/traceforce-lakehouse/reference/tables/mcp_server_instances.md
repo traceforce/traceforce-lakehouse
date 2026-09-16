@@ -18,7 +18,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `org_id` | string | Your TraceForce org id. Constant within this lakehouse. |
 | `device_id` | string | → devices.id |
 | `sandbox_id` | string | → sandboxes.id; NULL when the row is about the host device itself. |
-| `agent_account_id` | string | → agent_accounts.id. Set for account-scoped agents (Claude desktop = 1, ChatGPT = 3); NULL for Claude Code (111) and Cursor (2), whose MCP inventory is device-scoped: resolve those through device_id or the junction tables. |
+| `agent_account_id` | string | → agent_accounts.id. Set for account-scoped agents (Claude = 1, ChatGPT = 3); NULL for Claude Code (111) and Cursor (2), whose MCP inventory is device-scoped: resolve those through device_id or the junction tables. |
 | `mcp_server_id` | string | → mcp_servers.id (org rollup). |
 | `mcp_server_type` | int | Integer product code; join the catalogs for the name. Not an enum. |
 | `mcp_server_location` | string | URL for remote servers, command/path for local ones. |
