@@ -179,7 +179,7 @@ See "Redaction and evidence".
 
 - GitHub Copilot is pseudonymous: no email, no org id, and most of its rows share one
   `session_id` per VS Code window. Attribute by device owner.
-- Claude Code authenticated through Vertex AI emits no user identity; use the device owner.
+- Some agents or auth modes emit no user email/identity; attribute the person via the device owner (see Identity rules).
 - Cursor emits no token counts or cost; Copilot emits tokens but no cost.
 - ChatGPT is not in this table.
 - Rows arrive within about an hour of upload; devices offline for a while upload late.

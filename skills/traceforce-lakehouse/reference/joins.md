@@ -7,8 +7,8 @@ filter, time window or extra column because an example has it.
 ## Event to person
 
 Use when a result should be per person. Email on the event when the agent emitted one,
-otherwise the MDM owner of the device. Copilot and Vertex-authenticated Claude Code never
-carry an email, so without this fallback they vanish from per-person answers.
+otherwise the MDM owner of the device. Some agents (e.g. GitHub Copilot) report no end-user email, so without this
+fallback those events vanish from per-person answers.
 
 ```sql
 SELECT coalesce(lower(e.user_email), lower(m.owner_email)) AS person, ...
