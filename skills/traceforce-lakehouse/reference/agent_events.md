@@ -12,7 +12,7 @@ No key: a session has many rows, a tool call has 2-3 rows (decision, result, spa
 | `agent_type` | int | Integer code of `agent` (111, 1, 2, 8). Joins agent_catalog.agent_type and the agent_type columns of the metadata tables. |
 | `device_native_id` | string | Device serial. Joins devices.device_native_id. |
 | `device_uuid` | string | A stable per-install device GUID; NULL when the agent doesn't provide one. Prefer it over the serial when present. |
-| `sandbox_native_id` | string | Sandbox identifier; joins sandboxes.sandbox_native_id when populated. |
+| `sandbox_native_id` | string | Sandbox identifier; will join sandboxes.sandbox_native_id. Reserved: always NULL on events today (the collector is host-only and stamps no sandbox id). |
 | `path_email` | string | Account email associated with the source object; NULL when unknown. Independent of `user_email`. |
 | `path_org` | string | Vendor org id associated with the source object; NULL when absent. |
 | `path_session` | string | Session id associated with the source object; NULL when unknown. |

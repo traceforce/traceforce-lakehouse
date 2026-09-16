@@ -64,7 +64,7 @@ is per (device serial, agent type, server name), matched case-insensitively. The
 name can have several live inventory rows per device (one per project path or location), so
 aggregate the inventory side or the counts multiply. `LEFT JOIN` so a NULL count means
 installed and never called. The `calls` side is per serial: a Windows placeholder serial
-shared by several devices repeats its count on each of them (see Identity rules). Product name and category come through `mcp_server_type` against
+shared by several devices repeats its count on each of them (see identity.md). Product name and category come through `mcp_server_type` against
 both catalogs, never through `mcp_servers.mcp_catalog_id` for org-private servers.
 
 ```sql

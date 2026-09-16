@@ -17,7 +17,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `sandbox_id` | string | → sandboxes.id; NULL when the row is about the host device itself. |
 | `agent_catalog_id` | string | → agent_catalog.id |
 | `agent_type` | int | Which agent product. |
-| `agent_deployment` | string | Form factor of this install. |
+| `agent_deployment` | string | Form factor of this install, as text ('desktop_app' / 'vscode_extension' / 'cli' / 'browser' / 'ai_browser' / 'service' / 'unknown'). |
 | `tenant` | string | OS-level user (uid on macOS/Linux, SID on Windows) the install belongs to; resolve to a username via devices.account_metadata. |
 | `metadata` | string | JSON text; vendor-specific extras (e.g. version). |
 | `configuration` | string | JSON text; detected agent configuration. |

@@ -23,6 +23,6 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `is_archived` | boolean | Archived in the agent UI. |
 | `conversation_create_time` | timestamp | Agent-reported creation time (UTC). |
 | `conversation_update_time` | timestamp | Agent-reported last update (UTC). |
-| `customer_storage` | string | JSON text {bucket, key_prefix, region, provider, source_file}: a pointer into the customer's BYO storage bucket. On conversations it locates the session's uploaded activity objects; on findings it locates the evidence object holding the verbatim matched value / tool input (the redacted attachment for file findings). NULL when BYO storage is unconfigured or the source object is empty. Evidence is not in the lake by design; see SKILL.md Redaction and evidence. |
+| `customer_storage` | string | JSON text {bucket, key_prefix, region, provider, source_file}: a pointer into the customer's BYO storage bucket. On conversations it locates the session's uploaded activity objects; on findings it locates the evidence object holding the verbatim matched value / tool input (the redacted attachment for file findings). NULL when BYO storage is unconfigured or the source object is empty. Evidence is not in the lake by design; see reference/redaction.md. |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |

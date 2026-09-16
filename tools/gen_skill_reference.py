@@ -50,7 +50,7 @@ COMMON = {
     "device_id": "→ devices.id",
     "sandbox_id": "→ sandboxes.id; NULL when the row is about the host device itself.",
     "metadata": "JSON text; vendor-specific extras (e.g. version).",
-    "customer_storage": "JSON text {bucket, key_prefix, region, provider, source_file}: a pointer into the customer's BYO storage bucket. On conversations it locates the session's uploaded activity objects; on findings it locates the evidence object holding the verbatim matched value / tool input (the redacted attachment for file findings). NULL when BYO storage is unconfigured or the source object is empty. Evidence is not in the lake by design; see SKILL.md Redaction and evidence.",
+    "customer_storage": "JSON text {bucket, key_prefix, region, provider, source_file}: a pointer into the customer's BYO storage bucket. On conversations it locates the session's uploaded activity objects; on findings it locates the evidence object holding the verbatim matched value / tool input (the redacted attachment for file findings). NULL when BYO storage is unconfigured or the source object is empty. Evidence is not in the lake by design; see reference/redaction.md.",
     "conversation_storage": "JSON text {bucket, key_prefix, region, provider, source_file}: a pointer into the customer's BYO storage bucket — the exact activity/source object the finding was detected in. Equals agent_events.source_object when written as concat('s3://', bucket, '/', key_prefix, source_file); join on it to get the records of that upload. NULL when BYO storage is unconfigured or the finding's source object is empty.",
     "description": "Catalog description.",
     "website": "Vendor website.",
@@ -67,9 +67,9 @@ TABLES = {
                "account_metadata": "JSON text keyed by OS uid/SID with the OS username; how agent_instances.tenant resolves to a username."}),
     "sandboxes": dict(
         purpose="Devcontainers / cloud VMs an agent ran in. The parent host is a row in devices.",
-        joins=["sandboxes.parent_device_id = devices.id", "agent_events.sandbox_native_id = sandboxes.sandbox_native_id (reserved for sandbox-scoped events)"],
+        joins=["sandboxes.parent_device_id = devices.id", "agent_events.sandbox_native_id = sandboxes.sandbox_native_id (reserved; NULL in events today)"],
         notes={"parent_device_id": "→ devices.id of the host.", "sandbox_native_id": "Sandbox identifier; join key to agent_events.sandbox_native_id.",
-               "runtime_type": "Sandbox runtime.", "workspace_folder": "Workspace path inside the sandbox.", "friendly_name": "Display name.",
+               "runtime_type": "Sandbox runtime as text ('devcontainer' / 'unspecified').", "workspace_folder": "Workspace path inside the sandbox.", "friendly_name": "Display name.",
                "os_version": "Guest OS version.", "account_metadata": "JSON text; OS users inside the sandbox."}),
     "agent_accounts": dict(
         purpose="One row per signed-in account: (device, agent, email, vendor org). Who is behind an event.",
@@ -86,7 +86,7 @@ TABLES = {
         purpose="Installs: one row per (device, agent, deployment form factor, OS user). Includes agents that never produce an account (Copilot).",
         joins=["agent_instances.device_id = devices.id AND agent_instances.agent_type = agent_events.agent_type",
                "agent_instances_accounts links an install to the accounts signed in through it"],
-        notes={"agent_type": "Which agent product.", "agent_deployment": "Form factor of this install.",
+        notes={"agent_type": "Which agent product.", "agent_deployment": "Form factor of this install, as text ('desktop_app' / 'vscode_extension' / 'cli' / 'browser' / 'ai_browser' / 'service' / 'unknown').",
                "tenant": "OS-level user (uid on macOS/Linux, SID on Windows) the install belongs to; resolve to a username via devices.account_metadata.",
                "agent_catalog_id": "→ agent_catalog.id", "configuration": "JSON text; detected agent configuration.",
                "installations": "JSON text; filesystem installation records (paths, versions)."}),
@@ -121,7 +121,7 @@ TABLES = {
                "part_index": "Index of the message part the match is in.", "rule_id": "Detector rule that fired.",
                "encoding_type": "Set when the value was encoded (e.g. base64) and decoded before matching.",
                "archive_inner_path": "Path inside a zip/tar when the finding is in an archive entry.",
-               "finding_status": "Reviewer triage state (text: awaiting_review, under_review, false_positive, revoked, used_in_tests, wont_fix, acknowledged, unknown). Open, as the API counts it, is finding_status IN ('awaiting_review', 'under_review'). Not the enforcement outcome: see SKILL.md, Enforcement outcomes (a blocked prompt never produces a finding row)."}),
+               "finding_status": "Reviewer triage state (text: awaiting_review, under_review, false_positive, revoked, used_in_tests, wont_fix, acknowledged, unknown). Open, as the API counts it, is finding_status IN ('awaiting_review', 'under_review'). Not the enforcement outcome: see reference/enforcement.md (a blocked prompt never produces a finding row)."}),
     "connector_containment_findings": dict(
         purpose="One row per write/delete a tool attempted through a connector (MCP, Bash, Write). Denied attempts are NOT stored; only executed/failed ones.",
         joins=["person: conversation_id → agent_conversations.agent_account_id → agent_accounts (no deleted_at filter); device owner via device_id → devices → device_owner_mappings",
@@ -129,8 +129,8 @@ TABLES = {
                "conversation_id → agent_conversations.id → agent_events.session_id", "device_id → devices.id",
                "conversation_storage pointer → agent_events.source_object (the exact uploaded object)"],
         notes={"conversation_id": "→ agent_conversations.id", "op": "Kind of mutation: always 'write' or 'delete' (never NULL; denied/unknown are filtered out).", "tool_name": "Tool that attempted it (Write, Bash, MCP:<server>).",
-               "operation": "Display-safe subject of the op (file path or truncated tool target); '' (empty string) for decision-only rows; never the verbatim command — that lives in customer_storage; read the actual command from the joined agent_events.tool_args.",
-               "tool_use_id": "Agent's tool-call id; equals agent_events.tool_call_id.", "prompt_id": "Hook prompt id.",
+               "operation": "Display-safe subject of the op: an MCP tool's bare name, or a file path, redacted and truncated to 512 bytes; '' (empty string) for shell/command ops (Bash/Shell) and decision-only rows; the verbatim command never lands here, only in customer_storage — read the actual tool input from the joined agent_events.tool_args.",
+               "tool_use_id": "Agent's tool-call id; equals agent_events.tool_call_id.", "prompt_id": "Id of the prompt/turn that triggered the op, but this table does not populate it (NULL here) \u2014 do not filter or aggregate this column. It matches agent_events.prompt_id, so reach the triggering turn (the prompt plus its sibling tool calls) by joining tool_use_id \u2192 agent_events.tool_call_id and using that row's prompt_id.",
                "hook_event_name": "Hook that observed it (e.g. PreToolUse).", "detected_at": "When the op was observed (UTC); the reliable order-by time for containment findings; effectively always set.",
                "finding_status": "Reviewer triage state as text (same set as sensitive_data_findings.finding_status); never NULL, starts 'awaiting_review'.", "outcome": "Execution result as text ('executed' / 'failed' / 'unspecified'); never NULL, never 'denied' (denied attempts aren't stored)."}),
     "agent_conversations": dict(
@@ -156,7 +156,7 @@ TABLES = {
                "mcp_server_type": "Integer product code; join the catalogs for the name. Not an enum.",
                "mcp_server_location": "URL for remote servers, command/path for local ones.",
                "mcp_native_id": "The server's key in the host config (mcp.json). Equals agent_events.mcp_server_name (case-insensitive).",
-               "transport_type": "Transport protocol as text ('stdio' / 'http' / 'sse' / 'unknown'); never NULL, 'unknown' = unclassified.", "deployment_model": "Where the server runs, as text ('local_process' / 'local_container' / 'local_service' / 'remote' / 'unknown'); never NULL, 'unknown' = unclassified.", "auth_type": "Authentication method as text ('oauth' / 'token' / 'password' / 'none' / 'unknown'); never NULL, 'unknown' = no method detected.",
+               "transport_type": "Transport protocol as text ('stdio' / 'http' / 'sse' / 'unknown'); never NULL, 'unknown' = unclassified.", "deployment_model": "Where the server runs, as text ('local_process' / 'local_container' / 'local_service' / 'remote' / 'unknown'); never NULL, 'unknown' = unclassified.", "auth_type": "Authentication method as text ('oauth' / 'token' / 'basic_auth' / 'no_auth' / 'unknown'); never NULL, 'unknown' = no method detected.",
                "transport_security_type": "Transport encryption as text ('none' / 'tls' / 'unknown'); never NULL, 'unknown' = unclassified.", "distribution_channel": "Who provisioned it, as text ('platform' / 'tenant' / 'user' / 'unknown'); never NULL, filesystem MCPs are 'user', 'unknown' = unmatched.", "agent_type": "Agent it is configured for.",
                "project_path": "Project/workspace path the MCP is scoped to; NULL for global-scope configs and browser connectors.", "linked_plans": "JSON array of AgentPlanType text the instance is reachable through — its direct account plus junction-linked installs (e.g. [\"personal\",\"enterprise\"]). NULL when it has neither a direct account nor an active junction link. Attribute an instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan).",
                "security_findings": "JSON text; TraceForce's security observations for this instance.",
@@ -190,7 +190,7 @@ TABLES = {
     "mcp_categories": dict(
         purpose="Global reference: MCP product categories (Databases & Data Storage, OS and Local File Systems, Security Tools, ...).",
         joins=["mcp_categories.id = mcp_catalog.category_id"],
-        notes={"name": "Category name.", "description": "Category description.", "resource_type": "Sensitivity class of what servers in this category reach."}),
+        notes={"name": "Category name.", "description": "Category description.", "resource_type": "Sensitivity class of what servers in this category reach, as text ('public' / 'internal_apps' / 'dev_tools' / 'database_infrastructure' / 'local_system')."}),
 }
 
 # ----------------------------------------------------------------------------- agent_events
@@ -201,7 +201,7 @@ EVENT_NOTES = {
     "agent_type": "Integer code of `agent` (111, 1, 2, 8). Joins agent_catalog.agent_type and the agent_type columns of the metadata tables.",
     "device_native_id": "Device serial. Joins devices.device_native_id.",
     "device_uuid": "A stable per-install device GUID; NULL when the agent doesn't provide one. Prefer it over the serial when present.",
-    "sandbox_native_id": "Sandbox identifier; joins sandboxes.sandbox_native_id when populated.",
+    "sandbox_native_id": "Sandbox identifier; will join sandboxes.sandbox_native_id. Reserved: always NULL on events today (the collector is host-only and stamps no sandbox id).",
     "path_email": "Account email associated with the source object; NULL when unknown. Independent of `user_email`.",
     "path_org": "Vendor org id associated with the source object; NULL when absent.",
     "path_session": "Session id associated with the source object; NULL when unknown.",
