@@ -23,12 +23,11 @@ bucket this module owns, which TraceForce cannot read.
 
    ```hcl
    terraform {
-     required_version = ">= 1.10" # native S3 state locking (use_lockfile)
+     required_version = ">= 1.5"
      backend "s3" {
        bucket       = "acme-terraform-state"
        key          = "traceforce-lakehouse/terraform.tfstate"
        region       = "us-east-1"
-       use_lockfile = true
      }
    }
 
