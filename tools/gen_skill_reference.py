@@ -4,14 +4,14 @@
 Single source of truth for column names/types is terraform/ (exports.tf for the mirrors,
 s3tables.tf for agent_events). This script adds meaning: per-column notes, enum
 decodings (from TraceForce's public enums and API vocabulary) and join
-rules, and writes skill/traceforce-lakehouse/reference/*.md. Re-run after changing
+rules, and writes skills/traceforce-lakehouse/reference/*.md. Re-run after changing
 either .tf file; commit the output.
 """
 import re, pathlib, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TF = ROOT / "terraform"
-OUT = ROOT / "skill" / "traceforce-lakehouse" / "reference"
+OUT = ROOT / "skills" / "traceforce-lakehouse" / "reference"
 
 # ----------------------------------------------------------------------------- enums
 ENUMS = {

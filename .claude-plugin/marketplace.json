@@ -1,0 +1,13 @@
+{
+  "name": "traceforce",
+  "owner": {
+    "name": "TraceForce"
+  },
+  "plugins": [
+    {
+      "name": "traceforce-lakehouse",
+      "source": ".",
+      "description": "Read-only lakehouse query skill for TraceForce agent-activity logs and metadata."
+    }
+  ]
+}
