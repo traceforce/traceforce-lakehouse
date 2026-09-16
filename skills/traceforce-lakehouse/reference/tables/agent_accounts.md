@@ -18,7 +18,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `sandbox_id` | string | → sandboxes.id; NULL when the row is about the host device itself. |
 | `agent_id` | string | → the org-level agent rollup (not exported in v1). |
 | `agent_type` | int | Which agent product. |
-| `plan` | string | Account plan. The console's notion of an agent is an INSTALL's (agent_type, coalesce(plan, 0)): start from agent_instances, LEFT JOIN agent_instances_accounts and agent_accounts; installs with no signed-in account are plan 0. Never count agents from agent_accounts alone. |
+| `plan` | string | Account plan (decoded text, e.g. 'pro', 'max'; 'unknown' for AgentPlanType 0). The console's notion of an agent is an INSTALL's (agent_type, coalesce(plan, 'unknown')): start from agent_instances, LEFT JOIN agent_instances_accounts and agent_accounts; installs with no signed-in account are plan 'unknown'. Never count agents from agent_accounts alone. |
 | `tier` | string | Vendor plan tier text when known. |
 | `agent_email` | string | Email the user authenticated to the agent with. Stored byte-exact; lower() is a tolerance. |
 | `agent_org_id` | string | The vendor's workspace/org id (Anthropic org for Claude); NULL for Cursor/Copilot. |

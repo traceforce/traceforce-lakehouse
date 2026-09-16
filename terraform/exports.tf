@@ -40,7 +40,7 @@ locals {
     ]
     agent_instances = [
       "id:string", "org_id:string", "device_id:string", "sandbox_id:string", "agent_catalog_id:string",
-      "agent_type:int", "agent_deployment:int", "tenant:string", "metadata:string", "configuration:string",
+      "agent_type:int", "agent_deployment:string", "tenant:string", "metadata:string", "configuration:string",
       "installations:string", "created_at:timestamp", "updated_at:timestamp", "last_seen_at:timestamp",
       "last_active_at:timestamp", "deleted_at:timestamp",
     ]
@@ -55,7 +55,7 @@ locals {
     # --- agent names (global) ---
     agent_catalog = [
       "id:string", "agent_name:string", "description:string", "website:string", "logo_url:string",
-      "agent_type:int", "agent_identity:string", "domain:string", "created_at:timestamp", "updated_at:timestamp",
+      "agent_type:int", "domain:string", "created_at:timestamp", "updated_at:timestamp",
     ]
     # --- findings and their bridge to the logs ---
     sensitive_data_findings = [
@@ -89,7 +89,7 @@ locals {
       "id:string", "org_id:string", "device_id:string", "sandbox_id:string", "agent_account_id:string",
       "mcp_server_id:string", "mcp_server_type:int", "mcp_server_location:string", "mcp_native_id:string",
       "transport_type:string", "deployment_model:string", "auth_type:string", "transport_security_type:string",
-      "distribution_channel:int", "agent_type:int", "project_path:string", "linked_plans:string",
+      "distribution_channel:string", "agent_type:int", "project_path:string", "linked_plans:string",
       "metadata:string", "security_findings:string", "tools:string",
       "created_at:timestamp", "updated_at:timestamp", "last_seen_at:timestamp", "deleted_at:timestamp",
     ]
@@ -98,7 +98,7 @@ locals {
       "device_id:string", "sandbox_id:string", "created_at:timestamp", "updated_at:timestamp",
     ]
     mcp_servers = [
-      "id:string", "org_id:string", "mcp_catalog_id:string", "mcp_server_type:int", "mcp_server_status:int",
+      "id:string", "org_id:string", "mcp_catalog_id:string", "mcp_server_type:int",
       "active_users:int", "total_incidents:int", "active_issues:int", "affected_devices:int",
       "base_score:double", "actual_score:double", "agent_names:string", "distribution_channels:string",
       "auth_types:string", "sandbox_runtime_types:string", "instance_count:int", "has_host_instances:boolean",
@@ -112,11 +112,11 @@ locals {
     ]
     org_mcp_catalog = [
       "id:string", "org_id:string", "mcp_server_name:string", "description:string", "website:string", "logo_url:string",
-      "mcp_server_type:int", "category_id:string", "source_type:int", "execution_environment:string",
+      "mcp_server_type:int", "category_id:string", "source_type:string", "execution_environment:string",
       "authentication_methods:string", "detection_patterns:string", "created_at:timestamp", "updated_at:timestamp",
     ]
     mcp_categories = [
-      "id:string", "name:string", "description:string", "resource_type:int",
+      "id:string", "name:string", "description:string", "resource_type:string",
       "created_at:timestamp", "updated_at:timestamp",
     ]
   }

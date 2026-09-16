@@ -16,7 +16,6 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `org_id` | string | Your TraceForce org id. Constant within this lakehouse. |
 | `mcp_catalog_id` | string | → mcp_catalog.id (FK); NULL for products without a global catalog row |
 | `mcp_server_type` | int | Product code; same as the catalogs' mcp_server_type. |
-| `mcp_server_status` | int | TraceForce internal lifecycle code. |
 | `active_users` | int | Users seen using it. |
 | `total_incidents` | int | Incidents raised. |
 | `active_issues` | int | Open issues. |

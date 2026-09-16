@@ -93,8 +93,8 @@ See "Redaction and evidence".
 
 - `agent`, `agent_type`: AGENT_IDENTITY_CLAUDE_CODE (111), AGENT_IDENTITY_CLAUDE (1, the claude.ai
   chat agent — any deployment, distinct from Claude Code), AGENT_IDENTITY_CURSOR (2),
-  AGENT_IDENTITY_GITHUB_COPILOT (8). For a product name, join the catalog: `agent_catalog.agent_identity
-  = agent_events.agent` (the AGENT_IDENTITY_* string) or `agent_catalog.agent_type = agent_events.agent_type`.
+  AGENT_IDENTITY_GITHUB_COPILOT (8). For a product name, join the catalog:
+  `agent_catalog.agent_type = agent_events.agent_type`.
 - `device_native_id` (serial), `device_uuid` (Windows GUID; NULL on most rows today, so the
   device join is by serial).
 - `user_email`: NULL for Copilot and for Vertex-authenticated Claude Code.
@@ -117,12 +117,12 @@ See "Redaction and evidence".
   device count behind it; do not attribute those events, or an MDM owner, to one machine.
 - **Corporate account** = an `agent_email` whose domain is the customer's own email domain.
   Ask for the domain if you do not know it; list the distinct domains seen if in doubt.
-- **Agent, as the console counts it** = an install's (`agent_type`, `coalesce(plan, 0)`): start
+- **Agent, as the console counts it** = an install's (`agent_type`, `coalesce(plan, 'unknown')`): start
   from `agent_instances` (`WHERE deleted_at IS NULL`), `LEFT JOIN agent_instances_accounts` (it
   has no `deleted_at`), `LEFT JOIN agent_accounts a ON a.id = ia.agent_account_id AND
   a.deleted_at IS NULL` (that filter must be in the ON clause, or account-less installs vanish).
   No signed-in account
-  = plan 0; that is how Copilot appears. Never count agents from `agent_accounts` alone. A
+  = plan 'unknown'; that is how Copilot appears. Never count agents from `agent_accounts` alone. A
   device's MCP count in the console is `COUNT(DISTINCT mcp_server_type)` over its live
   `mcp_server_instances`; the console hides `mcp_servers` rollups with `active_users = 0`.
 - **Live inventory** = `deleted_at IS NULL` on devices, accounts, installs and MCP instances;

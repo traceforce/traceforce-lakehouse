@@ -9,9 +9,7 @@ either .tf file; commit the output.
 Enum columns are decoded to human-readable text at export time (decode-at-export), so the
 mirror already stores strings (e.g. op = 'delete', category = 'credentials',
 finding_status = 'awaiting_review'); there is no integer-decode ring here. The only codes
-left are the join keys agent_type and mcp_server_type, resolved via the catalogs;
-agent_catalog.agent_identity carries the canonical AGENT_IDENTITY_* string that
-agent_events.agent joins.
+left are the join keys agent_type and mcp_server_type, resolved via the catalogs.
 """
 import re, pathlib, sys
 
@@ -78,7 +76,7 @@ TABLES = {
         joins=["agent_accounts.device_id = devices.id AND agent_accounts.agent_type = agent_events.agent_type AND lower(agent_accounts.agent_email) = lower(agent_events.user_email) (enrichment of an event with plan / vendor org; the person is already user_email)",
                "agent_accounts.agent_org_id = agent_events.agent_org_id when both are non-NULL (Claude family)",
                "When reached by id from agent_conversations.agent_account_id, do NOT filter deleted_at: a signed-out account still owns its past findings (this is what the console does)"],
-        notes={"agent_type": "Which agent product.", "plan": "Account plan. The console's notion of an agent is an INSTALL's (agent_type, coalesce(plan, 0)): start from agent_instances, LEFT JOIN agent_instances_accounts and agent_accounts; installs with no signed-in account are plan 0. Never count agents from agent_accounts alone.", "tier": "Vendor plan tier text when known.",
+        notes={"agent_type": "Which agent product.", "plan": "Account plan (decoded text, e.g. 'pro', 'max'; 'unknown' for AgentPlanType 0). The console's notion of an agent is an INSTALL's (agent_type, coalesce(plan, 'unknown')): start from agent_instances, LEFT JOIN agent_instances_accounts and agent_accounts; installs with no signed-in account are plan 'unknown'. Never count agents from agent_accounts alone.", "tier": "Vendor plan tier text when known.",
                "agent_email": "Email the user authenticated to the agent with. Stored byte-exact; lower() is a tolerance.",
                "agent_org_id": "The vendor's workspace/org id (Anthropic org for Claude); NULL for Cursor/Copilot.",
                "agent_id": "→ the org-level agent rollup (not exported in v1).",
@@ -104,10 +102,8 @@ TABLES = {
                "owner_email": "Owner email from the MDM.", "owner_name": "Owner display name from the MDM."}),
     "agent_catalog": dict(
         purpose="Global reference: agent_type → product name, one row per known agent type.",
-        joins=["agent_catalog.agent_type = agent_instances.agent_type (or agent_accounts / agent_events.agent_type)",
-               "agent_catalog.agent_identity = agent_events.agent (both are the canonical AGENT_IDENTITY_* string)"],
+        joins=["agent_catalog.agent_type = agent_instances.agent_type (or agent_accounts / agent_events.agent_type)"],
         notes={"agent_name": "Display name (Claude Code, Cursor, GitHub Copilot, ChatGPT, ...).", "agent_type": "The integer code used everywhere else; join key, not decoded.",
-               "agent_identity": "Canonical AGENT_IDENTITY_* string for this agent_type (e.g. AGENT_IDENTITY_CLAUDE_CODE for 111). Equals agent_events.agent; join agent_events.agent = agent_catalog.agent_identity.",
                "domain": "Vendor domain."}),
     "sensitive_data_findings": dict(
         purpose="One row per sensitive-data match (a credential, PII value, ...) found in a prompt/response or an attached file. Most findings come from attached files rather than prompt text; always handle both paths (file_id NULL = message finding).",
@@ -162,7 +158,7 @@ TABLES = {
                "mcp_native_id": "The server's key in the host config (mcp.json). Equals agent_events.mcp_server_name (case-insensitive).",
                "transport_type": "Transport protocol.", "deployment_model": "Where the server runs.", "auth_type": "Authentication method.",
                "transport_security_type": "TLS or none.", "distribution_channel": "Who installed it (admin vs user).", "agent_type": "Agent it is configured for.",
-               "project_path": "Project/workspace path that configured it; NULL for global config.", "linked_plans": "JSON array of AgentPlanType codes (e.g. [2,3]) derived from the accounts signed in through this install; [0] = no signed-in account. The console attributes an MCP instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(integer))) AS t(plan).",
+               "project_path": "Project/workspace path that configured it; NULL for global config.", "linked_plans": "JSON array of AgentPlanType text values (e.g. [\"pro\",\"max\"]) derived from the accounts signed in through this install; [\"unknown\"] = no signed-in account. The console attributes an MCP instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan).",
                "security_findings": "JSON text; TraceForce's security observations for this instance.",
                "tools": "JSON text; tools the server exposes, as discovered on this install."}),
     "mcp_server_agent_instances": dict(
@@ -175,7 +171,7 @@ TABLES = {
         joins=["mcp_catalog_id → mcp_catalog.id only (FK; never org_mcp_catalog.id). For private/org products resolve by mcp_server_type against both catalogs and coalesce the names",
                "mcp_server_instances.mcp_server_id = mcp_servers.id", "The console's MCP list hides rollups with active_users = 0"],
         notes={"mcp_catalog_id": "→ mcp_catalog.id (FK); NULL for products without a global catalog row", "mcp_server_type": "Product code; same as the catalogs' mcp_server_type.",
-               "mcp_server_status": "TraceForce internal lifecycle code.", "active_users": "Users seen using it.", "total_incidents": "Incidents raised.",
+               "active_users": "Users seen using it.", "total_incidents": "Incidents raised.",
                "active_issues": "Open issues.", "affected_devices": "Devices with an instance.", "base_score": "Baseline risk score 0-100 for the product.",
                "actual_score": "Risk score 0-100 from your org's usage.", "agent_names": "JSON text; agents using it.", "distribution_channels": "JSON text.",
                "auth_types": "JSON text.", "sandbox_runtime_types": "JSON text.", "instance_count": "Number of instances.",
