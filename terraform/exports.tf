@@ -28,13 +28,13 @@ locals {
       "created_at:timestamp", "updated_at:timestamp", "last_seen_at:timestamp", "deleted_at:timestamp",
     ]
     sandboxes = [
-      "id:string", "org_id:string", "parent_device_id:string", "sandbox_native_id:string", "runtime_type:int",
+      "id:string", "org_id:string", "parent_device_id:string", "sandbox_native_id:string", "runtime_type:string",
       "workspace_folder:string", "friendly_name:string", "os_version:string", "account_metadata:string",
       "created_at:timestamp", "updated_at:timestamp", "last_seen_at:timestamp", "deleted_at:timestamp",
     ]
     agent_accounts = [
       "id:string", "org_id:string", "device_id:string", "sandbox_id:string", "agent_id:string", "agent_type:int",
-      "plan:int", "tier:string", "agent_email:string", "agent_org_id:string", "security_settings:string",
+      "plan:string", "tier:string", "agent_email:string", "agent_org_id:string", "security_settings:string",
       "metadata:string", "models_configuration:string", "created_at:timestamp", "updated_at:timestamp",
       "last_seen_at:timestamp", "last_active_at:timestamp", "deleted_at:timestamp",
     ]
@@ -55,21 +55,21 @@ locals {
     # --- agent names (global) ---
     agent_catalog = [
       "id:string", "agent_name:string", "description:string", "website:string", "logo_url:string",
-      "agent_type:int", "domain:string", "created_at:timestamp", "updated_at:timestamp",
+      "agent_type:int", "agent_identity:string", "domain:string", "created_at:timestamp", "updated_at:timestamp",
     ]
     # --- findings and their bridge to the logs ---
     sensitive_data_findings = [
       "id:string", "org_id:string", "device_id:string", "sandbox_id:string", "conversation_id:string", "file_id:string",
-      "message_external_id:string", "message_timestamp:timestamp", "category:int", "type:int",
+      "message_external_id:string", "message_timestamp:timestamp", "category:string", "type:string",
       "start_offset:long", "end_offset:long", "start_line:long", "end_line:long", "part_index:int",
-      "rule_id:string", "encoding_type:string", "archive_inner_path:string", "finding_status:int",
+      "rule_id:string", "encoding_type:string", "archive_inner_path:string", "finding_status:string",
       "metadata:string", "customer_storage:string", "conversation_storage:string",
       "created_at:timestamp", "updated_at:timestamp",
     ]
     connector_containment_findings = [
-      "id:string", "org_id:string", "device_id:string", "sandbox_id:string", "conversation_id:string", "op:int",
+      "id:string", "org_id:string", "device_id:string", "sandbox_id:string", "conversation_id:string", "op:string",
       "tool_name:string", "operation:string", "tool_use_id:string", "prompt_id:string", "hook_event_name:string",
-      "detected_at:timestamp", "finding_status:int", "outcome:int", "metadata:string",
+      "detected_at:timestamp", "finding_status:string", "outcome:string", "metadata:string",
       "customer_storage:string", "conversation_storage:string", "created_at:timestamp", "updated_at:timestamp",
     ]
     agent_conversations = [
@@ -88,7 +88,7 @@ locals {
     mcp_server_instances = [
       "id:string", "org_id:string", "device_id:string", "sandbox_id:string", "agent_account_id:string",
       "mcp_server_id:string", "mcp_server_type:int", "mcp_server_location:string", "mcp_native_id:string",
-      "transport_type:int", "deployment_model:int", "auth_type:int", "transport_security_type:int",
+      "transport_type:string", "deployment_model:string", "auth_type:string", "transport_security_type:string",
       "distribution_channel:int", "agent_type:int", "project_path:string", "linked_plans:string",
       "metadata:string", "security_findings:string", "tools:string",
       "created_at:timestamp", "updated_at:timestamp", "last_seen_at:timestamp", "deleted_at:timestamp",
@@ -107,7 +107,7 @@ locals {
     ]
     mcp_catalog = [
       "id:string", "mcp_server_name:string", "description:string", "website:string", "logo_url:string",
-      "mcp_server_type:int", "category_id:string", "source_type:int", "execution_environment:string",
+      "mcp_server_type:int", "category_id:string", "source_type:string", "execution_environment:string",
       "authentication_methods:string", "detection_patterns:string", "created_at:timestamp", "updated_at:timestamp",
     ]
     org_mcp_catalog = [

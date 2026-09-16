@@ -19,7 +19,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `logo_url` | string | Logo URL. |
 | `mcp_server_type` | int | Product code used by instances and rollups. |
 | `category_id` | string | → mcp_categories.id |
-| `source_type` | int | Who publishes it. Codes: `MCPSourceType` in ../enums.md. |
+| `source_type` | string | Who publishes it. |
 | `execution_environment` | string | JSON text. |
 | `authentication_methods` | string | JSON text. |
 | `detection_patterns` | string | JSON text; how TraceForce recognizes it in configs. |

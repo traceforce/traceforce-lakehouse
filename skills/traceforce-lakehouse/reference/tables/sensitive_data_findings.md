@@ -22,8 +22,8 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `file_id` | string | → agent_conversation_files.id when the match is in an attachment; NULL for message findings. |
 | `message_external_id` | string | The agent's own id of the source message (Claude prompt/response id, Cursor generation id). |
 | `message_timestamp` | timestamp | When the message was sent (UTC): the column to bound a period on; created_at is when TraceForce recorded it. |
-| `category` | int | Coarse class of the match. Codes: `SensitiveDataCategory` in ../enums.md. |
-| `type` | int | Exact data type of the match. Codes: `SensitiveDataType` in ../enums.md. |
+| `category` | string | Coarse class of the match. |
+| `type` | string | Exact data type of the match. |
 | `start_offset` | long | Character offset of the match start within the scanned text. |
 | `end_offset` | long | Character offset of the match end (exclusive). |
 | `start_line` | long | 0-indexed first line of the match within the scanned text (message or attachment). Not a message/file discriminator: use file_id IS NULL for message findings. |
@@ -32,7 +32,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `rule_id` | string | Detector rule that fired. |
 | `encoding_type` | string | Set when the value was encoded (e.g. base64) and decoded before matching. |
 | `archive_inner_path` | string | Path inside a zip/tar when the finding is in an archive entry. |
-| `finding_status` | int | Reviewer triage state; open = IN (1, 2) as the API counts it. Not the enforcement outcome: see SKILL.md, Enforcement outcomes (a blocked prompt never produces a finding row). Codes: `FindingStatus` in ../enums.md. |
+| `finding_status` | string | Reviewer triage state (text: awaiting_review, under_review, false_positive, revoked, used_in_tests, wont_fix, acknowledged, unknown). Open, as the API counts it, is finding_status IN ('awaiting_review', 'under_review'). Not the enforcement outcome: see SKILL.md, Enforcement outcomes (a blocked prompt never produces a finding row). |
 | `metadata` | string | JSON text; vendor-specific extras (e.g. version). |
 | `customer_storage` | string | JSON text {bucket, key_prefix, region, provider, source_file}. On conversations source_file is the session FOLDER (conversations/<agent>/dt=<YYYYMMDD>/<serial>/<account>/<session>/ for collector 1.0.42+, no dt= segment before; a session spanning midnight has two). On findings it is the EVIDENCE object under findings/<agent>/<serial>/<account>/<session>/evidence/ (verbatim matched value / verbatim tool input; for file findings the redacted attachment). Evidence is NOT in the lake by design; see SKILL.md Redaction and evidence. |
 | `conversation_storage` | string | JSON text {bucket, key_prefix, region, provider, source_file}: the exact activity object the finding was detected in. Equals agent_events.source_object when written as concat('s3://', bucket, '/', key_prefix, source_file); join on it to get the records of that upload. |

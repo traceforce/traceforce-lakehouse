@@ -2,63 +2,22 @@
 """Generate the skill's schema reference from the Terraform column lists.
 
 Single source of truth for column names/types is terraform/ (exports.tf for the mirrors,
-s3tables.tf for agent_events). This script adds meaning: per-column notes, enum
-decodings (from TraceForce's public enums and API vocabulary) and join
+s3tables.tf for agent_events). This script adds meaning: per-column notes and join
 rules, and writes skills/traceforce-lakehouse/reference/*.md. Re-run after changing
 either .tf file; commit the output.
+
+Enum columns are decoded to human-readable text at export time (decode-at-export), so the
+mirror already stores strings (e.g. op = 'delete', category = 'credentials',
+finding_status = 'awaiting_review'); there is no integer-decode ring here. The only codes
+left are the join keys agent_type and mcp_server_type, resolved via the catalogs;
+agent_catalog.agent_identity carries the canonical AGENT_IDENTITY_* string that
+agent_events.agent joins.
 """
 import re, pathlib, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TF = ROOT / "terraform"
 OUT = ROOT / "skills" / "traceforce-lakehouse" / "reference"
-
-# ----------------------------------------------------------------------------- enums
-ENUMS = {
-    "AgentIdentity (lake agents)": {1: "Claude (the claude.ai chat agent \u2014 any deployment; distinct from Claude Code, 111)", 2: "Cursor", 8: "GitHub Copilot", 111: "Claude Code",
-                                    "…": "every other value: join agent_catalog on agent_type for the name"},
-    "AgentPlanType": {0: "unspecified", 1: "personal", 2: "enterprise", 3: "small_business"},
-    "AgentDeploymentType": {0: "unknown", 1: "desktop_app", 2: "vscode_extension", 3: "cli", 4: "browser", 5: "ai_browser", 6: "service"},
-    "SensitiveDataCategory": {0: "unknown", 1: "credentials", 2: "identity_financial_pii", 3: "contact_pii"},
-    "SensitiveDataType": {0: "unknown", 1: "api_key", 2: "private_key", 3: "password", 4: "database_connection_string",
-                          100: "ssn", 101: "credit_card", 102: "bank_account_number", 103: "government_id",
-                          200: "email_address", 201: "phone_number", 202: "physical_address"},
-    "FindingStatus": {0: "unknown", 1: "awaiting_review", 2: "under_review", 3: "false_positive", 4: "revoked",
-                      5: "used_in_tests", 6: "wont_fix", 7: "acknowledged"},
-    "ContainmentOp": {0: "unknown", 1: "write", 2: "delete"},
-    "OperationOutcome": {0: "unspecified", 1: "executed", 2: "failed", 3: "denied (never stored: denied events are dropped before the table)"},
-    "MCPTransportType": {0: "unknown", 1: "stdio", 2: "http", 3: "sse"},
-    "TransportSecurityType": {0: "unknown", 1: "none", 2: "tls"},
-    "MCPDeploymentModel": {0: "unknown", 1: "local_process", 2: "local_container", 3: "local_service", 4: "remote"},
-    "IdentityControlType (auth_type)": {0: "unknown", 1: "basic_auth", 2: "token", 3: "oauth", 4: "no_auth"},
-    "MCPDistributionChannel": {0: "unknown", 1: "platform (managed_by=admin)", 2: "tenant (managed_by=admin)", 3: "user (managed_by=user)"},
-    "MCPSourceType": {0: "unknown", 1: "official", 2: "community", 3: "reference", 4: "archived", 5: "openai", 6: "anthropic"},
-    "MCP category resource_type (IssueDetail subset)": {10120: "public", 10121: "internal_apps", 10122: "dev_tools", 10123: "database_infrastructure", 10124: "local_system"},
-    "SandboxRuntimeType": {0: "unspecified", 1: "devcontainer"},
-}
-COLUMN_ENUMS = {
-    ("agent_accounts", "agent_type"): "AgentIdentity (lake agents)",
-    ("agent_instances", "agent_type"): "AgentIdentity (lake agents)",
-    ("mcp_server_instances", "agent_type"): "AgentIdentity (lake agents)",
-    ("agent_catalog", "agent_type"): "AgentIdentity (lake agents)",
-    ("agent_accounts", "plan"): "AgentPlanType",
-    ("agent_instances", "agent_deployment"): "AgentDeploymentType",
-    ("sensitive_data_findings", "category"): "SensitiveDataCategory",
-    ("sensitive_data_findings", "type"): "SensitiveDataType",
-    ("sensitive_data_findings", "finding_status"): "FindingStatus",
-    ("connector_containment_findings", "op"): "ContainmentOp",
-    ("connector_containment_findings", "outcome"): "OperationOutcome",
-    ("connector_containment_findings", "finding_status"): "FindingStatus",
-    ("mcp_server_instances", "transport_type"): "MCPTransportType",
-    ("mcp_server_instances", "transport_security_type"): "TransportSecurityType",
-    ("mcp_server_instances", "deployment_model"): "MCPDeploymentModel",
-    ("mcp_server_instances", "auth_type"): "IdentityControlType (auth_type)",
-    ("mcp_server_instances", "distribution_channel"): "MCPDistributionChannel",
-    ("mcp_catalog", "source_type"): "MCPSourceType",
-    ("org_mcp_catalog", "source_type"): "MCPSourceType",
-    ("mcp_categories", "resource_type"): "MCP category resource_type (IssueDetail subset)",
-    ("sandboxes", "runtime_type"): "SandboxRuntimeType",
-}
 
 # ----------------------------------------------------------------------------- tables
 
@@ -145,8 +104,10 @@ TABLES = {
                "owner_email": "Owner email from the MDM.", "owner_name": "Owner display name from the MDM."}),
     "agent_catalog": dict(
         purpose="Global reference: agent_type → product name, one row per known agent type.",
-        joins=["agent_catalog.agent_type = agent_instances.agent_type (or agent_accounts / agent_events.agent_type)"],
-        notes={"agent_name": "Display name (Claude Code, Cursor, GitHub Copilot, ChatGPT, ...).", "agent_type": "The integer code used everywhere else.",
+        joins=["agent_catalog.agent_type = agent_instances.agent_type (or agent_accounts / agent_events.agent_type)",
+               "agent_catalog.agent_identity = agent_events.agent (both are the canonical AGENT_IDENTITY_* string)"],
+        notes={"agent_name": "Display name (Claude Code, Cursor, GitHub Copilot, ChatGPT, ...).", "agent_type": "The integer code used everywhere else; join key, not decoded.",
+               "agent_identity": "Canonical AGENT_IDENTITY_* string for this agent_type (e.g. AGENT_IDENTITY_CLAUDE_CODE for 111). Equals agent_events.agent; join agent_events.agent = agent_catalog.agent_identity.",
                "domain": "Vendor domain."}),
     "sensitive_data_findings": dict(
         purpose="One row per sensitive-data match (a credential, PII value, ...) found in a prompt/response or an attached file. Most findings come from attached files rather than prompt text; always handle both paths (file_id NULL = message finding).",
@@ -164,7 +125,7 @@ TABLES = {
                "part_index": "Index of the message part the match is in.", "rule_id": "Detector rule that fired.",
                "encoding_type": "Set when the value was encoded (e.g. base64) and decoded before matching.",
                "archive_inner_path": "Path inside a zip/tar when the finding is in an archive entry.",
-               "finding_status": "Reviewer triage state; open = IN (1, 2) as the API counts it. Not the enforcement outcome: see SKILL.md, Enforcement outcomes (a blocked prompt never produces a finding row)."}),
+               "finding_status": "Reviewer triage state (text: awaiting_review, under_review, false_positive, revoked, used_in_tests, wont_fix, acknowledged, unknown). Open, as the API counts it, is finding_status IN ('awaiting_review', 'under_review'). Not the enforcement outcome: see SKILL.md, Enforcement outcomes (a blocked prompt never produces a finding row)."}),
     "connector_containment_findings": dict(
         purpose="One row per write/delete a tool attempted through a connector (MCP, Bash, Write). Denied attempts are NOT stored; only executed/failed ones.",
         joins=["person: conversation_id → agent_conversations.agent_account_id → agent_accounts (no deleted_at filter); device owner via device_id → devices → device_owner_mappings",
@@ -323,7 +284,9 @@ def main():
     lines = ["# TraceForce metadata tables", "",
              "Daily snapshots of TraceForce's control plane for this org, in the `traceforce` namespace next to `agent_events`.",
              "Types are Iceberg types; every id is a uuid stored as text; timestamps are UTC; `jsonb`/array columns are JSON text",
-             "(`json_extract_scalar(col, '$.key')`). Soft deletes use `deleted_at`. Integer codes are decoded in `enums.md`.",
+             "(`json_extract_scalar(col, '$.key')`). Soft deletes use `deleted_at`. Enum columns are already",
+             "human-readable text (e.g. `op` = 'delete', `category` = 'credentials', `finding_status` = 'awaiting_review');",
+             "the only integer codes left are the join keys `agent_type` and `mcp_server_type` (resolve via the catalogs).",
              "Generated by tools/gen_skill_reference.py from terraform/exports.tf; do not edit by hand.", ""]
     tdir = OUT / "tables"; tdir.mkdir(exist_ok=True)
     for old in tdir.glob("*.md"):
@@ -341,26 +304,11 @@ def main():
         body += ["| column | type | meaning |", "|---|---|---|"]
         for name, typ in cols:
             note = meta["notes"].get(name) or COMMON.get(name, "")
-            enum = COLUMN_ENUMS.get((t, name))
-            if enum:
-                note = (note + " " if note else "") + f"Codes: `{enum}` in ../enums.md."
             body.append(f"| `{name}` | {typ} | {note} |")
         body.append("")
         (tdir / f"{t}.md").write_text("\n".join(body))
     lines.append("")
     (OUT / "tables.md").write_text("\n".join(lines))
-
-    e = ["# Integer codes", "", "Decode integer columns with these tables (from TraceForce's proto and public API vocabulary).", "",
-         "Contents: " + ", ".join(ENUMS.keys()) + ".", ""]
-    for name, vals in ENUMS.items():
-        e += [f"## {name}", "", "| code | meaning |", "|---|---|"]
-        e += [f"| {k} | {v} |" for k, v in vals.items()]
-        if name == "FindingStatus":
-            e.append("\nOpen, as the API's open_count uses it, is finding_status IN (1, 2) on both findings tables; every other value, including 0 (unknown) and 7 (acknowledged), counts as closed.")
-        e.append("")
-    e += ["## Not enumerated", "", "- `mcp_server_type` (instances, rollups, catalogs): a product code, join `mcp_catalog` / `org_mcp_catalog` for the name.",
-          "- `mcp_servers.mcp_server_status`: TraceForce internal lifecycle code.", ""]
-    (OUT / "enums.md").write_text("\n".join(e))
 
     a = ["# agent_events", "", "One row per OTLP log record or span, flattened from the raw activity objects in your bucket.",
          "Types are Iceberg types; timestamps UTC. Generated by tools/gen_skill_reference.py.", "",
@@ -372,11 +320,11 @@ def main():
     a += [f"| `{n}` | {t} | {EVENT_NOTES[n]} |" for n, t, r in events]
     a.append("")
     (OUT / "agent_events.md").write_text("\n".join(a))
-    for stale in ("agent_events_columns.md",):
+    for stale in ("agent_events_columns.md", "enums.md"):
         if (OUT / stale).exists():
             (OUT / stale).unlink()
 
-    print(f"tables.md index + tables/*.md: {len(exports)} tables; enums.md: {len(ENUMS)} enums; agent_events.md: {len(events)} columns")
+    print(f"tables.md index + tables/*.md: {len(exports)} tables; agent_events.md: {len(events)} columns")
 
 if __name__ == "__main__":
     main()

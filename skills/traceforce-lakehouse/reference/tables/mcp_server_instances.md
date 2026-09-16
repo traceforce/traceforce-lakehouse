@@ -23,12 +23,12 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `mcp_server_type` | int | Integer product code; join the catalogs for the name. Not an enum. |
 | `mcp_server_location` | string | URL for remote servers, command/path for local ones. |
 | `mcp_native_id` | string | The server's key in the host config (mcp.json). Equals agent_events.mcp_server_name (case-insensitive). |
-| `transport_type` | int | Transport protocol. Codes: `MCPTransportType` in ../enums.md. |
-| `deployment_model` | int | Where the server runs. Codes: `MCPDeploymentModel` in ../enums.md. |
-| `auth_type` | int | Authentication method. Codes: `IdentityControlType (auth_type)` in ../enums.md. |
-| `transport_security_type` | int | TLS or none. Codes: `TransportSecurityType` in ../enums.md. |
-| `distribution_channel` | int | Who installed it (admin vs user). Codes: `MCPDistributionChannel` in ../enums.md. |
-| `agent_type` | int | Agent it is configured for. Codes: `AgentIdentity (lake agents)` in ../enums.md. |
+| `transport_type` | string | Transport protocol. |
+| `deployment_model` | string | Where the server runs. |
+| `auth_type` | string | Authentication method. |
+| `transport_security_type` | string | TLS or none. |
+| `distribution_channel` | int | Who installed it (admin vs user). |
+| `agent_type` | int | Agent it is configured for. |
 | `project_path` | string | Project/workspace path that configured it; NULL for global config. |
 | `linked_plans` | string | JSON array of AgentPlanType codes (e.g. [2,3]) derived from the accounts signed in through this install; [0] = no signed-in account. The console attributes an MCP instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(integer))) AS t(plan). |
 | `metadata` | string | JSON text; vendor-specific extras (e.g. version). |

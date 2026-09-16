@@ -15,7 +15,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `org_id` | string | Your TraceForce org id. Constant within this lakehouse. |
 | `parent_device_id` | string | → devices.id of the host. |
 | `sandbox_native_id` | string | Sandbox identifier as the collector will stamp it. |
-| `runtime_type` | int | Sandbox runtime. Codes: `SandboxRuntimeType` in ../enums.md. |
+| `runtime_type` | string | Sandbox runtime. |
 | `workspace_folder` | string | Workspace path inside the sandbox. |
 | `friendly_name` | string | Display name. |
 | `os_version` | string | Guest OS version. |
