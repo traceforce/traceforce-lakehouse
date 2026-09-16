@@ -39,6 +39,34 @@ Consumer: this module's `export_<table>` Glue tables and the daily MERGE/DELETE.
   to TraceForce's database therefore never breaks the mirror; exposing it in Iceberg is a one-line
   Terraform change (`export_tables` in `terraform/exports.tf`).
 
+## Decoded enum columns
+
+The producer decodes integer proto-enum columns to human-readable text at export time: it calls
+the proto enum's `String()`, strips the enum-name prefix, and lowercases the result (e.g.
+`SENSITIVE_DATA_CATEGORY_CREDENTIALS` -> `credentials`). Array enum columns are decoded
+element-wise into a JSON text array (e.g. `["remote","local"]`). These columns are therefore
+`string` in the mirror, not integers.
+
+Decoded columns (`[]` = JSON text array):
+
+- `connector_containment_findings`: `op`, `outcome`, `finding_status`
+- `sensitive_data_findings`: `category`, `type`, `finding_status`
+- `sandboxes`: `runtime_type`
+- `agent_accounts`: `plan`
+- `agent_instances`: `agent_deployment`
+- `mcp_catalog`: `source_type`, `execution_environment[]`, `authentication_methods[]`
+- `org_mcp_catalog`: `source_type`, `execution_environment[]`, `authentication_methods[]`
+- `mcp_server_instances`: `transport_type`, `transport_security_type`, `deployment_model`,
+  `auth_type`, `distribution_channel`, `linked_plans[]`
+- `mcp_servers`: `distribution_channels[]`, `auth_types[]`, `sandbox_runtime_types[]`
+- `mcp_categories`: `resource_type`
+
+`mcp_categories.resource_type` uses an explicit `ISSUE_DETAIL_MCP_RESOURCE_TYPE_` prefix, so it
+reads `public` / `internal_apps`.
+
+`agent_type` and `mcp_server_type` are NOT decoded: they stay integer join keys, resolved through
+the catalogs (`agent_catalog`, `mcp_catalog` / `org_mcp_catalog`).
+
 ## Producer-side validation
 
 Before writing a table, the export job checks that every column in this contract exists

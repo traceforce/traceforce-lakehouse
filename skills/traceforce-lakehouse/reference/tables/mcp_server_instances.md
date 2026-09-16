@@ -30,7 +30,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `distribution_channel` | string | Who installed it (admin vs user). |
 | `agent_type` | int | Agent it is configured for. |
 | `project_path` | string | Project/workspace path that configured it; NULL for global config. |
-| `linked_plans` | string | JSON array of AgentPlanType text values (e.g. ["pro","max"]) derived from the accounts signed in through this install; ["unknown"] = no signed-in account. The console attributes an MCP instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan). |
+| `linked_plans` | string | JSON array of AgentPlanType text values (e.g. ["personal","enterprise"]) derived from the accounts signed in through this install; ["unknown"] = no signed-in account. The console attributes an MCP instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan). |
 | `metadata` | string | JSON text; vendor-specific extras (e.g. version). |
 | `security_findings` | string | JSON text; TraceForce's security observations for this instance. |
 | `tools` | string | JSON text; tools the server exposes, as discovered on this install. |

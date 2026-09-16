@@ -76,7 +76,7 @@ TABLES = {
         joins=["agent_accounts.device_id = devices.id AND agent_accounts.agent_type = agent_events.agent_type AND lower(agent_accounts.agent_email) = lower(agent_events.user_email) (enrichment of an event with plan / vendor org; the person is already user_email)",
                "agent_accounts.agent_org_id = agent_events.agent_org_id when both are non-NULL (Claude family)",
                "When reached by id from agent_conversations.agent_account_id, do NOT filter deleted_at: a signed-out account still owns its past findings (this is what the console does)"],
-        notes={"agent_type": "Which agent product.", "plan": "Account plan (decoded text, e.g. 'pro', 'max'; 'unknown' for AgentPlanType 0). The console's notion of an agent is an INSTALL's (agent_type, coalesce(plan, 'unknown')): start from agent_instances, LEFT JOIN agent_instances_accounts and agent_accounts; installs with no signed-in account are plan 'unknown'. Never count agents from agent_accounts alone.", "tier": "Vendor plan tier text when known.",
+        notes={"agent_type": "Which agent product.", "plan": "Account plan (decoded AgentPlanType text, e.g. 'personal', 'enterprise', 'small_business'; 'unknown' for AgentPlanType 0). The console's notion of an agent is an INSTALL's (agent_type, coalesce(plan, 'unknown')): start from agent_instances, LEFT JOIN agent_instances_accounts and agent_accounts; installs with no signed-in account are plan 'unknown'. Never count agents from agent_accounts alone.", "tier": "Vendor plan tier text when known.",
                "agent_email": "Email the user authenticated to the agent with. Stored byte-exact; lower() is a tolerance.",
                "agent_org_id": "The vendor's workspace/org id (Anthropic org for Claude); NULL for Cursor/Copilot.",
                "agent_id": "→ the org-level agent rollup (not exported in v1).",
@@ -158,7 +158,7 @@ TABLES = {
                "mcp_native_id": "The server's key in the host config (mcp.json). Equals agent_events.mcp_server_name (case-insensitive).",
                "transport_type": "Transport protocol.", "deployment_model": "Where the server runs.", "auth_type": "Authentication method.",
                "transport_security_type": "TLS or none.", "distribution_channel": "Who installed it (admin vs user).", "agent_type": "Agent it is configured for.",
-               "project_path": "Project/workspace path that configured it; NULL for global config.", "linked_plans": "JSON array of AgentPlanType text values (e.g. [\"pro\",\"max\"]) derived from the accounts signed in through this install; [\"unknown\"] = no signed-in account. The console attributes an MCP instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan).",
+               "project_path": "Project/workspace path that configured it; NULL for global config.", "linked_plans": "JSON array of AgentPlanType text values (e.g. [\"personal\",\"enterprise\"]) derived from the accounts signed in through this install; [\"unknown\"] = no signed-in account. The console attributes an MCP instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan).",
                "security_findings": "JSON text; TraceForce's security observations for this instance.",
                "tools": "JSON text; tools the server exposes, as discovered on this install."}),
     "mcp_server_agent_instances": dict(
