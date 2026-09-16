@@ -16,7 +16,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `device_uuid` | string | Windows per-install GUID; NULL on macOS/Linux. Prefer it over the serial for the device join when present. |
 | `friendly_name` | string | Human-readable name (e.g. Jane's MacBook Pro). |
 | `platform` | string | darwin / windows / linux. |
-| `architecture` | string | CPU architecture (arm64, x86_64). |
+| `architecture` | string | CPU architecture (arm64, amd64). |
 | `os_version` | string | OS version string. |
 | `chip_model` | string | Chip model when reported. |
 | `account_metadata` | string | JSON text keyed by OS uid/SID with the OS username; how agent_instances.tenant resolves to a username. |

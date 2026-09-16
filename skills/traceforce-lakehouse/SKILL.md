@@ -97,7 +97,7 @@ See "Redaction and evidence".
   `agent_catalog.agent_type = agent_events.agent_type`.
 - `device_native_id` (OS-reported serial), `device_uuid` (Windows per-install GUID, NULL when
   the event carries none). Join on `device_uuid` when present, else on `device_native_id`.
-- `user_email`: NULL for Copilot and for Vertex-authenticated Claude Code.
+- `user_email`: NULL when the agent reports no end-user email.
 - `session_id`: joins `agent_conversations.conversation_external_id`.
 - `ts`, `operation` (chat / execute_tool / invoke_agent), `event_name`, `tool_name`,
   `tool_call_id` (equals a containment finding's `tool_use_id`), `mcp_server_name`, `decision`,
