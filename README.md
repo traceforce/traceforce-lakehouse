@@ -85,8 +85,8 @@ SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1
 
 ## What is in the lake
 
-- `agent_events`: one row per log record or span from every agent (Claude Code, Cursor,
-  Claude desktop and Cowork, GitHub Copilot), loaded hourly.
+- `agent_events`: one row per log record or span from every agent (Claude Code, Claude
+  (claude.ai), Cursor, GitHub Copilot), loaded hourly.
 - 17 metadata tables mirrored daily from TraceForce: devices, accounts, installs,
   conversations, findings, MCP inventory and catalog. Columns and joins are documented in
   `skills/traceforce-lakehouse/reference/`.

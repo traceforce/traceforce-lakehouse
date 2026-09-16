@@ -8,7 +8,7 @@ Contents: AgentIdentity (lake agents), AgentPlanType, AgentDeploymentType, Sensi
 
 | code | meaning |
 |---|---|
-| 1 | Claude (catalog name "Claude": the Claude desktop app) |
+| 1 | Claude (the claude.ai chat agent — any deployment; distinct from Claude Code, 111) |
 | 2 | Cursor |
 | 8 | GitHub Copilot |
 | 111 | Claude Code |

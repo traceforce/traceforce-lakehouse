@@ -1,6 +1,6 @@
 ---
 name: traceforce-lakehouse
-description: Query the TraceForce lakehouse (Athena over Iceberg tables in this AWS account) to answer questions about AI-agent activity from Claude Code, the Claude desktop app (Cowork), Cursor and GitHub Copilot: prompts, tool calls, MCP servers, tokens and cost, sensitive-data and containment findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena or SQL over TraceForce data. Read-only SELECT. Not for the TraceForce REST API or console; ChatGPT activity is not in the lake.
+description: Query the TraceForce lakehouse (Athena over Iceberg tables in this AWS account) to answer questions about AI-agent activity from Claude Code, Claude (the claude.ai chat agent), Cursor and GitHub Copilot: prompts, tool calls, MCP servers, tokens and cost, sensitive-data and containment findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena or SQL over TraceForce data. Read-only SELECT. Not for the TraceForce REST API or console; ChatGPT activity is not in the lake.
 ---
 
 # TraceForce lakehouse
@@ -89,8 +89,9 @@ See "Redaction and evidence".
 
 ## The agent_events columns you will use most
 
-- `agent`, `agent_type`: AGENT_IDENTITY_CLAUDE_CODE (111), AGENT_IDENTITY_CLAUDE (1, the Claude
-  desktop app), AGENT_IDENTITY_CURSOR (2), AGENT_IDENTITY_GITHUB_COPILOT (8).
+- `agent`, `agent_type`: AGENT_IDENTITY_CLAUDE_CODE (111), AGENT_IDENTITY_CLAUDE (1, the claude.ai
+  chat agent — any deployment, distinct from Claude Code), AGENT_IDENTITY_CURSOR (2),
+  AGENT_IDENTITY_GITHUB_COPILOT (8).
 - `device_native_id` (serial), `device_uuid` (Windows GUID; NULL on most rows today, so the
   device join is by serial).
 - `user_email`: NULL for Copilot and for Vertex-authenticated Claude Code.
