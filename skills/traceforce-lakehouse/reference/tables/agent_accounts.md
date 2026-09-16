@@ -16,12 +16,12 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `org_id` | string | Your TraceForce org id. Constant within this lakehouse. |
 | `device_id` | string | → devices.id |
 | `sandbox_id` | string | → sandboxes.id; NULL when the row is about the host device itself. |
-| `agent_id` | string | → the org-level agent rollup (not exported in v1). |
+| `agent_id` | string | → the org-level agent rollup (that table is not in the lake). |
 | `agent_type` | int | Which agent product. |
 | `plan` | string | Account plan (decoded AgentPlanType text, e.g. 'personal', 'enterprise', 'small_business'; 'unknown' for AgentPlanType 0). The console's notion of an agent is an INSTALL's (agent_type, coalesce(plan, 'unknown')): start from agent_instances, LEFT JOIN agent_instances_accounts and agent_accounts; installs with no signed-in account are plan 'unknown'. Never count agents from agent_accounts alone. |
 | `tier` | string | Vendor plan tier text when known. |
 | `agent_email` | string | Email the user authenticated to the agent with. Stored byte-exact; lower() is a tolerance. |
-| `agent_org_id` | string | The vendor's workspace/org id (Anthropic org for Claude); NULL for Cursor/Copilot. |
+| `agent_org_id` | string | The AI vendor's workspace/org id (e.g. the Anthropic org for Claude); NULL when the agent has no workspace/org concept. |
 | `security_settings` | string | JSON text; vendor security settings observed for the account. |
 | `metadata` | string | JSON text; vendor-specific extras (e.g. version). |
 | `models_configuration` | string | JSON text; models configured for the account. |

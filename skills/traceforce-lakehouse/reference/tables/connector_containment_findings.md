@@ -23,13 +23,13 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `tool_name` | string | Tool that attempted it (Write, Bash, MCP:<server>). |
 | `operation` | string | The MCP tool name (e.g. execute_sql) or the risky statement; empty for non-MCP tools. |
 | `tool_use_id` | string | Agent's tool-call id; equals agent_events.tool_call_id. |
-| `prompt_id` | string | Hook prompt id; NULL on all rows today (known gap). |
+| `prompt_id` | string | Hook prompt id. |
 | `hook_event_name` | string | Hook that observed it (e.g. PreToolUse). |
 | `detected_at` | timestamp | When detected (UTC). |
 | `finding_status` | string | Reviewer triage state. |
 | `outcome` | string | Execution result. Never 'denied' in the table. |
 | `metadata` | string | JSON text; vendor-specific extras (e.g. version). |
-| `customer_storage` | string | JSON text {bucket, key_prefix, region, provider, source_file}. On conversations source_file is the session FOLDER (conversations/<agent>/dt=<YYYYMMDD>/<serial>/<account>/<session>/ for collector 1.0.42+, no dt= segment before; a session spanning midnight has two). On findings it is the EVIDENCE object under findings/<agent>/<serial>/<account>/<session>/evidence/ (verbatim matched value / verbatim tool input; for file findings the redacted attachment). Evidence is NOT in the lake by design; see SKILL.md Redaction and evidence. |
+| `customer_storage` | string | JSON text {bucket, key_prefix, region, provider, source_file}: a pointer into customer S3. On conversations it locates the session's uploaded activity objects; on findings it locates the evidence object holding the verbatim matched value / tool input (the redacted attachment for file findings). Evidence is not in the lake by design; see SKILL.md Redaction and evidence. |
 | `conversation_storage` | string | JSON text {bucket, key_prefix, region, provider, source_file}: the exact activity object the finding was detected in. Equals agent_events.source_object when written as concat('s3://', bucket, '/', key_prefix, source_file); join on it to get the records of that upload. |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |

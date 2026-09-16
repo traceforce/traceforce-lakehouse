@@ -20,7 +20,7 @@ One file per table under `tables/`; read only the ones a question needs.
 | `agent_catalog` | Global reference: agent_type → product name, one row per known agent type | `tables/agent_catalog.md` |
 | `sensitive_data_findings` | One row per sensitive-data match (a credential, PII value, ...) found in a prompt/response or an attached file | `tables/sensitive_data_findings.md` |
 | `connector_containment_findings` | One row per write/delete a tool attempted through a connector (MCP, Bash, Write) | `tables/connector_containment_findings.md` |
-| `agent_conversations` | One row per agent session/conversation TraceForce has scanned; created on scan whether or not anything was found (most rows have no finding) | `tables/agent_conversations.md` |
+| `agent_conversations` | One row per agent session/conversation TraceForce has scanned; created on scan whether or not anything was found | `tables/agent_conversations.md` |
 | `agent_conversation_files` | Files attached to conversations (uploads) | `tables/agent_conversation_files.md` |
 | `mcp_server_instances` | MCP servers configured on a device for an agent | `tables/mcp_server_instances.md` |
 | `mcp_server_agent_instances` | Junction: which install (agent_instances) an MCP server instance is configured in | `tables/mcp_server_agent_instances.md` |

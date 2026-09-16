@@ -95,8 +95,8 @@ See "Redaction and evidence".
   chat agent — any deployment, distinct from Claude Code), AGENT_IDENTITY_CURSOR (2),
   AGENT_IDENTITY_GITHUB_COPILOT (8). For a product name, join the catalog:
   `agent_catalog.agent_type = agent_events.agent_type`.
-- `device_native_id` (serial), `device_uuid` (Windows GUID; NULL on most rows today, so the
-  device join is by serial).
+- `device_native_id` (OS-reported serial), `device_uuid` (Windows per-install GUID, NULL when
+  the event carries none). Join on `device_uuid` when present, else on `device_native_id`.
 - `user_email`: NULL for Copilot and for Vertex-authenticated Claude Code.
 - `session_id`: joins `agent_conversations.conversation_external_id`.
 - `ts`, `operation` (chat / execute_tool / invoke_agent), `event_name`, `tool_name`,
@@ -138,9 +138,9 @@ See "Redaction and evidence".
   run of `*`; everything around it is intact. With redaction off they are verbatim.
 - The findings tables say what was found (`type`, `category`), where (`conversation_id`,
   `file_id`, offsets, lines), when, and the triage state. They never contain the value.
-- The matched sensitive *value* is in an evidence object outside the lake, at the finding's
-  `customer_storage` pointer (`findings/<agent>/<serial>/<account>/<session>/evidence/…`);
-  it is masked everywhere in the logs, so do not try to recover it from them. A containment
+- The matched sensitive *value* is in an evidence object outside the lake, referenced by the
+  finding's `customer_storage` pointer; it is masked everywhere in the logs, so do not try
+  to recover it from them. A containment
   finding's *command* is not a value and is not masked: recover it from the joined event's
   `tool_args` (above). For anything evidence-only, point the user to the TraceForce console or
   `GET /api/v1/sensitive-data-findings/{id}/content` (containment:
@@ -187,6 +187,6 @@ See "Redaction and evidence".
   external id; findings without a matching conversation exist.
 - Copilot tool calls: `tool_call_id` and `tool_name` come from the span; count
   `signal = 'span' AND operation = 'execute_tool'` rows if `tool_call_id` is NULL.
-- Claude Code `attrs_json.$.source` values seen: `config` (Claude's own rules), `hook`,
-  `user_permanent`, `user_temporary`, `user_abort`, `user_reject`. Only `hook` can be
-  TraceForce. Treat any other value as a human unless the user says otherwise.
+- Claude Code `attrs_json.$.source` says who decided: `hook` = TraceForce; `config` = Claude's
+  own permission rules; `user_*` (`user_permanent`, `user_temporary`, `user_abort`,
+  `user_reject`) = the person. Treat any value other than `hook` as not TraceForce.
