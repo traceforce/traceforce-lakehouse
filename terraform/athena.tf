@@ -39,6 +39,11 @@ resource "aws_athena_workgroup" "lakehouse" {
   description = "TraceForce lakehouse: scheduled ingest plus read-only queries over agent_events"
   state       = "ENABLED"
 
+  # force_destroy lets terraform destroy remove the workgroup even when ingest and queries
+  # have left query executions behind; otherwise AWS returns "WorkGroup is not empty" and the
+  # customer would have to delete it by hand.
+  force_destroy = true
+
   configuration {
     enforce_workgroup_configuration    = true
     publish_cloudwatch_metrics_enabled = true
