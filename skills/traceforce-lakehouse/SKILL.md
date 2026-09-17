@@ -40,9 +40,11 @@ Requires AWS CLI v2 and credentials (`AWS_PROFILE`, `AWS_REGION`) that carry the
 `-- query <id> ok, scanned N MB` on stderr, exit 1 with Athena's reason on failure.
 Unqualified table names resolve in the `traceforce` namespace.
 
-If a query fails with a credentials, expired-token, or "unable to locate credentials" / "no
-region" error, this is not a data problem: stop and tell the user to sign in to AWS (e.g.
-`aws sso login`) and set the region, then retry. Do not report the lake as empty or broken.
+If a query fails on credentials / expired token / no region, that's an environment problem,
+not empty data — never report the lake as broken. If the token expired, have the user refresh
+it (e.g. `aws sso login`) and retry — it's picked up in this session. If AWS auth or the region
+isn't set at all, the agent can't get them mid-session: the user must set up AWS credentials
+(SSO, a profile, or keys) and `AWS_REGION` in a terminal, then relaunch the agent from it.
 
 ## Workflow
 
