@@ -43,6 +43,7 @@ bucket this module owns, which TraceForce cannot read.
      # logs_kms_key_arn        = "arn:aws:kms:..." # bucket encrypted with a customer-managed key
      # create_glue_integration = false             # apply says the Glue catalog s3tablescatalog already exists
      # alarm_sns_topic_arn     = "arn:aws:sns:..." # get notified when a scheduled run fails
+     # query_trusted_principals = ["arn:aws:iam::OTHER_ACCOUNT_ID:root"] # a separate team (no access to this account) queries via an assumed role
    }
 
    output "query_policy_json" { value = module.traceforce_lakehouse.query_policy_json }
@@ -52,6 +53,11 @@ bucket this module owns, which TraceForce cannot read.
    `logs_kms_key_arn` now; without it the hourly load fails with Access Denied.
 
 3. Attach `terraform output -raw query_policy_json` to the IAM users or roles that will query.
+
+   If a separate team **without access to this account** will query, instead set
+   `query_trusted_principals` to their principal ARN(s) and hand them
+   `terraform output -raw query_role_arn`; they assume that read-only role from their own
+   AWS identity (a `role_arn` profile in `~/.aws/config`).
 
 4. Install the skill in your coding agent. Claude Code:
 

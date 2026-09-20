@@ -17,6 +17,11 @@ output "query_policy_json" {
   value       = jsonencode(local.query_policy)
 }
 
+output "query_role_arn" {
+  description = "ARN of the read-only role a separate team assumes to query the lakehouse. Null unless query_trusted_principals is set."
+  value       = length(var.query_trusted_principals) > 0 ? aws_iam_role.query[0].arn : null
+}
+
 output "exports_root" {
   description = "Where TraceForce's export job writes <table>/dt=YYYY-MM-DD/<HHMMSS>.jsonl.gz"
   value       = local.exports_root
