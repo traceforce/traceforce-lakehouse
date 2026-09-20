@@ -34,3 +34,11 @@ variable "create_glue_integration" {
   type        = bool
   default     = true
 }
+
+# --- Only when a separate team/account will query (they get a read-only assume-role) ---
+
+variable "query_trusted_principals" {
+  description = "Principals allowed to assume a read-only role to query the lakehouse, e.g. [\"arn:aws:iam::OTHER_ACCOUNT_ID:root\"] or specific role/permission-set ARNs. For when the people running Claude Code have no access to this account. Empty = no role created."
+  type        = list(string)
+  default     = []
+}
