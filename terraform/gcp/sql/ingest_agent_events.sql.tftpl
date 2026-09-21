@@ -1,0 +1,131 @@
+-- Flatten raw OTLP-JSON activity objects into the managed Iceberg table agent_events (GoogleSQL).
+-- GCP port of the AWS/Trino ingest. Rendered by Terraform (templatefile), run by a BigQuery
+-- scheduled query. Idempotent: an object is loaded once, keyed by its full gs:// path
+-- (source_object = _FILE_NAME). Bounded: only the last ${lookback_days} upload-day folders are
+-- read (today, the days before, plus tomorrow for fast device clocks). The anti-join makes the
+-- window exact and is bounded on upload_ts so partition pruning skips old data.
+-- Attribute values keep OTLP encoding for arrays/kvlists; scalars are decoded to text by the
+-- tf_otlp_attrs JS routine (first-value-wins on duplicate keys), matching Athena element_at(map).
+INSERT INTO `${target}` (${cols})
+WITH objects AS (
+  -- agent and dt are derived from the object path, not hive partitions: the collector writes
+  -- gs://.../conversations/<AGENT_IDENTITY_*>/dt=<YYYYMMDD>/... where the agent folder is bare
+  -- (not key=value), which BigQuery hive partitioning cannot parse. Reading only the last
+  -- ${lookback_days} day folders is enforced by the dt predicate; the anti-join makes it exact.
+  SELECT _FILE_NAME AS src_path,
+    REGEXP_EXTRACT(_FILE_NAME, r'/conversations/([^/]+)/dt=') AS agent,
+    resourceLogs, resourceSpans
+  FROM `${raw}`
+  WHERE REGEXP_EXTRACT(_FILE_NAME, r'/conversations/([^/]+)/dt=') IN (${agent_in_list})
+    AND REGEXP_EXTRACT(_FILE_NAME, r'/dt=([0-9]{8})/') >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${lookback_days} - 1 DAY))
+    AND NOT EXISTS (
+      SELECT 1 FROM `${target}` t
+      WHERE t.source_object = _FILE_NAME
+        AND (t.upload_ts >= TIMESTAMP(DATE_SUB(CURRENT_DATE(), INTERVAL ${lookback_days} DAY))
+             OR t.upload_ts IS NULL)
+    )
+),
+parts AS (
+  SELECT src_path, agent,
+    IF(resourceLogs IS NOT NULL, 'log', 'span') AS signal,
+    COALESCE(resourceLogs, resourceSpans) AS blocks,
+    SPLIT(src_path, '/') AS seg
+  FROM objects
+),
+blocks AS (
+  SELECT p.src_path, p.agent, p.signal,
+    p.seg[SAFE_ORDINAL(ARRAY_LENGTH(p.seg))]     AS fname,
+    p.seg[SAFE_ORDINAL(ARRAY_LENGTH(p.seg) - 1)] AS path_session_raw,
+    p.seg[SAFE_ORDINAL(ARRAY_LENGTH(p.seg) - 2)] AS path_account,
+    p.seg[SAFE_ORDINAL(ARRAY_LENGTH(p.seg) - 3)] AS path_serial,
+    -- upload time from the filename: <YYYYMMDD_HHMMSS.mmm>_<uuid>_..., or a 10-digit unix-seconds prefix
+    COALESCE(
+      SAFE.PARSE_TIMESTAMP('%Y%m%d_%H%M%E3S',
+        REGEXP_EXTRACT(p.seg[SAFE_ORDINAL(ARRAY_LENGTH(p.seg))], r'^([0-9]{8}_[0-9]{6}\.[0-9]{3})_')),
+      SAFE.TIMESTAMP_SECONDS(
+        SAFE_CAST(REGEXP_EXTRACT(p.seg[SAFE_ORDINAL(ARRAY_LENGTH(p.seg))], r'^([0-9]{10})_') AS INT64))
+    ) AS upload_ts,
+    `${dataset}`.tf_otlp_attrs(JSON_QUERY(b, '$.resource.attributes')) AS res,
+    COALESCE(JSON_QUERY(b, '$.scopeLogs'), JSON_QUERY(b, '$.scopeSpans')) AS scopes
+  FROM parts p
+  CROSS JOIN UNNEST(COALESCE(JSON_QUERY_ARRAY(p.blocks), [])) AS b
+),
+records AS (
+  SELECT bl.*,
+    `${dataset}`.tf_otlp_attrs(JSON_QUERY(rec, '$.attributes')) AS a,
+    rec
+  FROM blocks bl
+  CROSS JOIN UNNEST(COALESCE(JSON_QUERY_ARRAY(bl.scopes), [])) AS scope_json
+  CROSS JOIN UNNEST(COALESCE(JSON_QUERY_ARRAY(
+    COALESCE(JSON_QUERY(scope_json, '$.logRecords'), JSON_QUERY(scope_json, '$.spans'))), [])) AS rec
+),
+flat AS (
+  SELECT
+    agent,
+    CASE agent ${agent_type_case} END                                        AS agent_type,
+    COALESCE(JSON_VALUE(res, '$."traceforce.device.native_id"'), path_serial) AS device_native_id,
+    JSON_VALUE(res, '$."traceforce.device.uuid"')                            AS device_uuid,
+    JSON_VALUE(res, '$."traceforce.sandbox.native_id"')                      AS sandbox_native_id,
+    CASE WHEN path_account = 'unknown-account' THEN NULL
+         ELSE REGEXP_REPLACE(path_account, r'_[0-9a-f-]{36}$', '') END       AS path_email,
+    REGEXP_EXTRACT(path_account, r'_([0-9a-f-]{36})$')                       AS path_org,
+    CASE WHEN path_session_raw = 'unknown-session' THEN NULL
+         ELSE path_session_raw END                                          AS path_session,
+    upload_ts,
+    src_path                                                                AS source_object,
+    signal,
+    JSON_VALUE(a, '$."user.email"')                                         AS user_email,
+    JSON_VALUE(a, '$."organization.id"')                                    AS agent_org_id,
+    JSON_VALUE(a, '$."user.id"')                                            AS user_id,
+    COALESCE(JSON_VALUE(a, '$."gen_ai.conversation.id"'), JSON_VALUE(a, '$."session.id"'),
+             JSON_VALUE(res, '$."session.id"'),
+             CASE WHEN path_session_raw = 'unknown-session' THEN NULL ELSE path_session_raw END)
+                                                                            AS session_id,
+    JSON_VALUE(res, '$."session.id"')                                       AS resource_session_id,
+    COALESCE(
+      TIMESTAMP_MICROS(DIV(COALESCE(
+        NULLIF(SAFE_CAST(JSON_VALUE(rec, '$.timeUnixNano') AS INT64), 0),
+        NULLIF(SAFE_CAST(JSON_VALUE(rec, '$.startTimeUnixNano') AS INT64), 0),
+        NULLIF(SAFE_CAST(JSON_VALUE(rec, '$.observedTimeUnixNano') AS INT64), 0)), 1000)),
+      upload_ts)                                                            AS ts,
+    TIMESTAMP_MICROS(DIV(NULLIF(SAFE_CAST(JSON_VALUE(rec, '$.endTimeUnixNano') AS INT64), 0), 1000)) AS end_ts,
+    JSON_VALUE(a, '$."event.name"')                                         AS event_name,
+    CASE WHEN signal = 'span' THEN JSON_VALUE(rec, '$.name') END            AS span_name,
+    JSON_VALUE(a, '$."gen_ai.operation.name"')                             AS operation,
+    JSON_VALUE(a, '$."prompt.id"')                                          AS prompt_id,
+    JSON_VALUE(a, '$."generation.id"')                                      AS generation_id,
+    JSON_VALUE(a, '$."gen_ai.tool.name"')                                   AS tool_name,
+    JSON_VALUE(a, '$."gen_ai.tool.type"')                                   AS tool_type,
+    JSON_VALUE(a, '$."gen_ai.tool.call.id"')                                AS tool_call_id,
+    COALESCE(JSON_VALUE(a, '$."mcp.server.name"'),
+             CASE WHEN JSON_VALUE(a, '$."event.name"') = 'mcp_server_connection'
+                  THEN JSON_VALUE(a, '$."server_name"') END,
+             SAFE.JSON_VALUE(JSON_VALUE(a, '$."gen_ai.tool.call.arguments"'), '$.mcp_server_name'),
+             SAFE.JSON_VALUE(JSON_VALUE(a, '$."tool_parameters"'), '$.mcp_server_name'),
+             JSON_VALUE(a, '$."github.copilot.tool.parameters.mcp_server_name"'))
+                                                                            AS mcp_server_name,
+    JSON_VALUE(a, '$."gen_ai.tool.call.arguments"')                         AS tool_args,
+    JSON_VALUE(a, '$."gen_ai.tool.call.result"')                            AS tool_result,
+    COALESCE(JSON_VALUE(a, '$."decision"'), JSON_VALUE(a, '$."github.copilot.permission.result"'),
+             JSON_VALUE(a, '$."hook.result.permission"'))                   AS decision,
+    JSON_VALUE(a, '$."traceforce.sd_enforcement"')                         AS sd_enforcement,
+    JSON_VALUE(a, '$."traceforce.containment_enforcement"')                AS containment_enforcement,
+    COALESCE(JSON_VALUE(a, '$."error.type"'), JSON_VALUE(a, '$."error_type"')) AS error_type,
+    JSON_VALUE(a, '$."gen_ai.request.model"')                             AS model,
+    SAFE_CAST(JSON_VALUE(a, '$."gen_ai.usage.input_tokens"') AS INT64)     AS input_tokens,
+    SAFE_CAST(JSON_VALUE(a, '$."gen_ai.usage.output_tokens"') AS INT64)    AS output_tokens,
+    SAFE_CAST(COALESCE(JSON_VALUE(a, '$."cache_read_tokens"'),
+                       JSON_VALUE(a, '$."gen_ai.usage.cache_read.input_tokens"')) AS INT64) AS cache_read_tokens,
+    SAFE_CAST(JSON_VALUE(a, '$."cost_usd"') AS FLOAT64)                    AS cost_usd,
+    JSON_VALUE(a, '$."gen_ai.input.messages"')                            AS content_input,
+    JSON_VALUE(a, '$."gen_ai.output.messages"')                           AS content_output,
+    JSON_VALUE(res, '$."service.name"')                                    AS service_name,
+    JSON_VALUE(res, '$."service.version"')                                 AS service_version,
+    JSON_VALUE(res, '$."os.type"')                                         AS os_type,
+    TO_JSON_STRING(`${dataset}`.tf_attrs_rest(a))                          AS attrs_json,
+    TO_JSON_STRING(res)                                                    AS resource_json,
+    CURRENT_TIMESTAMP()                                                    AS ingested_at
+  FROM records
+)
+SELECT ${cols} FROM flat
+WHERE ts IS NOT NULL

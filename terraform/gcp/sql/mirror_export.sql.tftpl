@@ -1,0 +1,28 @@
+-- Mirror one TraceForce metadata table's newest daily snapshot into its managed Iceberg table.
+-- GCP port of the AWS MERGE + DELETE, collapsed into ONE atomic, race-free MERGE (validated on
+-- managed Iceberg): upsert rows from the newest snapshot and delete rows no longer in it
+-- (WHEN NOT MATCHED BY SOURCE). "Newest" = the lexically greatest _FILE_NAME within the last 7
+-- dt partitions (paths embed date + time, so a same-day retry wins). The IF guard preserves the
+-- AWS safety: with no snapshot in the window (export not deployed yet, or failing) nothing runs,
+-- so an empty source can never delete every mirrored row. Snapshot columns are typed by the
+-- NDJSON external table, so no per-column casting is needed here.
+IF (SELECT COUNT(*) FROM `${source}`
+    WHERE dt >= FORMAT_DATE('%Y-%m-%d', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY))
+      AND _FILE_NAME = (SELECT MAX(_FILE_NAME) FROM `${source}`
+                        WHERE dt >= FORMAT_DATE('%Y-%m-%d', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)))
+      AND id IS NOT NULL) > 0
+THEN
+  MERGE INTO `${target}` t
+  USING (
+    SELECT ${cols}
+    FROM `${source}`
+    WHERE dt >= FORMAT_DATE('%Y-%m-%d', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY))
+      AND _FILE_NAME = (SELECT MAX(_FILE_NAME) FROM `${source}`
+                        WHERE dt >= FORMAT_DATE('%Y-%m-%d', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)))
+      AND id IS NOT NULL
+  ) s
+  ON t.id = s.id
+  WHEN MATCHED THEN UPDATE SET ${update_set}
+  WHEN NOT MATCHED THEN INSERT (${cols}) VALUES (${insert_vals})
+  WHEN NOT MATCHED BY SOURCE THEN DELETE;
+END IF;

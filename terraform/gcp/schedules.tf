@@ -1,0 +1,63 @@
+# The scheduled queries run as this service account (needs to run jobs and write the managed
+# tables; it reads GCS through the connection SA, not directly).
+resource "google_service_account" "runner" {
+  account_id   = "tf-lakehouse-runner"
+  display_name = "TraceForce lakehouse scheduled-query runner"
+}
+
+resource "google_project_iam_member" "runner_jobuser" {
+  project = local.project
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.runner.email}"
+}
+
+resource "google_bigquery_dataset_iam_member" "runner_editor" {
+  dataset_id = google_bigquery_dataset.lakehouse.dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${google_service_account.runner.email}"
+}
+
+# Hourly ingest, deliberately at :57 (not the top of the hour): scheduled queries have no
+# overlap guard and running exactly on the hour can double-fire, which would double-load
+# objects. The anti-join keeps a single run idempotent.
+resource "google_bigquery_data_transfer_config" "ingest" {
+  display_name           = "${local.name}-ingest"
+  location               = var.location
+  data_source_id         = "scheduled_query"
+  schedule               = "every 1 hours from 00:57 to 23:57"
+  destination_dataset_id = google_bigquery_dataset.lakehouse.dataset_id
+  service_account_name   = google_service_account.runner.email
+
+  params = {
+    query = local.ingest_sql
+  }
+
+  depends_on = [
+    google_bigquery_dataset_iam_member.runner_editor,
+    google_project_iam_member.runner_jobuser,
+    google_bigquery_table.agent_events,
+    google_bigquery_table.raw_conversations,
+  ]
+}
+
+# Daily mirror ~12:30 local: one multi-statement script of 17 guarded atomic MERGEs (each
+# upserts the newest snapshot and deletes rows no longer in it, in one race-free statement).
+resource "google_bigquery_data_transfer_config" "mirror" {
+  display_name           = "${local.name}-mirror"
+  location               = var.location
+  data_source_id         = "scheduled_query"
+  schedule               = "every day 12:30"
+  destination_dataset_id = google_bigquery_dataset.lakehouse.dataset_id
+  service_account_name   = google_service_account.runner.email
+
+  params = {
+    query = local.mirror_sql
+  }
+
+  depends_on = [
+    google_bigquery_dataset_iam_member.runner_editor,
+    google_project_iam_member.runner_jobuser,
+    google_bigquery_table.export,
+    google_bigquery_table.export_src,
+  ]
+}
