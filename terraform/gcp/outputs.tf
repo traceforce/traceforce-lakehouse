@@ -13,12 +13,3 @@ output "exports_root" {
   value       = local.exports_root
 }
 
-output "query_setup" {
-  description = "How the querying team points their agent at the lakehouse."
-  value       = <<-EOT
-    Query the lakehouse from BigQuery in project ${local.project}, dataset ${var.dataset_id}
-    (location ${var.location}). If your team queries from another project, we granted the
-    members in query_members roles/bigquery.dataViewer here; they also need roles/bigquery.jobUser
-    in their own project. Point the agent at ${local.project}.${var.dataset_id}.agent_events.
-  EOT
-}

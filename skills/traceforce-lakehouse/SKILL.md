@@ -67,8 +67,7 @@ example SQL is Athena/Trino. Translate to GoogleSQL:
 
 If a query fails on credentials / no project, that's an environment problem, not empty data:
 have the user run `gcloud auth login` and set `TRACEFORCE_LAKEHOUSE_PROJECT`, then retry
-(relaunch the agent if it started without them). Read-only holds three ways: the query identity
-carries only `dataViewer` + `jobUser`, and the script refuses non-SELECT and multi-statement SQL.
+(relaunch the agent if it started without them).
 
 ## Workflow
 
