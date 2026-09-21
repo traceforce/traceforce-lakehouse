@@ -30,6 +30,10 @@ variable "lookback_days" {
   description = "How many upload-day folders the hourly ingest reads (today plus the days before). 3 is plenty on the schedule; raise for a manual catch-up after an outage."
   type        = number
   default     = 3
+  validation {
+    condition     = var.lookback_days >= 1 && var.lookback_days == floor(var.lookback_days)
+    error_message = "lookback_days must be a whole number >= 1."
+  }
 }
 
 # --- Only when a separate team will query (they get read-only access to the dataset) ---

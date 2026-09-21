@@ -17,6 +17,16 @@ resource "google_bigquery_dataset_iam_member" "runner_editor" {
   member     = "serviceAccount:${google_service_account.runner.email}"
 }
 
+# Using the connection-bound tables (BigLake external + managed Iceberg) requires
+# bigquery.connections.use on the connection for the executing principal; dataEditor does not
+# grant it (connections are project-scoped resources).
+resource "google_bigquery_connection_iam_member" "runner_conn" {
+  connection_id = google_bigquery_connection.gcs.connection_id
+  location      = google_bigquery_connection.gcs.location
+  role          = "roles/bigquery.connectionUser"
+  member        = "serviceAccount:${google_service_account.runner.email}"
+}
+
 # Hourly ingest, deliberately at :57 (not the top of the hour): scheduled queries have no
 # overlap guard and running exactly on the hour can double-fire, which would double-load
 # objects. The anti-join keeps a single run idempotent.
@@ -40,7 +50,7 @@ resource "google_bigquery_data_transfer_config" "ingest" {
   ]
 }
 
-# Daily mirror ~12:30 local: one multi-statement script of 17 guarded atomic MERGEs (each
+# Daily mirror ~12:30 UTC: one multi-statement script of 17 guarded atomic MERGEs (each
 # upserts the newest snapshot and deletes rows no longer in it, in one race-free statement).
 resource "google_bigquery_data_transfer_config" "mirror" {
   display_name         = "${local.name}-mirror"

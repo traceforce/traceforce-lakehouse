@@ -37,9 +37,13 @@ case "$FIRST" in
   SELECT|WITH|SHOW|DESCRIBE|DESC|EXPLAIN) ;;
   *) echo "refusing to run a non-read statement (first keyword: $FIRST)" >&2; exit 2 ;;
 esac
-# Block multi-statement scripting: reject any ';' that is not a single trailing one.
-if printf '%s' "$SQL" | sed 's/;[[:space:]]*$//' | grep -q ';'; then
-  echo "refusing multi-statement SQL (contains ';')" >&2
+# Block multi-statement scripting (bq runs scripts, unlike Athena): drop trailing whitespace
+# and one optional trailing ';', then reject if any ';' remains (a per-line sed anchor missed a
+# ';' split across newlines).
+BODY="${SQL%"${SQL##*[![:space:]]}"}" # rstrip
+BODY="${BODY%;}"                      # drop one trailing ';'
+if [[ "$BODY" == *";"* ]]; then
+  echo "refusing multi-statement SQL (a ';' before the end of the statement)" >&2
   exit 2
 fi
 

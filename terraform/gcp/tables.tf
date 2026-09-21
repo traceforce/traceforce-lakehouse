@@ -76,8 +76,9 @@ resource "google_bigquery_table" "raw_conversations" {
   }
 }
 
-# 17 snapshot external tables: typed NDJSON so the mirror MERGE needs no casts, hive-partitioned
-# by dt (real key=value dt=YYYY-MM-DD). Read via the connection SA. No metadata cache.
+# 17 snapshot external tables: typed NDJSON so the mirror MERGE needs no casts. Non-hive (like
+# raw_conversations) so the table can be created before any snapshots exist; the mirror derives
+# dt from _FILE_NAME. Read via the connection SA. No metadata cache.
 resource "google_bigquery_table" "export_src" {
   for_each = local.export_columns
 
