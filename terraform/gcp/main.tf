@@ -1,5 +1,6 @@
 # The dataset that holds every lakehouse table. Its location must equal the logs bucket's.
 resource "google_bigquery_dataset" "lakehouse" {
+  depends_on  = [google_project_service.apis]
   dataset_id  = var.dataset_id
   location    = var.location
   description = "TraceForce lakehouse: agent_events (flattened activity) + mirrored metadata, queryable in plain language."
@@ -15,6 +16,7 @@ resource "google_bigquery_dataset" "lakehouse" {
 # Cloud-resource connection: BigQuery reads the raw objects and reads/writes the Iceberg data
 # in your GCS bucket through this connection's service account.
 resource "google_bigquery_connection" "gcs" {
+  depends_on    = [google_project_service.apis]
   connection_id = local.name
   location      = var.location
   description   = "TraceForce lakehouse access to the logs bucket (raw + Iceberg data)."

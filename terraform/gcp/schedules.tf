@@ -33,6 +33,7 @@ resource "google_bigquery_data_transfer_config" "ingest" {
   }
 
   depends_on = [
+    google_project_service.apis,
     google_bigquery_dataset_iam_member.runner_editor,
     google_project_iam_member.runner_jobuser,
     google_bigquery_table.agent_events,
@@ -55,6 +56,7 @@ resource "google_bigquery_data_transfer_config" "mirror" {
   }
 
   depends_on = [
+    google_project_service.apis,
     google_bigquery_dataset_iam_member.runner_editor,
     google_project_iam_member.runner_jobuser,
     google_bigquery_table.export,
