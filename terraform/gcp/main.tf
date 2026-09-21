@@ -30,6 +30,14 @@ resource "google_storage_bucket_iam_member" "connection_gcs" {
   member = "serviceAccount:${google_bigquery_connection.gcs.cloud_resource[0].service_account_id}"
 }
 
+# GCS IAM is eventually consistent: let the connection SA's objectAdmin grant propagate before
+# the managed Iceberg tables write their first metadata object, else table creation can hit a
+# transient storage.objects.create denial. Keeps the customer's apply a clean one-shot.
+resource "time_sleep" "iam_propagation" {
+  depends_on      = [google_storage_bucket_iam_member.connection_gcs]
+  create_duration = "60s"
+}
+
 # OTLP attribute decode (first-value-wins, scalars->text, arrayValue->[], kvlist->object),
 # matching the AWS/Trino ingest. Used by the ingest SQL on resource and record attributes.
 resource "google_bigquery_routine" "otlp_attrs" {

@@ -21,12 +21,11 @@ resource "google_bigquery_dataset_iam_member" "runner_editor" {
 # overlap guard and running exactly on the hour can double-fire, which would double-load
 # objects. The anti-join keeps a single run idempotent.
 resource "google_bigquery_data_transfer_config" "ingest" {
-  display_name           = "${local.name}-ingest"
-  location               = var.location
-  data_source_id         = "scheduled_query"
-  schedule               = "every 1 hours from 00:57 to 23:57"
-  destination_dataset_id = google_bigquery_dataset.lakehouse.dataset_id
-  service_account_name   = google_service_account.runner.email
+  display_name         = "${local.name}-ingest"
+  location             = var.location
+  data_source_id       = "scheduled_query"
+  schedule             = "every 1 hours from 00:57 to 23:57"
+  service_account_name = google_service_account.runner.email
 
   params = {
     query = local.ingest_sql
@@ -44,12 +43,11 @@ resource "google_bigquery_data_transfer_config" "ingest" {
 # Daily mirror ~12:30 local: one multi-statement script of 17 guarded atomic MERGEs (each
 # upserts the newest snapshot and deletes rows no longer in it, in one race-free statement).
 resource "google_bigquery_data_transfer_config" "mirror" {
-  display_name           = "${local.name}-mirror"
-  location               = var.location
-  data_source_id         = "scheduled_query"
-  schedule               = "every day 12:30"
-  destination_dataset_id = google_bigquery_dataset.lakehouse.dataset_id
-  service_account_name   = google_service_account.runner.email
+  display_name         = "${local.name}-mirror"
+  location             = var.location
+  data_source_id       = "scheduled_query"
+  schedule             = "every day 12:30"
+  service_account_name = google_service_account.runner.email
 
   params = {
     query = local.mirror_sql

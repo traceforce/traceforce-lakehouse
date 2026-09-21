@@ -2,6 +2,7 @@
 # STRING (managed Iceberg forbids JSON). Partitioned by day(ts) and clustered by source_object
 # so the hourly anti-join prunes instead of full-scanning.
 resource "google_bigquery_table" "agent_events" {
+  depends_on          = [time_sleep.iam_propagation]
   dataset_id          = google_bigquery_dataset.lakehouse.dataset_id
   table_id            = "agent_events"
   deletion_protection = false
@@ -30,7 +31,8 @@ resource "google_bigquery_table" "agent_events" {
 
 # 17 metadata mirror tables: managed Iceberg, typed, same names as in TraceForce.
 resource "google_bigquery_table" "export" {
-  for_each = local.export_columns
+  depends_on = [time_sleep.iam_propagation]
+  for_each   = local.export_columns
 
   dataset_id          = google_bigquery_dataset.lakehouse.dataset_id
   table_id            = each.key
