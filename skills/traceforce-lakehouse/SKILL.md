@@ -65,10 +65,6 @@ example SQL is Athena/Trino. Translate to GoogleSQL:
 - `current_timestamp - interval '7' day` -> `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)`; `date_format(...)` -> `FORMAT_TIMESTAMP` / `FORMAT_DATE`.
 - `"$path"` -> `_FILE_NAME` (external tables only; agent_events already has `source_object`).
 
-If a query fails on credentials / no project, that's an environment problem, not empty data:
-have the user run `gcloud auth login` and set `TRACEFORCE_LAKEHOUSE_PROJECT`, then retry
-(relaunch the agent if it started without them).
-
 ## Workflow
 
 1. Pick the tables the question needs and read only their files under `reference/tables/`.
