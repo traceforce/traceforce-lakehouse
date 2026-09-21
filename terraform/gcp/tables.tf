@@ -16,7 +16,7 @@ resource "google_bigquery_table" "agent_events" {
 
   biglake_configuration {
     connection_id = local.connection_ref
-    storage_uri   = "${local.iceberg_root}agent_events"
+    storage_uri   = "${local.iceberg_root}agent_events/"
     file_format   = "PARQUET"
     table_format  = "ICEBERG"
   }
@@ -46,7 +46,7 @@ resource "google_bigquery_table" "export" {
 
   biglake_configuration {
     connection_id = local.connection_ref
-    storage_uri   = "${local.iceberg_root}${each.key}"
+    storage_uri   = "${local.iceberg_root}${each.key}/"
     file_format   = "PARQUET"
     table_format  = "ICEBERG"
   }
@@ -96,11 +96,5 @@ resource "google_bigquery_table" "export_src" {
     source_format = "NEWLINE_DELIMITED_JSON"
     source_uris   = ["${local.exports_root}${each.key}/*"]
     connection_id = local.connection_ref
-
-    hive_partitioning_options {
-      mode                     = "STRINGS"
-      source_uri_prefix        = "${local.exports_root}${each.key}"
-      require_partition_filter = false
-    }
   }
 }

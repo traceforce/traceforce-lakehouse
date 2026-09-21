@@ -100,8 +100,8 @@ flat AS (
     COALESCE(JSON_VALUE(a, '$."mcp.server.name"'),
              CASE WHEN JSON_VALUE(a, '$."event.name"') = 'mcp_server_connection'
                   THEN JSON_VALUE(a, '$."server_name"') END,
-             SAFE.JSON_VALUE(JSON_VALUE(a, '$."gen_ai.tool.call.arguments"'), '$.mcp_server_name'),
-             SAFE.JSON_VALUE(JSON_VALUE(a, '$."tool_parameters"'), '$.mcp_server_name'),
+             JSON_VALUE(SAFE.PARSE_JSON(JSON_VALUE(a, '$."gen_ai.tool.call.arguments"')), '$.mcp_server_name'),
+             JSON_VALUE(SAFE.PARSE_JSON(JSON_VALUE(a, '$."tool_parameters"')), '$.mcp_server_name'),
              JSON_VALUE(a, '$."github.copilot.tool.parameters.mcp_server_name"'))
                                                                             AS mcp_server_name,
     JSON_VALUE(a, '$."gen_ai.tool.call.arguments"')                         AS tool_args,
