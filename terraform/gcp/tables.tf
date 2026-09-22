@@ -71,7 +71,14 @@ resource "google_bigquery_table" "raw_conversations" {
   external_data_configuration {
     autodetect    = false
     source_format = "NEWLINE_DELIMITED_JSON"
-    source_uris   = ["${local.raw_root}*"]
+    # Scope to the four OTLP agent folders only: Claude Code, Claude Cowork
+    # (AGENT_IDENTITY_CLAUDE), Cursor, Copilot. A bare conversations/* also globs the
+    # claude.ai/ChatGPT browser-capture .json.zip objects scout writes to the same tree under
+    # AGENT_CLAUDE/ and AGENT_CHATGPT/ (deliberately out of lakehouse scope, wrong format) --
+    # BigQuery would parse those binaries as NDJSON and the whole ingest scan would fail. The
+    # dt=* shape matches AWS's partition template (<agent>/dt=<dt>/) and drops nothing the
+    # ingest SQL keeps (it already filters to these agents + a /dt=/ path).
+    source_uris   = [for a in keys(local.agents) : "${local.raw_root}${a}/dt=*"]
     connection_id = local.connection_ref
   }
 }

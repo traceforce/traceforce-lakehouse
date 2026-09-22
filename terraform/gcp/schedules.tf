@@ -27,9 +27,11 @@ resource "google_bigquery_connection_iam_member" "runner_conn" {
   member        = "serviceAccount:${google_service_account.runner.email}"
 }
 
-# Hourly ingest, deliberately at :57 (not the top of the hour): scheduled queries have no
-# overlap guard and running exactly on the hour can double-fire, which would double-load
-# objects. The anti-join keeps a single run idempotent.
+# Hourly ingest at :57 (a harmless offset off the top of the hour). DTS serializes runs of the
+# same config, so the scheduled query never overlaps itself, and the anti-join makes re-running
+# the same objects idempotent. Caveat: the anti-join is evaluated at query start, so it does NOT
+# protect a manual/ad-hoc run of this SQL fired concurrently with the scheduled one (that could
+# double-load) -- don't hand-run the ingest while the hourly may fire.
 resource "google_bigquery_data_transfer_config" "ingest" {
   display_name         = "${local.name}-ingest"
   location             = var.location
