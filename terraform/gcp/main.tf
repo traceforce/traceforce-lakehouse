@@ -59,16 +59,3 @@ resource "google_bigquery_routine" "otlp_attrs" {
   return_type = jsonencode({ typeKind = "JSON" })
 }
 
-# attrs_json = the decoded attributes minus the four keys that get their own columns.
-resource "google_bigquery_routine" "attrs_rest" {
-  dataset_id      = google_bigquery_dataset.lakehouse.dataset_id
-  routine_id      = "tf_attrs_rest"
-  routine_type    = "SCALAR_FUNCTION"
-  language        = "JAVASCRIPT"
-  definition_body = file("${path.module}/sql/tf_attrs_rest.js")
-  arguments {
-    name      = "attrs"
-    data_type = jsonencode({ typeKind = "JSON" })
-  }
-  return_type = jsonencode({ typeKind = "JSON" })
-}

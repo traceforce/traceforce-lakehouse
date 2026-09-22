@@ -4,11 +4,11 @@
 -- (WHEN NOT MATCHED BY SOURCE). "Newest" = the lexically greatest _FILE_NAME within the last 7
 -- dt partitions (paths embed date + time, so a same-day retry wins). The IF guard preserves the
 -- AWS safety: with no snapshot in the window (export not deployed yet, or failing) nothing runs,
--- so an empty source can never delete every mirrored row. Snapshot columns are typed by the
+-- so an empty source can never delete every mirrored row. (Matching the newest file by name
+-- already implies the dt window, so that predicate lives only in the MAX subqueries.) Snapshot columns are typed by the
 -- NDJSON external table, so no per-column casting is needed here.
 IF (SELECT COUNT(*) FROM `${source}`
-    WHERE REGEXP_EXTRACT(_FILE_NAME, r'/dt=([0-9]{4}-[0-9]{2}-[0-9]{2})/') >= FORMAT_DATE('%Y-%m-%d', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY))
-      AND _FILE_NAME = (SELECT MAX(_FILE_NAME) FROM `${source}`
+    WHERE _FILE_NAME = (SELECT MAX(_FILE_NAME) FROM `${source}`
                         WHERE REGEXP_EXTRACT(_FILE_NAME, r'/dt=([0-9]{4}-[0-9]{2}-[0-9]{2})/') >= FORMAT_DATE('%Y-%m-%d', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)))
       AND id IS NOT NULL) > 0
 THEN
@@ -16,8 +16,7 @@ THEN
   USING (
     SELECT ${cols}
     FROM `${source}`
-    WHERE REGEXP_EXTRACT(_FILE_NAME, r'/dt=([0-9]{4}-[0-9]{2}-[0-9]{2})/') >= FORMAT_DATE('%Y-%m-%d', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY))
-      AND _FILE_NAME = (SELECT MAX(_FILE_NAME) FROM `${source}`
+    WHERE _FILE_NAME = (SELECT MAX(_FILE_NAME) FROM `${source}`
                         WHERE REGEXP_EXTRACT(_FILE_NAME, r'/dt=([0-9]{4}-[0-9]{2}-[0-9]{2})/') >= FORMAT_DATE('%Y-%m-%d', DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)))
       AND id IS NOT NULL
   ) s
