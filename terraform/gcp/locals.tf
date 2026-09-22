@@ -209,6 +209,10 @@ locals {
   })
 
   # Rendered mirror SQL: one guarded atomic MERGE per table, concatenated into one daily script.
+  # NOTE: this runs as ONE multi-statement script, so a runtime error on any table aborts every
+  # table after it that run (unlike AWS's Step Functions Map, which isolates per-table). Each MERGE
+  # is a full idempotent upsert, so the next run after the bad table is fixed catches the rest up;
+  # a failed run is visible in the BigQuery scheduled-query run history.
   mirror_sql = join("\n", [
     for t, cols in local.export_columns : templatefile("${path.module}/sql/mirror_export.sql.tftpl", {
       target      = "${local.project}.${var.dataset_id}.${t}"

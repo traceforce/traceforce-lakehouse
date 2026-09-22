@@ -37,15 +37,9 @@ case "$FIRST" in
   SELECT|WITH|SHOW|DESCRIBE|DESC|EXPLAIN) ;;
   *) echo "refusing to run a non-read statement (first keyword: $FIRST)" >&2; exit 2 ;;
 esac
-# Block multi-statement scripting (bq runs scripts, unlike Athena): drop trailing whitespace
-# and one optional trailing ';', then reject if any ';' remains (a per-line sed anchor missed a
-# ';' split across newlines).
-BODY="${SQL%"${SQL##*[![:space:]]}"}" # rstrip
-BODY="${BODY%;}"                      # drop one trailing ';'
-if [[ "$BODY" == *";"* ]]; then
-  echo "refusing multi-statement SQL (a ';' before the end of the statement)" >&2
-  exit 2
-fi
+# No multi-statement guard: the query identity is read-only (dataViewer + jobUser, no
+# dataEditor), so a trailing write can't execute -- same as athena_query.sh relies on IAM.
+# (A ';'-scan here would false-reject legit reads whose string literals contain a ';'.)
 
 bq query --project_id="$PROJECT" --use_legacy_sql=false --format=csv \
   --maximum_bytes_billed="$(( MAX_GB * 1073741824 ))" --max_rows="$MAX_ROWS" "$SQL"

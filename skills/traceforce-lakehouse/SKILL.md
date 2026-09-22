@@ -64,6 +64,8 @@ example SQL is Athena/Trino. Translate to GoogleSQL:
 - `json_extract_scalar(x, '$.gen_ai.tool.name')` -> `JSON_VALUE(x, '$."gen_ai.tool.name"')` — **quote dotted keys**, or they read as nested paths and return NULL.
 - `current_timestamp - interval '7' day` -> `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)`; `date_format(...)` -> `FORMAT_TIMESTAMP` / `FORMAT_DATE`.
 - `"$path"` -> `_FILE_NAME` (external tables only; agent_events already has `source_object`).
+- `SHOW TABLES` / `DESCRIBE` don't exist -> `SELECT table_name FROM traceforce_lakehouse.INFORMATION_SCHEMA.TABLES`; `SELECT column_name, data_type FROM traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<t>'`.
+- No `"<table>$snapshots"` metadata on BigQuery; for mirror freshness query a timestamp column on the table itself (e.g. `max(updated_at)`) if it has one.
 
 ## Workflow
 
