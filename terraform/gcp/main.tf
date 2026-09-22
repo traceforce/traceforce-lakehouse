@@ -23,19 +23,25 @@ resource "google_bigquery_connection" "gcs" {
   cloud_resource {}
 }
 
-# The connection SA needs to read the raw objects and read/write the Iceberg table data.
+# The connection SA reads the raw objects and reads/writes the Iceberg table data. Google's
+# managed-Iceberg docs prescribe exactly objectUser (object read/write, incl. compaction) +
+# legacyBucketReader (bucket-level buckets.get that objectUser lacks). objectAdmin would only add
+# per-object set/getIamPolicy, which Iceberg never uses -- this is the documented least-privilege set.
 resource "google_storage_bucket_iam_member" "connection_gcs" {
-  bucket = var.logs_bucket
-  role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${google_bigquery_connection.gcs.cloud_resource[0].service_account_id}"
+  for_each = toset(["roles/storage.objectUser", "roles/storage.legacyBucketReader"])
+  bucket   = var.logs_bucket
+  role     = each.value
+  member   = "serviceAccount:${google_bigquery_connection.gcs.cloud_resource[0].service_account_id}"
 }
 
-# GCS IAM is eventually consistent: let the connection SA's objectAdmin grant propagate before
-# the managed Iceberg tables write their first metadata object, else table creation can hit a
-# transient storage.objects.create denial. Keeps the customer's apply a clean one-shot.
+# GCS IAM is eventually consistent (Google: "typically 2 minutes, potentially 7 minutes or
+# longer"), so let the connection SA's grants propagate before the managed Iceberg tables write
+# their first metadata object, else table creation can hit a transient storage.objects.create
+# denial. A fixed wait can't cover the 7-min tail; if a create still races, re-running apply is
+# idempotent (the empty table recreates). 180s covers the typical case; fires once, at create only.
 resource "time_sleep" "iam_propagation" {
   depends_on      = [google_storage_bucket_iam_member.connection_gcs]
-  create_duration = "60s"
+  create_duration = "180s"
 }
 
 # OTLP attribute decode (first-value-wins, scalars->text, arrayValue->[], kvlist->object),
