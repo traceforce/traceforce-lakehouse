@@ -46,6 +46,27 @@ it (e.g. `aws sso login`) and retry — it's picked up in this session. If AWS a
 isn't set at all, the agent can't get them mid-session: the user must set up AWS credentials
 (SSO, a profile, or keys) and `AWS_REGION` in a terminal, then relaunch the agent from it.
 
+## GCP (BigQuery)
+
+If the lakehouse is on GCP, use `bq_query.sh` instead of `athena_query.sh` — same read-only
+guarantees, BigQuery instead of Athena:
+
+```bash
+TRACEFORCE_LAKEHOUSE_PROJECT=<project> "${CLAUDE_SKILL_DIR}/scripts/bq_query.sh" "SELECT agent, count(*) FROM traceforce_lakehouse.agent_events WHERE ts > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY) GROUP BY 1"
+```
+
+Needs the gcloud CLI signed in (`gcloud auth login`) for `TRACEFORCE_LAKEHOUSE_PROJECT` (the
+project holding the dataset). Tables live in the `traceforce_lakehouse` dataset — reference them
+two-part: `traceforce_lakehouse.agent_events`, `traceforce_lakehouse.devices`, and so on.
+
+The reference/* schema (columns, joins, identity, redaction, enforcement) is identical, but its
+example SQL is Athena/Trino. Translate to GoogleSQL:
+- `json_extract_scalar(x, '$.gen_ai.tool.name')` -> `JSON_VALUE(x, '$."gen_ai.tool.name"')` — **quote dotted keys**, or they read as nested paths and return NULL.
+- `current_timestamp - interval '7' day` -> `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)`; `date_format(...)` -> `FORMAT_TIMESTAMP` / `FORMAT_DATE`.
+- `"$path"` -> `_FILE_NAME` (external tables only; agent_events already has `source_object`).
+- `SHOW TABLES` / `DESCRIBE` don't exist -> `SELECT table_name FROM traceforce_lakehouse.INFORMATION_SCHEMA.TABLES`; `SELECT column_name, data_type FROM traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<t>'`.
+- No `"<table>$snapshots"` metadata on BigQuery; for mirror freshness query a timestamp column on the table itself (e.g. `max(updated_at)`) if it has one.
+
 ## Workflow
 
 1. Pick the tables the question needs and read only their files under `reference/tables/`.
