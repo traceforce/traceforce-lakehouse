@@ -17,10 +17,11 @@ locals {
   #   gs://<bucket>/<prefix>/conversations/<AGENT_IDENTITY_*>/dt=<YYYYMMDD>/<serial>/<email>[_<org>]/<session>/<ts>_<uuid>_logs|traces.json.gz
   prefix_slash = var.logs_prefix == "" ? "" : "${var.logs_prefix}/"
   raw_root     = "gs://${var.logs_bucket}/${local.prefix_slash}conversations/"
-  # TraceForce's daily metadata snapshots + the Iceberg data live under this subtree.
+  # TraceForce's daily metadata snapshots land under this subtree in the customer's logs bucket.
   derived_root = "gs://${var.logs_bucket}/${local.prefix_slash}_traceforce/lakehouse/"
   exports_root = "${local.derived_root}exports/"
-  iceberg_root = "${local.derived_root}iceberg/"
+  # The managed Iceberg data lives in a module-owned bucket (see bucket.tf), never the logs bucket.
+  iceberg_root = "gs://${google_storage_bucket.iceberg.name}/iceberg/"
 
   # Only these four rails are in the standardized OTLP GenAI format (same as AWS).
   agents = {
