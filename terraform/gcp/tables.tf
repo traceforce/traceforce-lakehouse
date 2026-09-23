@@ -68,6 +68,10 @@ resource "google_bigquery_table" "raw_conversations" {
   dataset_id          = google_bigquery_dataset.lakehouse.dataset_id
   table_id            = "raw_${lower(each.key)}"
   deletion_protection = false
+  # BigQuery serves the hive partition column (dt INT64) appended to the schema; without this the
+  # provider reads it as a removed column and wants to recreate the table on EVERY plan
+  # (hashicorp/terraform-provider-google#12465, fixed by this virtual field in #23633).
+  ignore_auto_generated_schema = true
 
   # Data columns only; the dt partition column (INT64, YYYYMMDD) is declared by hive CUSTOM below.
   schema = jsonencode([
