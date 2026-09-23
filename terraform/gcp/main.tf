@@ -16,6 +16,17 @@ resource "google_bigquery_connection" "gcs" {
   cloud_resource {}
 }
 
+# BigQuery provisions the connection's service account ASYNCHRONOUSLY: terraform gets its email back
+# immediately, but the IAM backend does not yet know the identity, so binding a role to it in the
+# same apply can fail with "Service account bqcx-...@gcp-sa-bigquery-condel.iam.gserviceaccount.com
+# does not exist" (observed on a fresh apply; re-running then succeeds). This short wait lets the SA
+# register before the two grants below reference it, so a customer's first apply is one-shot. Fires
+# once, at connection-create only.
+resource "time_sleep" "connection_sa_ready" {
+  depends_on      = [google_bigquery_connection.gcs]
+  create_duration = "30s"
+}
+
 # The connection SA's access is split so it holds NO write/delete on the customer's data:
 #  - customer logs bucket: READ-ONLY (objectViewer + legacyBucketReader) -- it only reads the raw
 #    activity objects and the daily export snapshots there.
@@ -24,17 +35,19 @@ resource "google_bigquery_connection" "gcs" {
 #    compaction) + legacyBucketReader (bucket-level buckets.get objectUser lacks); objectAdmin would
 #    only add per-object set/getIamPolicy, which Iceberg never uses.
 resource "google_storage_bucket_iam_member" "connection_logs_read" {
-  for_each = toset(["roles/storage.objectViewer", "roles/storage.legacyBucketReader"])
-  bucket   = var.logs_bucket
-  role     = each.value
-  member   = "serviceAccount:${google_bigquery_connection.gcs.cloud_resource[0].service_account_id}"
+  depends_on = [time_sleep.connection_sa_ready]
+  for_each   = toset(["roles/storage.objectViewer", "roles/storage.legacyBucketReader"])
+  bucket     = var.logs_bucket
+  role       = each.value
+  member     = "serviceAccount:${google_bigquery_connection.gcs.cloud_resource[0].service_account_id}"
 }
 
 resource "google_storage_bucket_iam_member" "connection_iceberg_rw" {
-  for_each = toset(["roles/storage.objectUser", "roles/storage.legacyBucketReader"])
-  bucket   = google_storage_bucket.iceberg.name
-  role     = each.value
-  member   = "serviceAccount:${google_bigquery_connection.gcs.cloud_resource[0].service_account_id}"
+  depends_on = [time_sleep.connection_sa_ready]
+  for_each   = toset(["roles/storage.objectUser", "roles/storage.legacyBucketReader"])
+  bucket     = google_storage_bucket.iceberg.name
+  role       = each.value
+  member     = "serviceAccount:${google_bigquery_connection.gcs.cloud_resource[0].service_account_id}"
 }
 
 # GCS IAM is eventually consistent (Google: "typically 2 minutes, potentially 7 minutes or

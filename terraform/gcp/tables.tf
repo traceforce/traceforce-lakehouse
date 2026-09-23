@@ -81,6 +81,15 @@ resource "google_bigquery_table" "raw_conversations" {
     source_uris   = ["${local.raw_root}${each.key}/dt=*"]
     connection_id = local.connection_ref
 
+    # Tolerate a corrupt/truncated raw object (e.g. a partial upload -- observed: one object failing
+    # with "Parser terminated before end of string") instead of aborting the whole UNION ingest and
+    # dropping ALL agents' events for the run. Raw ingest is append-only and idempotent (anti-join on
+    # source_object), so a skipped object is simply re-picked up once scout re-uploads a clean copy;
+    # the bad-record count is visible in the scheduled-query run history. 100 tolerates occasional
+    # partial uploads while still failing loud on systematic corruption. The export_src tables below
+    # deliberately keep the default 0: there a dropped row would MERGE-DELETE the mirrored row.
+    max_bad_records = 100
+
     hive_partitioning_options {
       # CUSTOM (not AUTO): declare dt's name+type explicitly so the table works even for an agent
       # with no data yet. AUTO infers the partition schema by LISTING objects, so an empty agent
