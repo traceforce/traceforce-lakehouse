@@ -17,7 +17,7 @@ No key: a session has many rows, a tool call has 2-3 rows (decision, result, spa
 | `path_org` | string | Vendor org id associated with the source object; NULL when absent. |
 | `path_session` | string | Session id associated with the source object; NULL when unknown. |
 | `upload_ts` | timestamp | When the source object was uploaded, UTC. |
-| `source_object` | string | s3://bucket/key of the raw object this row came from. Equals a finding's conversation_storage pointer (see joins.md). |
+| `source_object` | string | Storage URI of the raw object this row came from — `s3://bucket/key` on AWS, `gs://bucket/key` on GCP. Equals a finding's conversation_storage pointer (see joins.md). |
 | `signal` | string | Whether the row is an OTLP `log` record or a `span`. |
 | `user_email` | string | End-user email as reported by the agent; NULL when the agent reports none (fall back to the device owner for a person — see joins.md). |
 | `agent_org_id` | string | The AI vendor's org id for the user (e.g. the Anthropic org for Claude); NULL when the agent reports none. |

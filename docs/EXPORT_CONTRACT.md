@@ -1,8 +1,9 @@
 # Export contract: TraceForce metadata snapshots
 
 Producer: TraceForce's export job, run daily around 04:00 UTC for every org with a CONNECTED
-**S3** Storage Provider (GCS and Azure follow with their lakehouse modules).
-Consumer: this module's `export_<table>` Glue tables and the daily MERGE/DELETE.
+S3 or GCS Storage Provider (Azure follows with its lakehouse module).
+Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glue tables on AWS
+(Athena), or the external tables on GCP (BigQuery).
 
 ## Location
 
