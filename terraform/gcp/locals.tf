@@ -61,15 +61,21 @@ locals {
   # biglake_configuration.connection_id wants project.location.connection (location lowercased).
   connection_ref = "${local.project}.${lower(local.bq_location)}.${google_bigquery_connection.gcs.connection_id}"
 
+  # objects source for the ingest: one SELECT per agent over its hive-partitioned raw table,
+  # UNION'd. dt (INT64 partition column) prunes the scan to the last lookback_days upload days;
+  # the anti-join skips already-loaded objects (keyed by source_object = _FILE_NAME).
+  ingest_objects_sql = join("\n  UNION ALL\n", [
+    for a in keys(local.agents) :
+    "SELECT _FILE_NAME AS src_path, '${a}' AS agent, resourceLogs, resourceSpans FROM `${local.project}.${var.dataset_id}.${google_bigquery_table.raw_conversations[a].table_id}` WHERE dt >= CAST(FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${var.lookback_days} - 1 DAY)) AS INT64) AND NOT EXISTS (SELECT 1 FROM `${local.project}.${var.dataset_id}.agent_events` t WHERE t.source_object = _FILE_NAME AND (t.upload_ts >= TIMESTAMP(DATE_SUB(CURRENT_DATE(), INTERVAL ${var.lookback_days} DAY)) OR t.upload_ts IS NULL))"
+  ])
+
   # Rendered ingest SQL (uses the validated template + the two JS routines).
   ingest_sql = templatefile("${path.module}/sql/ingest_agent_events.sql.tftpl", {
     target          = "${local.project}.${var.dataset_id}.agent_events"
-    raw             = "${local.project}.${var.dataset_id}.raw_conversations"
+    objects_sql     = local.ingest_objects_sql
     dataset         = "${local.project}.${var.dataset_id}"
-    agent_in_list   = join(", ", [for k in keys(local.agents) : "'${k}'"])
     agent_type_case = join(" ", [for k, v in local.agents : "WHEN '${k}' THEN ${v}"])
     cols            = join(", ", [for c in local.agent_events_schema : c.name])
-    lookback_days   = var.lookback_days
   })
 
   # Rendered mirror SQL: one guarded atomic MERGE per table, concatenated into one daily script.
