@@ -14,6 +14,12 @@ left are the join keys agent_type and mcp_server_type, resolved via the catalogs
 import re, pathlib, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+# Drift risk: the column lists live in TWO hand-maintained places now. We read the AWS module
+# (terraform/aws/{exports,s3tables}.tf); terraform/gcp/locals.tf keeps its OWN copy of the same
+# lists (agent_events_schema / export_tables) to build the BigQuery tables. They are meant to be
+# identical ("identical contract"), but nothing enforces it -- edit columns in one module and not
+# the other and they silently diverge, and this reference (generated from AWS only) is then wrong
+# for GCP. Keep both .tf in sync when changing columns, or add a check that fails when they differ.
 TF = ROOT / "terraform" / "aws"
 OUT = ROOT / "skills" / "traceforce-lakehouse" / "reference"
 
