@@ -74,8 +74,7 @@ bucket this module owns, which TraceForce cannot read.
 
    Any other agent (Cursor, Copilot, Codex): see [`AGENTS.md`](AGENTS.md). Then ask questions.
 
-The first load runs within the hour and covers the last three days. To load older data, start
-the state machine `traceforce-lakehouse-ingest` once with `{"job":"ingest","lookback_days":400}`.
+The first load runs within the hour and covers the last few days.
 
 ## Deploy — GCP (BigQuery)
 
@@ -112,7 +111,7 @@ the state machine `traceforce-lakehouse-ingest` once with `{"job":"ingest","look
    (`gcloud config set project <id>`), then ask questions. Tables live in the
    `traceforce_lakehouse` dataset.
 
-   The first load runs within the hour.
+   The first load runs within the hour and covers the last few days.
 
 ## Ask questions
 
@@ -154,8 +153,7 @@ SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1
   if neither, contact TraceForce.
 - **AWS:** the CloudWatch alarm `traceforce-lakehouse-runs-failed` raises on any failed
   scheduled run; set `alarm_sns_topic_arn` to be notified. The cause is in the Step Functions
-  execution history. After an outage, start the state machine once with
-  `{"job":"ingest","lookback_days":<days since it began, plus 2>}`. Nothing is loaded twice.
+  execution history.
 - **GCP:** failed loads show in the BigQuery Data Transfer console — the two scheduled queries
   that ingest `agent_events` and mirror the metadata tables. The metadata mirror is a MERGE, so
   re-running it loads nothing twice.
