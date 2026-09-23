@@ -19,8 +19,11 @@ bucket this module owns, which TraceForce cannot read.
 - **AWS:** a principal that can create S3 Tables, Glue, Athena, Step Functions and IAM resources
   in that account; deploy in the bucket's region.
 - **GCP:** the gcloud CLI signed in (`gcloud auth login` + `gcloud auth application-default
-  login`) on the project that owns the bucket, able to create BigQuery datasets, connections and
-  Data Transfer scheduled queries.
+  login`) on the project that owns the bucket, with rights to create BigQuery datasets,
+  connections, Data Transfer scheduled queries and a service account, set project-level and
+  bucket IAM, act as that service account, and enable the BigQuery / BigQuery Connection /
+  Data Transfer APIs — in practice project Owner (Editor is not enough: it cannot set a
+  project IAM binding). Or pre-enable the APIs and grant a scoped deploy SA those rights.
 
 ## Deploy — AWS (Athena)
 
@@ -111,6 +114,10 @@ the state machine `traceforce-lakehouse-ingest` once with `{"job":"ingest","look
    (`gcloud config set project <id>`), then ask questions. Tables live in the
    `traceforce_lakehouse` dataset.
 
+   The first load runs within the hour and covers the last `lookback_days` (default 3) days. To
+   backfill older history, raise `lookback_days` and re-apply; don't hand-run the ingest while
+   the hourly run may fire (it can double-load).
+
 ## Ask questions
 
 - Show me everything around finding X: the prompts before it, the tool calls after it, and what the agent did with the result.
@@ -155,7 +162,8 @@ SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1
   `{"job":"ingest","lookback_days":<days since it began, plus 2>}`. Nothing is loaded twice.
 - **GCP:** failed loads show in the BigQuery Data Transfer console — the two scheduled queries
   that ingest `agent_events` and mirror the metadata tables. The metadata mirror is a MERGE, so
-  re-running it loads nothing twice.
+  re-running it loads nothing twice. To catch up `agent_events` after an outage, raise
+  `lookback_days` and re-apply.
 
 ## More
 

@@ -37,16 +37,18 @@ if [[ -z "$SQL" ]]; then
   exit 2
 fi
 
-# Read-only by construction (the query identity should hold only dataViewer + jobUser); this
-# fails faster and blocks a stray DML/DDL first keyword.
+# First-keyword allowlist: a fast fail for an obvious DML/DDL statement. This is a convenience,
+# NOT the read-only guarantee -- see the note after the case block.
 FIRST="$(printf '%s\n' "$SQL" | grep -vE '^[[:space:]]*(--|$)' | awk '{print toupper($1); exit}')"
 case "$FIRST" in
   SELECT|WITH|SHOW|DESCRIBE|DESC|EXPLAIN) ;;
   *) echo "refusing to run a non-read statement (first keyword: $FIRST)" >&2; exit 2 ;;
 esac
-# No multi-statement guard: the query identity is read-only (dataViewer + jobUser, no
-# dataEditor), so a trailing write can't execute -- same as athena_query.sh relies on IAM.
-# (A ';'-scan here would false-reject legit reads whose string literals contain a ';'.)
+# Read-only is enforced by IAM, not by this script. Unlike Athena's single-statement API,
+# `bq query` runs multi-statement scripts, so `SELECT 1; DELETE ...` would execute the DELETE if
+# the caller can write. Run as an identity holding only bigquery.dataViewer (+ jobUser) -- see
+# SKILL.md "GCP (BigQuery)". We deliberately do NOT scan for ';': legit reads on this data carry
+# ';' in string literals (e.g. searching agent shell commands), so a scan would false-reject them.
 
 bq query --project_id="$PROJECT" --use_legacy_sql=false --format=csv \
   --maximum_bytes_billed="$(( MAX_GB * 1073741824 ))" --max_rows="$MAX_ROWS" "$SQL"

@@ -57,8 +57,10 @@ isn't set at all, the agent can't get them mid-session: the user must set up AWS
 
 ## GCP (BigQuery)
 
-If the lakehouse is on GCP, use `bq_query.sh` instead of `athena_query.sh` — same read-only
-guarantees, BigQuery instead of Athena:
+If the lakehouse is on GCP, use `bq_query.sh` instead of `athena_query.sh` (BigQuery instead of
+Athena). Read-only here is enforced by IAM, not the script: `bq` runs multi-statement scripts, so
+the query identity must hold only `bigquery.dataViewer` (+ `jobUser`) — do not query as the
+project owner/editor you deployed with:
 
 ```bash
 "${CLAUDE_SKILL_DIR}/scripts/bq_query.sh" "SELECT agent, count(*) FROM traceforce_lakehouse.agent_events WHERE ts > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY) GROUP BY 1"
@@ -72,7 +74,7 @@ with the lakehouse's project as your gcloud default (`gcloud config set project 
 
 The reference/* schema (columns, joins, identity, redaction, enforcement) is identical, but its
 example SQL is Athena/Trino. Translate to GoogleSQL:
-- `json_extract_scalar(x, '$.gen_ai.tool.name')` -> `JSON_VALUE(x, '$."gen_ai.tool.name"')` — **quote dotted keys**, or they read as nested paths and return NULL.
+- `json_extract_scalar(x, '$.gen_ai.tool.name')` -> `JSON_VALUE(x, '$."gen_ai.tool.name"')` — **quote dotted keys**, or they read as nested paths and return NULL. The reference's bracket form `$["cursor.version"]` maps the same way -> `JSON_VALUE(x, '$."cursor.version"')`.
 - `current_timestamp - interval '7' day` -> `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)`; `date_format(...)` -> `FORMAT_TIMESTAMP` / `FORMAT_DATE`.
 - `"$path"` -> `_FILE_NAME` (external tables only; agent_events already has `source_object`).
 - `SHOW TABLES` / `DESCRIBE` don't exist -> `SELECT table_name FROM traceforce_lakehouse.INFORMATION_SCHEMA.TABLES`; `SELECT column_name, data_type FROM traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<t>'`.
