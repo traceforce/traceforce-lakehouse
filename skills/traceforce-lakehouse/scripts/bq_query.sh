@@ -6,7 +6,8 @@
 #   TRACEFORCE_LAKEHOUSE_PROJECT=my-proj bq_query.sh "SELECT count(*) FROM traceforce_lakehouse.agent_events"
 #   TRACEFORCE_LAKEHOUSE_PROJECT=my-proj bq_query.sh -f query.sql
 #
-# Env: TRACEFORCE_LAKEHOUSE_PROJECT (required) the GCP project holding the dataset;
+# Env: TRACEFORCE_LAKEHOUSE_PROJECT (optional) the GCP project holding the dataset; defaults
+#      to the gcloud config project (`gcloud config set project <id>`) when unset.
 #      TRACEFORCE_LAKEHOUSE_MAX_ROWS (default 200); TRACEFORCE_LAKEHOUSE_MAX_GB per-query
 #      scan cap (default 50; the query fails rather than scan more).
 # Output: CSV on stdout; exit 1 with BigQuery's reason on failure.
@@ -16,8 +17,14 @@ PROJECT="${TRACEFORCE_LAKEHOUSE_PROJECT:-}"
 MAX_ROWS="${TRACEFORCE_LAKEHOUSE_MAX_ROWS:-200}"
 MAX_GB="${TRACEFORCE_LAKEHOUSE_MAX_GB:-50}"
 
+# Default to the gcloud CLI's configured project when the env override is unset, so a customer
+# who ran `gcloud config set project <id>` doesn't have to repeat it here. (get-value prints
+# "(unset)" when no project is configured.)
 if [[ -z "$PROJECT" ]]; then
-  echo "set TRACEFORCE_LAKEHOUSE_PROJECT to the GCP project holding the lakehouse dataset" >&2
+  PROJECT="$(gcloud config get-value project 2>/dev/null)"
+fi
+if [[ -z "$PROJECT" || "$PROJECT" == "(unset)" ]]; then
+  echo "no GCP project: set TRACEFORCE_LAKEHOUSE_PROJECT or run 'gcloud config set project <id>'" >&2
   exit 2
 fi
 if [[ "${1:-}" == "-f" ]]; then
