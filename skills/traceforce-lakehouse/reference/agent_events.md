@@ -8,8 +8,8 @@ No key: a session has many rows, a tool call has 2-3 rows (decision, result, spa
 
 | column | type | meaning |
 |---|---|---|
-| `agent` | string | AGENT_IDENTITY_CLAUDE_CODE (Claude Code), AGENT_IDENTITY_CLAUDE (the claude.ai chat agent, any deployment — not the desktop app specifically), AGENT_IDENTITY_CURSOR, AGENT_IDENTITY_GITHUB_COPILOT. |
-| `agent_type` | int | Integer code of `agent` (111, 1, 2, 8). Joins agent_catalog.agent_type and the agent_type columns of the metadata tables. |
+| `agent` | string | The agent's proto AgentIdentity name, e.g. AGENT_IDENTITY_CLAUDE_CODE (Claude Code), AGENT_IDENTITY_CLAUDE (the claude.ai chat agent, any deployment — not the desktop app specifically), AGENT_IDENTITY_CURSOR, AGENT_IDENTITY_GITHUB_COPILOT. Open-ended: every agent scout writes telemetry for appears here without a lakehouse change. |
+| `agent_type` | int | Integer code of `agent` from the scout proto (111, 1, 2, 8, ...). Joins agent_catalog.agent_type and the agent_type columns of the metadata tables. NULL for an identity newer than the lakehouse's identity map (`agent` is still set). |
 | `device_native_id` | string | Device serial. Joins devices.device_native_id. |
 | `device_uuid` | string | A stable per-install device GUID; NULL when the agent doesn't provide one. Prefer it over the serial when present. |
 | `sandbox_native_id` | string | Sandbox identifier; will join sandboxes.sandbox_native_id. Reserved: always NULL on events today (the collector is host-only and stamps no sandbox id). |

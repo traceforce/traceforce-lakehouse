@@ -2,19 +2,22 @@
 -- GCP port of the AWS/Trino ingest. Rendered by Terraform (templatefile), run by a BigQuery
 -- scheduled query. Idempotent: an object is loaded once, keyed by its full gs:// path
 -- (source_object = _FILE_NAME); the anti-join skips already-loaded objects. The raw external
--- tables are hive-partitioned on dt (one per agent), so each objects branch's `WHERE dt >= ...`
--- PRUNES the bytes scanned to the last few upload days (matching AWS's partition projection),
--- not a full-history scan. Attribute values keep OTLP encoding for arrays/kvlists; scalars are
+-- table is hive-partitioned on agent and dt, so `WHERE dt >= ...` PRUNES the bytes scanned to the
+-- last few upload days (matching AWS's partition projection), not a full-history scan. Attribute values keep OTLP encoding for arrays/kvlists; scalars are
 -- decoded to text by the tf_otlp_attrs JS routine (first-value-wins on duplicate keys), matching
 -- Athena element_at(map).
 INSERT INTO `${target}` (${cols})
 WITH objects AS (
-  -- One SELECT per agent over its hive-partitioned raw external table, UNION'd (rendered in
-  -- locals.tf). scout writes gs://.../conversations/<AGENT_IDENTITY_*>/dt=<YYYYMMDD>/...; each
-  -- per-agent table is rooted at its agent folder so dt (INT64) is a hive partition column. Each
-  -- branch carries agent as a literal, `WHERE dt >= <lookback>` prunes the bytes scanned, and the
-  -- anti-join (source_object = _FILE_NAME) skips already-loaded objects.
-  ${objects_sql}
+  -- The raw table is hive-partitioned on agent (from agent=<AGENT_IDENTITY_*>) and dt (INT64 from
+  -- dt=<YYYYMMDD>): `WHERE dt >= <lookback>` prunes the bytes scanned to the last few upload days and
+  -- the anti-join (source_object = _FILE_NAME) skips already-loaded objects. Every agent identity
+  -- scout writes is read; nothing here enumerates agents.
+  SELECT _FILE_NAME AS src_path, agent, resourceLogs, resourceSpans
+  FROM `${raw}`
+  WHERE dt >= CAST(FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${lookback_days} - 1 DAY)) AS INT64)
+    AND NOT EXISTS (SELECT 1 FROM `${target}` t
+                    WHERE t.source_object = _FILE_NAME
+                      AND (t.upload_ts >= TIMESTAMP(DATE_SUB(CURRENT_DATE(), INTERVAL ${lookback_days} DAY)) OR t.upload_ts IS NULL))
 ),
 parts AS (
   SELECT src_path, agent,

@@ -1,5 +1,5 @@
 # One Step Functions state machine runs both jobs, chosen by input:
-#   {"job":"ingest","lookback_days":3} hourly           -> flatten the last 3 upload-day folders (today + 2) of raw objects into agent_events
+#   {"job":"ingest","lookback_days":3} hourly           -> for every agent=... folder under telemetry/, flatten the last 3 upload-day folders (today + 2) into agent_events
 #   {"job":"exports"}                  daily 06:30 UTC  -> MERGE the newest TraceForce metadata snapshots into their mirrors
 # An input without "job" (the console default) runs the ingest; lookback_days defaults to 3.
 # A manual {"job":"ingest","lookback_days":400} re-reads a year of folders (catch-up after an
@@ -14,9 +14,8 @@ locals {
 
   ingest_sql = templatefile("${path.module}/sql/ingest_agent_events.sql.tftpl", {
     target          = local.agent_events_fqn
-    raw             = "\"${aws_glue_catalog_database.lakehouse.name}\".\"raw_conversations\""
-    agent_in_list   = join(", ", [for k in keys(local.agents) : "'${k}'"])
-    agent_type_case = join(" ", [for k, v in local.agents : "WHEN '${k}' THEN ${v}"])
+    raw             = "\"${aws_glue_catalog_database.lakehouse.name}\".\"raw_telemetry\""
+    agent_type_case = join(" ", [for k, v in module.schema.agent_identities : "WHEN '${k}' THEN ${v}"])
     cols            = join(", ", [for c in local.agent_events_schema : c.name])
   })
 
@@ -68,7 +67,7 @@ locals {
             { Variable = "$.lookback_days", NumericGreaterThanEquals = 1 },
             { Variable = "$.lookback_days", NumericLessThanEquals = 4000 },
           ]
-          Next = "IngestAgentEvents"
+          Next = "ListAgents"
         }]
         Default = "BadLookback"
       }
@@ -92,18 +91,73 @@ locals {
         Default = "Route"
       }
       SkippedOverlapping = { Type = "Succeed" }
-      IngestAgentEvents = {
+      # Which agents exist right now: ONE S3 listing of the telemetry/ root with Delimiter="/"
+      # returns the agent=<AGENT_IDENTITY_*> folders. No agent list lives in this module (a new
+      # identity is ingested on the next hourly run), and the raw table's injected projection
+      # needs each agent named in the query, so the ingest runs once per discovered folder --
+      # sequentially, since every run writes the same Iceberg table.
+      ListAgents = {
         Type     = "Task"
-        Resource = "arn:aws:states:::athena:startQueryExecution.sync"
+        Resource = "arn:aws:states:::aws-sdk:s3:listObjectsV2"
         Parameters = {
-          QueryString = local.ingest_sql
-          # The statement uses the parameter twice (raw-side day window, target-side anti-join bound).
-          "ExecutionParameters.$" = "States.Array(States.Format('{}', $.lookback_days), States.Format('{}', $.lookback_days))"
-          WorkGroup               = aws_athena_workgroup.lakehouse.name
-          QueryExecutionContext   = { Database = aws_glue_catalog_database.lakehouse.name }
+          Bucket    = var.logs_bucket
+          Prefix    = "${local.prefix_slash}telemetry/"
+          Delimiter = "/"
         }
-        Retry = local.ingest_retry
-        End   = true
+        ResultPath = "$.listing"
+        Next       = "HasAgents"
+      }
+      # An empty telemetry/ root (new customer, nothing uploaded yet) returns no CommonPrefixes at all.
+      HasAgents = {
+        Type    = "Choice"
+        Choices = [{ Variable = "$.listing.CommonPrefixes", IsPresent = true, Next = "ForEachAgent" }]
+        Default = "NoAgents"
+      }
+      NoAgents = { Type = "Succeed" }
+      ForEachAgent = {
+        Type           = "Map"
+        ItemsPath      = "$.listing.CommonPrefixes"
+        MaxConcurrency = 1
+        ItemSelector = {
+          "prefix.$"        = "$$.Map.Item.Value.Prefix"
+          "lookback_days.$" = "$.lookback_days"
+        }
+        ItemProcessor = {
+          ProcessorConfig = { Mode = "INLINE" }
+          StartAt         = "IsAgentFolder"
+          States = {
+            # Only agent=<value>/ folders are partitions; anything else under telemetry/ is skipped.
+            IsAgentFolder = {
+              Type    = "Choice"
+              Choices = [{ Variable = "$.prefix", StringMatches = "*/agent=*", Next = "AgentValue" }]
+              Default = "SkipFolder"
+            }
+            SkipFolder = { Type = "Pass", End = true }
+            # ".../telemetry/agent=AGENT_IDENTITY_CURSOR/" -> "AGENT_IDENTITY_CURSOR"
+            AgentValue = {
+              Type       = "Pass"
+              Parameters = { "agent.$" = "States.ArrayGetItem(States.StringSplit(States.ArrayGetItem(States.StringSplit($.prefix, '='), 1), '/'), 0)" }
+              ResultPath = "$.a"
+              Next       = "IngestAgentEvents"
+            }
+            IngestAgentEvents = {
+              Type     = "Task"
+              Resource = "arn:aws:states:::athena:startQueryExecution.sync"
+              Parameters = {
+                QueryString = local.ingest_sql
+                # Positional: the agent as a quoted SQL literal (the injected projection needs it),
+                # then the lookback twice (raw-side day window, target-side anti-join bound).
+                "ExecutionParameters.$" = "States.Array(States.Format('\\'{}\\'', $.a.agent), States.Format('{}', $.lookback_days), States.Format('{}', $.lookback_days))"
+                WorkGroup               = aws_athena_workgroup.lakehouse.name
+                QueryExecutionContext   = { Database = aws_glue_catalog_database.lakehouse.name }
+              }
+              ResultPath = null
+              Retry      = local.ingest_retry
+              End        = true
+            }
+          }
+        }
+        End = true
       }
       },
       {
@@ -217,7 +271,7 @@ resource "aws_cloudwatch_metric_alarm" "runs_failed" {
 # ---------------------------------------------------------------------------------------
 locals {
   bucket_arn         = "arn:aws:s3:::${var.logs_bucket}"
-  raw_objects        = "${local.bucket_arn}/${local.prefix_slash}conversations/*"
+  raw_objects        = "${local.bucket_arn}/${local.prefix_slash}telemetry/*"
   exports_objects    = "${local.bucket_arn}/${local.prefix_slash}_traceforce/lakehouse/exports/*"
   results_bucket_arn = aws_s3_bucket.results.arn
 
@@ -338,7 +392,7 @@ resource "aws_iam_role_policy" "sfn" {
         Action   = ["s3:ListBucket"]
         Resource = local.bucket_arn
         Condition = {
-          StringLike = { "s3:prefix" = ["${local.prefix_slash}conversations/*", "${local.prefix_slash}_traceforce/lakehouse/*"] }
+          StringLike = { "s3:prefix" = ["${local.prefix_slash}telemetry/*", "${local.prefix_slash}_traceforce/lakehouse/*"] }
         }
       },
       {

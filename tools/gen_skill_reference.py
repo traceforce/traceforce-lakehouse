@@ -197,8 +197,8 @@ TABLES = {
 
 # agent_events column meanings (hand-maintained; the generator asserts every column has one).
 EVENT_NOTES = {
-    "agent": "AGENT_IDENTITY_CLAUDE_CODE (Claude Code), AGENT_IDENTITY_CLAUDE (the claude.ai chat agent, any deployment \u2014 not the desktop app specifically), AGENT_IDENTITY_CURSOR, AGENT_IDENTITY_GITHUB_COPILOT.",
-    "agent_type": "Integer code of `agent` (111, 1, 2, 8). Joins agent_catalog.agent_type and the agent_type columns of the metadata tables.",
+    "agent": "The agent's proto AgentIdentity name, e.g. AGENT_IDENTITY_CLAUDE_CODE (Claude Code), AGENT_IDENTITY_CLAUDE (the claude.ai chat agent, any deployment \u2014 not the desktop app specifically), AGENT_IDENTITY_CURSOR, AGENT_IDENTITY_GITHUB_COPILOT. Open-ended: every agent scout writes telemetry for appears here without a lakehouse change.",
+    "agent_type": "Integer code of `agent` from the scout proto (111, 1, 2, 8, ...). Joins agent_catalog.agent_type and the agent_type columns of the metadata tables. NULL for an identity newer than the lakehouse's identity map (`agent` is still set).",
     "device_native_id": "Device serial. Joins devices.device_native_id.",
     "device_uuid": "A stable per-install device GUID; NULL when the agent doesn't provide one. Prefer it over the serial when present.",
     "sandbox_native_id": "Sandbox identifier; will join sandboxes.sandbox_native_id. Reserved: always NULL on events today (the collector is host-only and stamps no sandbox id).",

@@ -54,28 +54,24 @@ resource "google_bigquery_table" "export" {
   }
 }
 
-# Ingest SOURCE: one hive-partitioned external table PER agent over the raw gzipped OTLP-JSON
-# objects (each object is one JSON document; resourceLogs/resourceSpans are JSON columns). One
-# table per agent because the layout is <agent>/dt=<YYYYMMDD>/... : the bare <agent> segment can't
-# be a hive key, but rooting each table at its own agent folder makes dt=<YYYYMMDD> a hive
-# partition column (INT64), so the ingest's `WHERE dt >= ...` PRUNES the bytes scanned to the
-# lookback window (matching AWS's partition projection) instead of full-scanning all history every
-# hourly run. Scoping source_uris to <agent>/dt=* also excludes the pre-dt= legacy serial folders and
-# the browser-capture .json.zip objects, which scout writes under conversations/<AGENT_IDENTITY_*>/
-# <serial>/... with NO dt= segment (AGENT_IDENTITY_CLAUDE is shared by both writers, so the dt=
-# scoping -- not the identity name -- is what keeps them out; BigQuery cannot read a ZIP as gzip
-# NDJSON). Read via the connection SA.
-resource "google_bigquery_table" "raw_conversations" {
-  for_each            = local.agents
+# Ingest SOURCE: ONE hive-partitioned external table over every OTel activity object scout writes:
+#   <root>telemetry/agent=<AGENT_IDENTITY_*>/dt=<YYYYMMDD>/<serial>/<account>/<session>/<ts>_<uuid>_(logs|traces).json.gz
+# Both leading segments are Hive key=value, so agent and dt become partition columns (CUSTOM mode
+# declares them and needs no files: an agent with no data yet, or an empty bucket, reads as 0 rows)
+# and the ingest's `WHERE dt >= ...` PRUNES the scan to the lookback window, matching AWS's partition
+# projection. Nothing enumerates agents: a new agent identity shows up in the next hourly run. Browser
+# captures and the pre-telemetry/ layouts live under conversations/ and are never matched. Each object
+# is one JSON document; resourceLogs/resourceSpans are JSON columns. Read via the connection SA.
+resource "google_bigquery_table" "raw_telemetry" {
   dataset_id          = google_bigquery_dataset.lakehouse.dataset_id
-  table_id            = "raw_${lower(each.key)}"
+  table_id            = "raw_telemetry"
   deletion_protection = false
-  # BigQuery serves the hive partition column (dt INT64) appended to the schema; without this the
-  # provider reads it as a removed column and wants to recreate the table on EVERY plan
-  # (hashicorp/terraform-provider-google#12465, fixed by this virtual field in #23633).
+  # BigQuery serves the partition columns (agent, dt) appended to the schema; without this the
+  # provider reads them as removed columns and recreates the table on EVERY plan (provider
+  # #12465, fixed by this virtual field in #23633; needs google >= 7.31.0, see versions.tf).
   ignore_auto_generated_schema = true
 
-  # Data columns only; the dt partition column (INT64, YYYYMMDD) is declared by hive CUSTOM below.
+  # Data columns only; agent (STRING) and dt (INT64, YYYYMMDD) come from the hive CUSTOM prefix below.
   schema = jsonencode([
     { name = "resourceLogs", type = "JSON", mode = "NULLABLE" },
     { name = "resourceSpans", type = "JSON", mode = "NULLABLE" },
@@ -88,17 +84,12 @@ resource "google_bigquery_table" "raw_conversations" {
     # that literally (it does NOT fall back to the .gz extension), so without this every read parses
     # raw gzip bytes as NDJSON and fails with "Parser terminated before end of string".
     compression   = "GZIP"
-    source_uris   = ["${local.raw_root}${each.key}/dt=*"]
+    source_uris   = ["${local.raw_root}agent=*"]
     connection_id = local.connection_ref
 
     hive_partitioning_options {
-      # CUSTOM (not AUTO): declare dt's name+type explicitly so the table works even for an agent
-      # with no data yet. AUTO infers the partition schema by LISTING objects, so an empty agent
-      # folder (common -- most customers don't run all four agents) fails with "cannot query hive
-      # partitioned data ... without any associated files", which would abort the whole UNION ingest.
-      # CUSTOM needs no files, matching AWS partition projection's tolerance of empty agents.
       mode              = "CUSTOM"
-      source_uri_prefix = "${local.raw_root}${each.key}/{dt:INTEGER}"
+      source_uri_prefix = "${local.raw_root}{agent:STRING}/{dt:INTEGER}"
     }
   }
 }
