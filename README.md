@@ -112,8 +112,7 @@ the state machine `traceforce-lakehouse-ingest` once with `{"job":"ingest","look
    (`gcloud config set project <id>`), then ask questions. Tables live in the
    `traceforce_lakehouse` dataset.
 
-   The first load runs within the hour; to backfill older history, raise `lookback_days` and
-   re-apply.
+   The first load runs within the hour.
 
 ## Ask questions
 
@@ -159,8 +158,7 @@ SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1
   `{"job":"ingest","lookback_days":<days since it began, plus 2>}`. Nothing is loaded twice.
 - **GCP:** failed loads show in the BigQuery Data Transfer console — the two scheduled queries
   that ingest `agent_events` and mirror the metadata tables. The metadata mirror is a MERGE, so
-  re-running it loads nothing twice. To catch up `agent_events` after an outage, raise
-  `lookback_days` and re-apply.
+  re-running it loads nothing twice.
 
 ## More
 
