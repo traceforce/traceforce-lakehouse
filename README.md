@@ -155,7 +155,8 @@ SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1
   scheduled run; set `alarm_sns_topic_arn` to be notified. The cause is in the Step Functions
   execution history.
 - **GCP:** failed loads show in the BigQuery Data Transfer console — the two scheduled queries
-  that ingest `agent_events` and mirror the metadata tables. The metadata mirror is a MERGE, so
+  that ingest `agent_events` and mirror the metadata tables (set `alert_pubsub_topic` to publish
+  run notifications to a Pub/Sub topic you can alert from). The metadata mirror is a MERGE, so
   re-running it loads nothing twice.
 
 ## More

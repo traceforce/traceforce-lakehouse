@@ -38,6 +38,8 @@ resource "google_bigquery_data_transfer_config" "ingest" {
   data_source_id       = "scheduled_query"
   schedule             = "every 1 hours from 00:57 to 23:57"
   service_account_name = google_service_account.runner.email
+  # Optional run notifications (alert on failures) -- GCP analogue of AWS's alarm_sns_topic_arn.
+  notification_pubsub_topic = var.alert_pubsub_topic != "" ? var.alert_pubsub_topic : null
 
   params = {
     query = local.ingest_sql
@@ -60,6 +62,8 @@ resource "google_bigquery_data_transfer_config" "mirror" {
   data_source_id       = "scheduled_query"
   schedule             = "every day 12:30"
   service_account_name = google_service_account.runner.email
+  # Optional run notifications (alert on failures) -- GCP analogue of AWS's alarm_sns_topic_arn.
+  notification_pubsub_topic = var.alert_pubsub_topic != "" ? var.alert_pubsub_topic : null
 
   params = {
     query = local.mirror_sql
