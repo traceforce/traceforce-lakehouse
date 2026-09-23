@@ -38,9 +38,3 @@ variable "query_members" {
   type        = list(string)
   default     = []
 }
-
-variable "alert_pubsub_topic" {
-  description = "Optional Pub/Sub topic (projects/<project>/topics/<topic>) the scheduled queries publish run notifications to, so you can alert on failed loads — the GCP analogue of the AWS module's alarm_sns_topic_arn. Empty = no notifications."
-  type        = string
-  default     = ""
-}
