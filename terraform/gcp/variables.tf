@@ -15,7 +15,6 @@ variable "logs_prefix" {
   }
 }
 
-
 variable "dataset_id" {
   description = "BigQuery dataset that holds the lakehouse tables. Fixed name assumed by the skill and docs; change only if it collides."
   type        = string
