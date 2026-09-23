@@ -8,6 +8,11 @@ data "google_storage_bucket" "logs" {
 locals {
   project = data.google_project.this.project_id
 
+  # BigQuery must co-locate with the logs bucket, so the location IS the bucket's own -- no input
+  # needed. GCS returns it uppercase (US, US-EAST1); BigQuery wants multi-regions uppercase (US)
+  # and regions lowercase (us-east1), so lowercase only when it is a region (contains a hyphen).
+  bq_location = strcontains(data.google_storage_bucket.logs.location, "-") ? lower(data.google_storage_bucket.logs.location) : data.google_storage_bucket.logs.location
+
   # Where TraceForce's collector writes activity objects, per agent and upload day (UTC):
   #   gs://<bucket>/<prefix>/conversations/<AGENT_IDENTITY_*>/dt=<YYYYMMDD>/<serial>/<email>[_<org>]/<session>/<ts>_<uuid>_logs|traces.json.gz
   prefix_slash = var.logs_prefix == "" ? "" : "${var.logs_prefix}/"
@@ -195,7 +200,7 @@ locals {
   }
 
   # biglake_configuration.connection_id wants project.location.connection (location lowercased).
-  connection_ref = "${local.project}.${lower(var.location)}.${google_bigquery_connection.gcs.connection_id}"
+  connection_ref = "${local.project}.${lower(local.bq_location)}.${google_bigquery_connection.gcs.connection_id}"
 
   # Rendered ingest SQL (uses the validated template + the two JS routines).
   ingest_sql = templatefile("${path.module}/sql/ingest_agent_events.sql.tftpl", {
