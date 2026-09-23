@@ -60,9 +60,11 @@ resource "google_bigquery_table" "export" {
 # be a hive key, but rooting each table at its own agent folder makes dt=<YYYYMMDD> a hive
 # partition column (INT64), so the ingest's `WHERE dt >= ...` PRUNES the bytes scanned to the
 # lookback window (matching AWS's partition projection) instead of full-scanning all history every
-# hourly run. Scoping source_uris to <agent>/dt=* also excludes both the pre-dt= legacy serial
-# folders and the claude.ai/ChatGPT browser-capture .zip objects (short AGENT_CLAUDE/ AGENT_CHATGPT/
-# folders, wrong format) -- BigQuery would fail parsing those as NDJSON. Read via the connection SA.
+# hourly run. Scoping source_uris to <agent>/dt=* also excludes the pre-dt= legacy serial folders and
+# the browser-capture .json.zip objects, which scout writes under conversations/<AGENT_IDENTITY_*>/
+# <serial>/... with NO dt= segment (AGENT_IDENTITY_CLAUDE is shared by both writers, so the dt=
+# scoping -- not the identity name -- is what keeps them out; BigQuery cannot read a ZIP as gzip
+# NDJSON). Read via the connection SA.
 resource "google_bigquery_table" "raw_conversations" {
   for_each            = local.agents
   dataset_id          = google_bigquery_dataset.lakehouse.dataset_id
