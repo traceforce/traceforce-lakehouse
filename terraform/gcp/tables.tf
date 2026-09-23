@@ -68,7 +68,8 @@ resource "google_bigquery_table" "raw_telemetry" {
   deletion_protection = false
   # BigQuery serves the partition columns (agent, dt) appended to the schema; without this the
   # provider reads them as removed columns and recreates the table on EVERY plan (provider
-  # #12465, fixed by this virtual field in #23633; needs google >= 7.31.0, see versions.tf).
+  # #12465; the field arrived in 6.45.0 (#23633) and works for external tables since 7.31.0
+  # (#27188), hence the floor in versions.tf).
   ignore_auto_generated_schema = true
 
   # Data columns only; agent (STRING) and dt (INT64, YYYYMMDD) come from the hive CUSTOM prefix below.
@@ -95,7 +96,7 @@ resource "google_bigquery_table" "raw_telemetry" {
 }
 
 # 17 snapshot external tables: typed NDJSON so the mirror MERGE needs no casts. Non-hive (unlike
-# the raw_<agent> tables above) so the table can be created before any snapshots exist; the mirror
+# raw_telemetry above) so the table can be created before any snapshots exist; the mirror
 # derives dt from _FILE_NAME. Read via the connection SA. No metadata cache.
 resource "google_bigquery_table" "export_src" {
   for_each = local.export_columns

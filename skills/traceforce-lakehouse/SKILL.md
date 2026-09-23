@@ -1,6 +1,6 @@
 ---
 name: traceforce-lakehouse
-description: Query the TraceForce lakehouse (Athena over Iceberg in AWS, or BigQuery over Iceberg in GCP) to answer questions about AI-agent activity from Claude Code, Claude (the claude.ai chat agent), Cursor and GitHub Copilot: prompts, tool calls, MCP servers, tokens and cost, sensitive-data and containment findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena, BigQuery or SQL over TraceForce data. Read-only. Not for the TraceForce REST API or console; ChatGPT activity is not in the lake.
+description: Query the TraceForce lakehouse (Athena over Iceberg in AWS, or BigQuery over Iceberg in GCP) to answer questions about AI-agent activity from agents such as Claude Code, Claude (the claude.ai chat agent), Cursor and GitHub Copilot: prompts, tool calls, MCP servers, tokens and cost, sensitive-data and containment findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena, BigQuery or SQL over TraceForce data. Read-only. Not for the TraceForce REST API or console; ChatGPT activity is not in the lake.
 ---
 
 # TraceForce lakehouse

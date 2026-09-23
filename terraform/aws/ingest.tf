@@ -133,10 +133,11 @@ locals {
               Default = "SkipFolder"
             }
             SkipFolder = { Type = "Pass", End = true }
-            # ".../telemetry/agent=AGENT_IDENTITY_CURSOR/" -> "AGENT_IDENTITY_CURSOR"
+            # ".../telemetry/agent=AGENT_IDENTITY_CURSOR/" -> "AGENT_IDENTITY_CURSOR". The split index
+            # skips any '=' inside the customer's own logs_prefix, so agent= is always the one taken.
             AgentValue = {
               Type       = "Pass"
-              Parameters = { "agent.$" = "States.ArrayGetItem(States.StringSplit(States.ArrayGetItem(States.StringSplit($.prefix, '='), 1), '/'), 0)" }
+              Parameters = { "agent.$" = "States.ArrayGetItem(States.StringSplit(States.ArrayGetItem(States.StringSplit($.prefix, '='), ${length(split("=", local.prefix_slash))}), '/'), 0)" }
               ResultPath = "$.a"
               Next       = "IngestAgentEvents"
             }
