@@ -15,11 +15,6 @@ variable "logs_prefix" {
   }
 }
 
-variable "location" {
-  description = "BigQuery + connection location; must equal the logs bucket's location (e.g. \"us-east1\" for a regional bucket, or \"US\" for a multi-region)."
-  type        = string
-}
-
 variable "dataset_id" {
   description = "BigQuery dataset that holds the lakehouse tables. Fixed name assumed by the skill and docs; change only if it collides."
   type        = string

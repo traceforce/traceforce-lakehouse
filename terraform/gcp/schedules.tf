@@ -34,7 +34,7 @@ resource "google_bigquery_connection_iam_member" "runner_conn" {
 # double-load) -- don't hand-run the ingest while the hourly may fire.
 resource "google_bigquery_data_transfer_config" "ingest" {
   display_name         = "${local.name}-ingest"
-  location             = var.location
+  location             = local.bq_location
   data_source_id       = "scheduled_query"
   schedule             = "every 1 hours from 00:57 to 23:57"
   service_account_name = google_service_account.runner.email
@@ -56,7 +56,7 @@ resource "google_bigquery_data_transfer_config" "ingest" {
 # upserts the newest snapshot and deletes rows no longer in it, in one race-free statement).
 resource "google_bigquery_data_transfer_config" "mirror" {
   display_name         = "${local.name}-mirror"
-  location             = var.location
+  location             = local.bq_location
   data_source_id       = "scheduled_query"
   schedule             = "every day 12:30"
   service_account_name = google_service_account.runner.email

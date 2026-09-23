@@ -1,16 +1,9 @@
-# The dataset that holds every lakehouse table. Its location must equal the logs bucket's.
+# The dataset that holds every lakehouse table. Its location is the logs bucket's (BQ co-locates).
 resource "google_bigquery_dataset" "lakehouse" {
   depends_on  = [google_project_service.apis]
   dataset_id  = var.dataset_id
-  location    = var.location
+  location    = local.bq_location
   description = "TraceForce lakehouse: agent_events (flattened activity) + mirrored metadata, queryable in plain language."
-
-  lifecycle {
-    precondition {
-      condition     = lower(data.google_storage_bucket.logs.location) == lower(var.location)
-      error_message = "var.location (${var.location}) must equal the logs bucket's location (${data.google_storage_bucket.logs.location})."
-    }
-  }
 }
 
 # Cloud-resource connection: BigQuery reads the raw objects and reads/writes the Iceberg data
@@ -18,7 +11,7 @@ resource "google_bigquery_dataset" "lakehouse" {
 resource "google_bigquery_connection" "gcs" {
   depends_on    = [google_project_service.apis]
   connection_id = local.name
-  location      = var.location
+  location      = local.bq_location
   description   = "TraceForce lakehouse access to the logs bucket (raw + Iceberg data)."
   cloud_resource {}
 }
