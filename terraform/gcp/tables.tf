@@ -69,7 +69,7 @@ resource "google_bigquery_table" "raw_conversations" {
   table_id            = "raw_${lower(each.key)}"
   deletion_protection = false
 
-  # Data columns only; the dt partition column (INT64, YYYYMMDD) is auto-detected by hive AUTO.
+  # Data columns only; the dt partition column (INT64, YYYYMMDD) is declared by hive CUSTOM below.
   schema = jsonencode([
     { name = "resourceLogs", type = "JSON", mode = "NULLABLE" },
     { name = "resourceSpans", type = "JSON", mode = "NULLABLE" },
@@ -82,15 +82,20 @@ resource "google_bigquery_table" "raw_conversations" {
     connection_id = local.connection_ref
 
     hive_partitioning_options {
-      mode              = "AUTO"
-      source_uri_prefix = "${local.raw_root}${each.key}/"
+      # CUSTOM (not AUTO): declare dt's name+type explicitly so the table works even for an agent
+      # with no data yet. AUTO infers the partition schema by LISTING objects, so an empty agent
+      # folder (common -- most customers don't run all four agents) fails with "cannot query hive
+      # partitioned data ... without any associated files", which would abort the whole UNION ingest.
+      # CUSTOM needs no files, matching AWS partition projection's tolerance of empty agents.
+      mode              = "CUSTOM"
+      source_uri_prefix = "${local.raw_root}${each.key}/{dt:INTEGER}"
     }
   }
 }
 
-# 17 snapshot external tables: typed NDJSON so the mirror MERGE needs no casts. Non-hive (like
-# raw_conversations) so the table can be created before any snapshots exist; the mirror derives
-# dt from _FILE_NAME. Read via the connection SA. No metadata cache.
+# 17 snapshot external tables: typed NDJSON so the mirror MERGE needs no casts. Non-hive (unlike
+# the raw_<agent> tables above) so the table can be created before any snapshots exist; the mirror
+# derives dt from _FILE_NAME. Read via the connection SA. No metadata cache.
 resource "google_bigquery_table" "export_src" {
   for_each = local.export_columns
 
