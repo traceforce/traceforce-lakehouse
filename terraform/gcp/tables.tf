@@ -115,7 +115,7 @@ resource "google_bigquery_table" "export_src" {
   external_data_configuration {
     autodetect    = false
     source_format = "NEWLINE_DELIMITED_JSON"
-    compression   = "GZIP" # gzip snapshots; must be explicit, see raw_conversations above
+    compression   = "GZIP" # gzip snapshots; must be explicit, see raw_telemetry above
     source_uris   = ["${local.exports_root}${each.key}/*"]
     connection_id = local.connection_ref
   }
