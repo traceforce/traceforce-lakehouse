@@ -1,13 +1,14 @@
 ---
 name: traceforce-lakehouse
-description: Query the TraceForce lakehouse (Athena over Iceberg tables in this AWS account) to answer questions about AI-agent activity from Claude Code, Claude (the claude.ai chat agent), Cursor and GitHub Copilot: prompts, tool calls, MCP servers, tokens and cost, sensitive-data and containment findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena or SQL over TraceForce data. Read-only SELECT. Not for the TraceForce REST API or console; ChatGPT activity is not in the lake.
+description: Query the TraceForce lakehouse (Athena over Iceberg in AWS, or BigQuery over Iceberg in GCP) to answer questions about AI-agent activity from Claude Code, Claude (the claude.ai chat agent), Cursor and GitHub Copilot: prompts, tool calls, MCP servers, tokens and cost, sensitive-data and containment findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena, BigQuery or SQL over TraceForce data. Read-only. Not for the TraceForce REST API or console; ChatGPT activity is not in the lake.
 ---
 
 # TraceForce lakehouse
 
 ## Rules
 
-- Read-only: `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `EXPLAIN` only. Never modify data.
+- Read-only: `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `EXPLAIN` only (BigQuery: `SELECT`/`WITH`
+  and `INFORMATION_SCHEMA` — no `SHOW`/`DESCRIBE`). Never modify data.
 - Constrain `agent_events` by `ts` unless the user asks for all time, and never `SELECT *` from it:
   `content_input`, `content_output`, `tool_args`, `tool_result` and `attrs_json` are large.
 - `agent_type` and `mcp_server_type` are integer codes, not names — resolve them via the
@@ -24,7 +25,15 @@ description: Query the TraceForce lakehouse (Athena over Iceberg tables in this 
 
 ## Run a query
 
-Use the bundled script; do not reimplement it with raw `aws athena` calls.
+First pick the engine. The lakehouse is set up on **one** cloud and your task names it (the
+TraceForce setup prompt says "on AWS (Athena)" or "on GCP (BigQuery)"):
+- **AWS / Athena** → `athena_query.sh` (below).
+- **GCP / BigQuery** → `bq_query.sh` (see "GCP (BigQuery)" below).
+
+Do not infer the cloud from which credentials are present — a machine often has both. If the
+task doesn't name one, ask.
+
+Use the bundled script; do not reimplement it with raw `aws athena` / `bq` calls.
 
 ```bash
 "${CLAUDE_SKILL_DIR}/scripts/athena_query.sh" "SELECT agent, count(*) FROM agent_events WHERE ts > current_timestamp - interval '7' day GROUP BY 1"
@@ -48,24 +57,31 @@ isn't set at all, the agent can't get them mid-session: the user must set up AWS
 
 ## GCP (BigQuery)
 
-If the lakehouse is on GCP, use `bq_query.sh` instead of `athena_query.sh` — same read-only
-guarantees, BigQuery instead of Athena:
+If the lakehouse is on GCP, use `bq_query.sh` instead of `athena_query.sh` (BigQuery instead of
+Athena). Read-only here is enforced by IAM, not the script: `bq` runs multi-statement scripts, so
+the query identity must hold only `bigquery.dataViewer` (+ `jobUser`) — do not query as the
+project owner/editor you deployed with:
 
 ```bash
-TRACEFORCE_LAKEHOUSE_PROJECT=<project> "${CLAUDE_SKILL_DIR}/scripts/bq_query.sh" "SELECT agent, count(*) FROM traceforce_lakehouse.agent_events WHERE ts > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY) GROUP BY 1"
+"${CLAUDE_SKILL_DIR}/scripts/bq_query.sh" "SELECT agent, count(*) FROM traceforce_lakehouse.agent_events WHERE ts > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY) GROUP BY 1"
 ```
 
-Needs the gcloud CLI signed in (`gcloud auth login`) for `TRACEFORCE_LAKEHOUSE_PROJECT` (the
-project holding the dataset). Tables live in the `traceforce_lakehouse` dataset — reference them
-two-part: `traceforce_lakehouse.agent_events`, `traceforce_lakehouse.devices`, and so on.
+Needs the gcloud CLI signed in (`gcloud auth login` + `gcloud auth application-default login`)
+with the lakehouse's project as your gcloud default (`gcloud config set project <id>`);
+`bq_query.sh` uses that, or set `TRACEFORCE_LAKEHOUSE_PROJECT` to override. Tables live in the
+`traceforce_lakehouse` dataset — reference them two-part: `traceforce_lakehouse.agent_events`,
+`traceforce_lakehouse.devices`, and so on.
 
 The reference/* schema (columns, joins, identity, redaction, enforcement) is identical, but its
 example SQL is Athena/Trino. Translate to GoogleSQL:
-- `json_extract_scalar(x, '$.gen_ai.tool.name')` -> `JSON_VALUE(x, '$."gen_ai.tool.name"')` — **quote dotted keys**, or they read as nested paths and return NULL.
+- `json_extract_scalar(x, '$.gen_ai.tool.name')` -> `JSON_VALUE(x, '$."gen_ai.tool.name"')` — **quote dotted keys**, or they read as nested paths and return NULL. The reference's bracket form `$["cursor.version"]` maps the same way -> `JSON_VALUE(x, '$."cursor.version"')`.
 - `current_timestamp - interval '7' day` -> `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)`; `date_format(...)` -> `FORMAT_TIMESTAMP` / `FORMAT_DATE`.
 - `"$path"` -> `_FILE_NAME` (external tables only; agent_events already has `source_object`).
 - `SHOW TABLES` / `DESCRIBE` don't exist -> `SELECT table_name FROM traceforce_lakehouse.INFORMATION_SCHEMA.TABLES`; `SELECT column_name, data_type FROM traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<t>'`.
-- No `"<table>$snapshots"` metadata on BigQuery; for mirror freshness query a timestamp column on the table itself (e.g. `max(updated_at)`) if it has one.
+- No `"<table>$snapshots"` metadata on BigQuery; for mirror freshness use the table's last-load
+  time: `SELECT TIMESTAMP_MILLIS(last_modified_time) FROM traceforce_lakehouse.__TABLES__ WHERE table_id = '<mirror>'` — **not** `max(updated_at)`, which is a source-side time.
+- `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `CROSS JOIN UNNEST(JSON_VALUE_ARRAY(x)) AS elem` (unnesting a JSON array of strings).
+- Raw-object joins match the storage URI scheme: `s3://…` on AWS, `gs://…` on GCP. Match `source_object` to the connected bucket's scheme — a hardcoded `s3://` matches zero rows on GCP.
 
 ## Workflow
 
@@ -77,10 +93,13 @@ example SQL is Athena/Trino. Translate to GoogleSQL:
    `SELECT count(*) FROM <mirror>` for each metadata table the question joins. An empty mirror
    means the daily export has not delivered yet; say so instead of answering from a join that
    returns nothing. Mirror staleness: `SELECT max(committed_at) FROM "<mirror>$snapshots"`
-   (not `max(updated_at)`, which is a source-side time).
+   (not `max(updated_at)`, which is a source-side time; BigQuery has no `$snapshots` — use the
+   `__TABLES__.last_modified_time` form from "GCP (BigQuery)").
 3. Write the targeted query with `ts` bounds; take join rules from `reference/joins.md`.
-4. If Athena fails with "column cannot be resolved" or a type error: `DESCRIBE traceforce.<table>`,
-   fix, rerun. If it returns 0 rows: widen the window, check `deleted_at`, and check that every
+4. If a query fails with "column cannot be resolved" or a type error, introspect the schema
+   (Athena: `DESCRIBE traceforce.<table>`; BigQuery: `SELECT column_name, data_type FROM
+   traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<table>'`), fix, rerun.
+   If it returns 0 rows: widen the window, check `deleted_at`, and check that every
    joined mirror has rows (0 rows from an empty mirror is a delivery gap, not an absence).
 5. Resolve `agent_type` / `mcp_server_type` names via the catalogs, state gaps, answer.
 
@@ -98,7 +117,9 @@ example SQL is Athena/Trino. Translate to GoogleSQL:
 - `reference/redaction.md`: what the stored content columns hold, and where the matched value lives.
 - `reference/enforcement.md`: telling an actual block/reject from a warn, per agent.
 
-Athena is authoritative for names and types: `SHOW TABLES IN traceforce`, `DESCRIBE traceforce.<table>`.
+The engine is authoritative for names and types — Athena: `SHOW TABLES IN traceforce`,
+`DESCRIBE traceforce.<table>`; BigQuery: `SELECT table_name FROM traceforce_lakehouse.INFORMATION_SCHEMA.TABLES`
+and `... .COLUMNS`.
 
 ## What people ask
 

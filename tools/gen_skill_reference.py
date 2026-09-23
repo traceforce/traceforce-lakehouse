@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Generate the skill's schema reference from the Terraform column lists.
+"""Generate the skill's schema reference from the canonical column lists.
 
-Single source of truth for column names/types is terraform/ (exports.tf for the mirrors,
-s3tables.tf for agent_events). This script adds meaning: per-column notes and join
-rules, and writes skills/traceforce-lakehouse/reference/*.md. Re-run after changing
-either .tf file; commit the output.
+Single source of truth for column names/types is terraform/schema/columns.json, consumed by both
+cloud modules (terraform/aws, terraform/gcp) and this script. This script adds meaning: per-column
+notes and join rules, and writes skills/traceforce-lakehouse/reference/*.md. Re-run after editing
+columns.json; commit the output.
 
 Enum columns are decoded to human-readable text at export time (decode-at-export), so the
 mirror already stores strings (e.g. op = 'delete', category = 'credentials',
 finding_status = 'awaiting_review'); there is no integer-decode ring here. The only codes
 left are the join keys agent_type and mcp_server_type, resolved via the catalogs.
 """
-import re, pathlib, sys
+import json, pathlib, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-TF = ROOT / "terraform"
+SCHEMA = ROOT / "terraform" / "schema" / "columns.json"
 OUT = ROOT / "skills" / "traceforce-lakehouse" / "reference"
 
 # ----------------------------------------------------------------------------- tables
@@ -51,7 +51,7 @@ COMMON = {
     "sandbox_id": "→ sandboxes.id; NULL when the row is about the host device itself.",
     "metadata": "JSON text; vendor-specific extras (e.g. version).",
     "customer_storage": "JSON text {bucket, key_prefix, region, provider, source_file}: a pointer into the customer's BYO storage bucket. On conversations it locates the session's uploaded activity objects; on findings it locates the evidence object holding the verbatim matched value / tool input (the redacted attachment for file findings). NULL when BYO storage is unconfigured or the source object is empty. Evidence is not in the lake by design; see reference/redaction.md.",
-    "conversation_storage": "JSON text {bucket, key_prefix, region, provider, source_file}: a pointer into the customer's BYO storage bucket — the exact activity/source object the finding was detected in. Equals agent_events.source_object when written as concat('s3://', bucket, '/', key_prefix, source_file); join on it to get the records of that upload. NULL when BYO storage is unconfigured or the finding's source object is empty.",
+    "conversation_storage": "JSON text {bucket, key_prefix, region, provider, source_file}: a pointer into the customer's BYO storage bucket — the exact activity/source object the finding was detected in. Equals agent_events.source_object, the object's storage URI (`s3://…` on AWS, `gs://…` on GCP; = concat(scheme, '://', bucket, '/', key_prefix, source_file)); join on it to get the records of that upload. NULL when BYO storage is unconfigured or the finding's source object is empty.",
     "description": "Catalog description.",
     "website": "Vendor website.",
     "logo_url": "Logo URL.",
@@ -136,7 +136,7 @@ TABLES = {
     "agent_conversations": dict(
         purpose="One row per agent session/conversation TraceForce has scanned; created on scan whether or not anything was found. The bridge between findings and the logs; count findings from the findings tables, not from here.",
         joins=["agent_conversations.conversation_external_id = agent_events.session_id", "agent_account_id → agent_accounts.id", "device_id → devices.id",
-               "customer_storage.source_file is the session folder: agent_events.source_object LIKE concat('s3://', bucket, '/', key_prefix, source_file, '%')"],
+               "customer_storage.source_file is the session folder: agent_events.source_object LIKE concat(scheme, '://', bucket, '/', key_prefix, source_file, '%'), where scheme is 's3' on AWS and 'gs' on GCP (a hardcoded 's3://' matches zero rows on GCP)"],
         notes={"agent_account_id": "→ agent_accounts.id", "conversation_external_id": "The agent's session/conversation id; equals agent_events.session_id.",
                "name": "Conversation title as shown in the agent UI; NULL if untitled.", "is_archived": "Archived in the agent UI.",
                "conversation_create_time": "Agent-reported creation time (UTC).", "conversation_update_time": "Agent-reported last update (UTC)."}),
@@ -206,7 +206,7 @@ EVENT_NOTES = {
     "path_org": "Vendor org id associated with the source object; NULL when absent.",
     "path_session": "Session id associated with the source object; NULL when unknown.",
     "upload_ts": "When the source object was uploaded, UTC.",
-    "source_object": "s3://bucket/key of the raw object this row came from. Equals a finding's conversation_storage pointer (see joins.md).",
+    "source_object": "Storage URI of the raw object this row came from — `s3://bucket/key` on AWS, `gs://bucket/key` on GCP. Equals a finding's conversation_storage pointer (see joins.md).",
     "signal": "Whether the row is an OTLP `log` record or a `span`.",
     "user_email": "End-user email as reported by the agent; NULL when the agent reports none (fall back to the device owner for a person — see joins.md).",
     "agent_org_id": "The AI vendor's org id for the user (e.g. the Anthropic org for Claude); NULL when the agent reports none.",
@@ -245,29 +245,12 @@ EVENT_NOTES = {
     "ingested_at": "When the row was loaded, UTC.",
 }
 
-# ----------------------------------------------------------------------------- parse terraform
-def parse_export_tables(text):
-    body = text[text.index("export_tables = {"):]
-    body = body[: body.index("\n  }\n")]
-    out, cur = {}, None
-    for line in body.splitlines():
-        m = re.match(r"\s{4}(\w+) = \[", line)
-        if m:
-            cur = m.group(1); out[cur] = []; continue
-        if cur:
-            out[cur] += [tuple(c.split(":", 1)) for c in re.findall(r'"([^"]+)"', line)]
-    quoted = len(re.findall(r'"[^"]+"', body))
-    parsed = sum(len(v) for v in out.values())
-    assert quoted == parsed, f"parsed {parsed} of {quoted} column entries"
-    return out
-
-def parse_agent_events(text):
-    return re.findall(r'\{ name = "(\w+)", type = "(\w+)", required = (true|false) \}', text)
-
+# ----------------------------------------------------------------------------- load schema
 def main():
-    exports = parse_export_tables((TF / "exports.tf").read_text())
-    events = parse_agent_events((TF / "s3tables.tf").read_text())
-    assert events, "no agent_events columns parsed from s3tables.tf"
+    data = json.loads(SCHEMA.read_text())
+    exports = {t: [tuple(c.split(":", 1)) for c in cols] for t, cols in data["export_tables"].items()}
+    events = [(c["name"], c["type"], "true" if c["required"] else "false") for c in data["agent_events"]]
+    assert events, "no agent_events columns in columns.json"
     missing = [t for t in exports if t not in TABLES]
     if missing:
         print("ERROR: no notes for", missing, file=sys.stderr); sys.exit(1)
@@ -283,7 +266,7 @@ def main():
              "(`json_extract_scalar(col, '$.key')`). Soft deletes use `deleted_at`. Enum columns are already",
              "human-readable text (e.g. `op` = 'delete', `category` = 'credentials', `finding_status` = 'awaiting_review');",
              "the only integer codes left are the join keys `agent_type` and `mcp_server_type` (resolve via the catalogs).",
-             "Generated by tools/gen_skill_reference.py from terraform/exports.tf; do not edit by hand.", ""]
+             "Generated by tools/gen_skill_reference.py from terraform/schema/columns.json; do not edit by hand.", ""]
     tdir = OUT / "tables"; tdir.mkdir(exist_ok=True)
     for old in tdir.glob("*.md"):
         old.unlink()

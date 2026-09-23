@@ -1,8 +1,9 @@
 # Export contract: TraceForce metadata snapshots
 
-Producer: TraceForce's export job, run daily around 04:00 UTC for every org with a CONNECTED
-**S3** Storage Provider (GCS and Azure follow with their lakehouse modules).
-Consumer: this module's `export_<table>` Glue tables and the daily MERGE/DELETE.
+Producer: TraceForce's export job, run daily around 11:00 UTC for every org with a CONNECTED
+S3 or GCS Storage Provider (Azure follows with its lakehouse module).
+Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glue tables on AWS
+(Athena), or the external tables on GCP (BigQuery).
 
 ## Location
 
@@ -10,8 +11,8 @@ Consumer: this module's `export_<table>` Glue tables and the daily MERGE/DELETE.
 <bucket>/<prefix>/_traceforce/lakehouse/exports/<table>/dt=YYYY-MM-DD/<HHMMSS>.jsonl.gz
 ```
 
-- `dt` and `HHMMSS` are UTC at the start of the run (around 04:00 UTC; the consumer merges at
-  06:30 UTC, so a later file is merged the next day or on a manual `{"job":"exports"}` run). A manual re-run the same day writes a
+- `dt` and `HHMMSS` are UTC at the start of the run (around 11:00 UTC; the consumer merges at
+  12:30 UTC, so a later file is merged the next day or on a manual `{"job":"exports"}` run). A manual re-run the same day writes a
   second file; the consumer takes the lexically greatest path among the files with at least one
   row within the last 7 days of `dt` (see the empty-file note below), so the newest file wins and
   nothing is ever overwritten or deleted. Failures are not
@@ -21,7 +22,8 @@ Consumer: this module's `export_<table>` Glue tables and the daily MERGE/DELETE.
 - One file per table per run (gzip, JSON Lines, UTF-8). An empty table still writes a
   zero-line file, but Athena reads no rows from it, so the newest non-empty file stays the
   effective snapshot: a table that genuinely drops to zero rows keeps its stale mirror rows
-  until it has a row again (see `terraform/sql/mirror_export_delete.sql.tftpl`).
+  until it has a row again (see `terraform/aws/sql/mirror_export_delete.sql.tftpl`; GCP folds the
+  same delete into `terraform/gcp/sql/mirror_export.sql.tftpl`).
 
 ## Content
 
@@ -37,7 +39,7 @@ Consumer: this module's `export_<table>` Glue tables and the daily MERGE/DELETE.
   (`deleted_at` set) are included; consumers filter.
 - Extra columns are ignored by the consumer; missing columns read as NULL. Adding a column
   to TraceForce's database therefore never breaks the mirror; exposing it in Iceberg is a one-line
-  Terraform change (`export_tables` in `terraform/exports.tf`).
+  Terraform change (`export_tables` in `terraform/aws/exports.tf`, or `terraform/gcp/locals.tf` on GCP).
 
 ## Decoded enum columns
 

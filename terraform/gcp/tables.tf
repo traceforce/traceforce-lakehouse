@@ -54,15 +54,22 @@ resource "google_bigquery_table" "export" {
   }
 }
 
-# Ingest SOURCE: external table over the raw gzipped OTLP-JSON objects. Each object is one
-# JSON document; resourceLogs/resourceSpans are read as JSON columns (allowed on external
-# tables). No hive partitioning: the agent folder is bare (not key=value), so agent and dt
-# are derived from _FILE_NAME in the ingest SQL. Read via the connection SA. No metadata cache.
+# Ingest SOURCE: one hive-partitioned external table PER agent over the raw gzipped OTLP-JSON
+# objects (each object is one JSON document; resourceLogs/resourceSpans are JSON columns). One
+# table per agent because the layout is <agent>/dt=<YYYYMMDD>/... : the bare <agent> segment can't
+# be a hive key, but rooting each table at its own agent folder makes dt=<YYYYMMDD> a hive
+# partition column (INT64), so the ingest's `WHERE dt >= ...` PRUNES the bytes scanned to the
+# lookback window (matching AWS's partition projection) instead of full-scanning all history every
+# hourly run. Scoping source_uris to <agent>/dt=* also excludes both the pre-dt= legacy serial
+# folders and the claude.ai/ChatGPT browser-capture .zip objects (short AGENT_CLAUDE/ AGENT_CHATGPT/
+# folders, wrong format) -- BigQuery would fail parsing those as NDJSON. Read via the connection SA.
 resource "google_bigquery_table" "raw_conversations" {
+  for_each            = local.agents
   dataset_id          = google_bigquery_dataset.lakehouse.dataset_id
-  table_id            = "raw_conversations"
+  table_id            = "raw_${lower(each.key)}"
   deletion_protection = false
 
+  # Data columns only; the dt partition column (INT64, YYYYMMDD) is declared by hive CUSTOM below.
   schema = jsonencode([
     { name = "resourceLogs", type = "JSON", mode = "NULLABLE" },
     { name = "resourceSpans", type = "JSON", mode = "NULLABLE" },
@@ -71,21 +78,24 @@ resource "google_bigquery_table" "raw_conversations" {
   external_data_configuration {
     autodetect    = false
     source_format = "NEWLINE_DELIMITED_JSON"
-    # Scope to the four OTLP agent folders only: Claude Code, Claude Cowork
-    # (AGENT_IDENTITY_CLAUDE), Cursor, Copilot. A bare conversations/* also globs the
-    # claude.ai/ChatGPT browser-capture .json.zip objects scout writes to the same tree under
-    # AGENT_CLAUDE/ and AGENT_CHATGPT/ (deliberately out of lakehouse scope, wrong format) --
-    # BigQuery would parse those binaries as NDJSON and the whole ingest scan would fail. The
-    # dt=* shape matches AWS's partition template (<agent>/dt=<dt>/) and drops nothing the
-    # ingest SQL keeps (it already filters to these agents + a /dt=/ path).
-    source_uris   = [for a in keys(local.agents) : "${local.raw_root}${a}/dt=*"]
+    source_uris   = ["${local.raw_root}${each.key}/dt=*"]
     connection_id = local.connection_ref
+
+    hive_partitioning_options {
+      # CUSTOM (not AUTO): declare dt's name+type explicitly so the table works even for an agent
+      # with no data yet. AUTO infers the partition schema by LISTING objects, so an empty agent
+      # folder (common -- most customers don't run all four agents) fails with "cannot query hive
+      # partitioned data ... without any associated files", which would abort the whole UNION ingest.
+      # CUSTOM needs no files, matching AWS partition projection's tolerance of empty agents.
+      mode              = "CUSTOM"
+      source_uri_prefix = "${local.raw_root}${each.key}/{dt:INTEGER}"
+    }
   }
 }
 
-# 17 snapshot external tables: typed NDJSON so the mirror MERGE needs no casts. Non-hive (like
-# raw_conversations) so the table can be created before any snapshots exist; the mirror derives
-# dt from _FILE_NAME. Read via the connection SA. No metadata cache.
+# 17 snapshot external tables: typed NDJSON so the mirror MERGE needs no casts. Non-hive (unlike
+# the raw_<agent> tables above) so the table can be created before any snapshots exist; the mirror
+# derives dt from _FILE_NAME. Read via the connection SA. No metadata cache.
 resource "google_bigquery_table" "export_src" {
   for_each = local.export_columns
 

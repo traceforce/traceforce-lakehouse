@@ -16,13 +16,23 @@ resource "google_bigquery_connection" "gcs" {
   cloud_resource {}
 }
 
-# The connection SA reads the raw objects and reads/writes the Iceberg table data. Google's
-# managed-Iceberg docs prescribe exactly objectUser (object read/write, incl. compaction) +
-# legacyBucketReader (bucket-level buckets.get that objectUser lacks). objectAdmin would only add
-# per-object set/getIamPolicy, which Iceberg never uses -- this is the documented least-privilege set.
-resource "google_storage_bucket_iam_member" "connection_gcs" {
-  for_each = toset(["roles/storage.objectUser", "roles/storage.legacyBucketReader"])
+# The connection SA's access is split so it holds NO write/delete on the customer's data:
+#  - customer logs bucket: READ-ONLY (objectViewer + legacyBucketReader) -- it only reads the raw
+#    activity objects and the daily export snapshots there.
+#  - module-owned Iceberg bucket: read/write (objectUser + legacyBucketReader), where the managed
+#    Iceberg data lives. Google's managed-Iceberg docs prescribe objectUser (object read/write incl.
+#    compaction) + legacyBucketReader (bucket-level buckets.get objectUser lacks); objectAdmin would
+#    only add per-object set/getIamPolicy, which Iceberg never uses.
+resource "google_storage_bucket_iam_member" "connection_logs_read" {
+  for_each = toset(["roles/storage.objectViewer", "roles/storage.legacyBucketReader"])
   bucket   = var.logs_bucket
+  role     = each.value
+  member   = "serviceAccount:${google_bigquery_connection.gcs.cloud_resource[0].service_account_id}"
+}
+
+resource "google_storage_bucket_iam_member" "connection_iceberg_rw" {
+  for_each = toset(["roles/storage.objectUser", "roles/storage.legacyBucketReader"])
+  bucket   = google_storage_bucket.iceberg.name
   role     = each.value
   member   = "serviceAccount:${google_bigquery_connection.gcs.cloud_resource[0].service_account_id}"
 }
@@ -33,7 +43,7 @@ resource "google_storage_bucket_iam_member" "connection_gcs" {
 # denial. A fixed wait can't cover the 7-min tail; if a create still races, re-running apply is
 # idempotent (the empty table recreates). 180s covers the typical case; fires once, at create only.
 resource "time_sleep" "iam_propagation" {
-  depends_on      = [google_storage_bucket_iam_member.connection_gcs]
+  depends_on      = [google_storage_bucket_iam_member.connection_logs_read, google_storage_bucket_iam_member.connection_iceberg_rw]
   create_duration = "180s"
 }
 

@@ -6,7 +6,7 @@ Joins:
 - agent_conversations.conversation_external_id = agent_events.session_id
 - agent_account_id → agent_accounts.id
 - device_id → devices.id
-- customer_storage.source_file is the session folder: agent_events.source_object LIKE concat('s3://', bucket, '/', key_prefix, source_file, '%')
+- customer_storage.source_file is the session folder: agent_events.source_object LIKE concat(scheme, '://', bucket, '/', key_prefix, source_file, '%'), where scheme is 's3' on AWS and 'gs' on GCP (a hardcoded 's3://' matches zero rows on GCP)
 
 Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 - (org_id, agent_account_id, conversation_external_id): the SAME external id can exist under two accounts, so a join on conversation_external_id alone may fan out; match the account too when you can
