@@ -19,11 +19,9 @@ bucket this module owns, which TraceForce cannot read.
 - **AWS:** a principal that can create S3 Tables, Glue, Athena, Step Functions and IAM resources
   in that account; deploy in the bucket's region.
 - **GCP:** the gcloud CLI signed in (`gcloud auth login` + `gcloud auth application-default
-  login`) on the project that owns the bucket, with rights to create BigQuery datasets,
-  connections, Data Transfer scheduled queries and a service account, set project-level and
-  bucket IAM, act as that service account, and enable the BigQuery / BigQuery Connection /
-  Data Transfer APIs — in practice project Owner (Editor is not enough: it cannot set a
-  project IAM binding). Or pre-enable the APIs and grant a scoped deploy SA those rights.
+  login`) on the project that owns the bucket, as an identity that can create BigQuery
+  datasets/connections/transfers and a service account, set IAM, and enable the BigQuery APIs —
+  in practice **project Owner**.
 
 ## Deploy — AWS (Athena)
 
@@ -114,9 +112,8 @@ the state machine `traceforce-lakehouse-ingest` once with `{"job":"ingest","look
    (`gcloud config set project <id>`), then ask questions. Tables live in the
    `traceforce_lakehouse` dataset.
 
-   The first load runs within the hour and covers the last `lookback_days` (default 3) days. To
-   backfill older history, raise `lookback_days` and re-apply; don't hand-run the ingest while
-   the hourly run may fire (it can double-load).
+   The first load runs within the hour; to backfill older history, raise `lookback_days` and
+   re-apply.
 
 ## Ask questions
 
