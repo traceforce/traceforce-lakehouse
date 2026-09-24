@@ -1,6 +1,6 @@
 # sandboxes
 
-Devcontainers / cloud VMs an agent ran in. The parent host is a row in devices.
+Devcontainers / cloud VMs an agent ran in.
 
 Joins:
 - sandboxes.parent_device_id = devices.id

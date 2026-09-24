@@ -41,5 +41,5 @@ Only Claude Code is verified end to end so far. The skill content is identical f
 - **GCP (BigQuery):** the gcloud CLI signed in (`gcloud auth login` + `gcloud auth
   application-default login`) with the lakehouse's project as your default
   (`gcloud config set project <id>`).
-- Read-only: `athena_query.sh` / `bq_query.sh` refuse anything but SELECT-style statements, and
+- Read-only: `athena_query.sh` / `bq_query.sh` refuse non-read statements (see each script's allowlist), and
   the query identity grants no writes.

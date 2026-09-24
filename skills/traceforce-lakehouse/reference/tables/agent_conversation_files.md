@@ -1,6 +1,6 @@
 # agent_conversation_files
 
-Files attached to conversations (uploads). What a file finding points at.
+Files attached to conversations (uploads).
 
 Joins:
 - agent_conversation_files.id = sensitive_data_findings.file_id

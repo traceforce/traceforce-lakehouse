@@ -1,6 +1,6 @@
 # agent_conversations
 
-One row per agent session/conversation TraceForce has scanned; created on scan whether or not anything was found. The bridge between findings and the logs; count findings from the findings tables, not from here.
+One row per agent session/conversation TraceForce has scanned; created on scan whether or not anything was found. Count findings from the findings tables, not from here.
 
 Joins:
 - agent_conversations.conversation_external_id = agent_events.session_id

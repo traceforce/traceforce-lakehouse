@@ -1,6 +1,6 @@
 # devices
 
-One row per device TraceForce has seen (laptops, workstations). The anchor for every join from the logs.
+One row per device TraceForce has seen (laptops, workstations).
 
 Joins:
 - agent_events.device_uuid = devices.device_uuid when the event has one (Windows), else agent_events.device_native_id = devices.device_native_id

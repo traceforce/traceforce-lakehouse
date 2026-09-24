@@ -1,11 +1,11 @@
 # agent_accounts
 
-One row per signed-in account: (device, agent, email, vendor org). Who is behind an event.
+One row per signed-in account: (device, agent, email, vendor org).
 
 Joins:
 - agent_accounts.device_id = devices.id AND agent_accounts.agent_type = agent_events.agent_type AND lower(agent_accounts.agent_email) = lower(agent_events.user_email) (enrichment of an event with plan / vendor org; the person is already user_email)
 - agent_accounts.agent_org_id = agent_events.agent_org_id when both are non-NULL (Claude family)
-- When reached by id from agent_conversations.agent_account_id, do NOT filter deleted_at: a signed-out account still owns its past findings (this is what the console does)
+- When reached by id from agent_conversations.agent_account_id, do NOT filter deleted_at: a signed-out account still owns its past findings
 
 Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 - (org_id, device_id, sandbox_id, agent_type, agent_email, agent_org_id), NULLs compared as equal: the same email can have one row per device, per agent, per vendor org
@@ -18,7 +18,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `sandbox_id` | string | → sandboxes.id; NULL when the row is about the host device itself. |
 | `agent_id` | string | → the org-level agent rollup (that table is not in the lake). |
 | `agent_type` | int | Which agent product. |
-| `plan` | string | Account plan (decoded AgentPlanType text, e.g. 'personal', 'enterprise', 'small_business'; 'unknown' for AgentPlanType 0). The console's notion of an agent is an INSTALL's (agent_type, coalesce(plan, 'unknown')): start from agent_instances, LEFT JOIN agent_instances_accounts and agent_accounts; installs with no signed-in account are plan 'unknown'. Never count agents from agent_accounts alone. |
+| `plan` | string | Account plan (decoded AgentPlanType text, e.g. 'personal', 'enterprise', 'small_business'; 'unknown' for AgentPlanType 0). Counting agents: reference/identity.md. |
 | `tier` | string | Vendor plan tier text when known. |
 | `agent_email` | string | Email the user authenticated to the agent with. Stored byte-exact; lower() is a tolerance. |
 | `agent_org_id` | string | The AI vendor's workspace/org id (e.g. the Anthropic org for Claude); NULL or '' when the agent has no workspace/org concept. |

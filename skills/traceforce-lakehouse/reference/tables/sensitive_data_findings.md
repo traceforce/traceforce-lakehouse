@@ -1,13 +1,12 @@
 # sensitive_data_findings
 
-One row per sensitive-data match (a credential, PII value, ...) found in a prompt/response or an attached file. A match is in an attachment when file_id is set, and in message text when file_id IS NULL; handle both.
+One row per sensitive-data match (a credential, PII value, ...) found in a prompt/response or an attached file. A match is in an attachment when file_id is set, and in message text when file_id IS NULL.
 
 Joins:
-- person: conversation_id → agent_conversations.agent_account_id → agent_accounts.agent_email (NOT NULL; every finding has one). Do NOT filter agent_accounts.deleted_at here: findings on since-removed accounts still belong to that person. Agent name: that agent_accounts row's agent_type → agent_catalog (findings carry no agent_type)
+- person: conversation_id → agent_conversations.agent_account_id → agent_accounts.agent_email (NOT NULL; every finding has one; no deleted_at filter). Agent name: that agent_accounts row's agent_type → agent_catalog (findings carry no agent_type)
 - device owner (secondary, for display): device_id → devices.device_native_id → device_owner_mappings.owner_email
 - conversation_id → agent_conversations.id → conversation_external_id = agent_events.session_id
 - file_id → agent_conversation_files.id (file name, type, size)
-- conversation_storage pointer → agent_events.source_object (the exact uploaded object the match was found in)
 
 Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 - (org_id, conversation_id, message_external_id, file_id, part_index, start_offset, end_offset, start_line, end_line, rule_id): one row per match location
@@ -26,7 +25,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `type` | string | Specific sensitive-data type as text (e.g. 'ssn', 'email_address'); never NULL, 'unknown' when the rule mapped no type. |
 | `start_offset` | long | Character offset of the match start from the start of start_line. |
 | `end_offset` | long | Character offset of the match end (exclusive) from the start of end_line; may be < start_offset when end_line > start_line. |
-| `start_line` | long | 0-indexed first line of the match within the scanned text (message or attachment). Not a message/file discriminator: use file_id IS NULL for message findings. |
+| `start_line` | long | 0-indexed first line of the match within the scanned text (message or attachment). |
 | `end_line` | long | 0-indexed last line (inclusive). |
 | `part_index` | int | Index of the message part the match is in. |
 | `rule_id` | string | Detector rule that fired. |

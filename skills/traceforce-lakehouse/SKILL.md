@@ -40,12 +40,7 @@ Use the bundled script; do not reimplement it with raw `aws athena` / `bq` calls
 
 ```bash
 "${CLAUDE_SKILL_DIR}/scripts/athena_query.sh" "SELECT agent, count(*) FROM agent_events WHERE ts > current_timestamp - interval '7' day GROUP BY 1"
-Q="$(mktemp)"   # long SQL: write it here, not to a fixed path — concurrent sessions collide
-"${CLAUDE_SKILL_DIR}/scripts/athena_query.sh" -f "$Q"
 ```
-
-`${CLAUDE_SKILL_DIR}` is set by Claude Code. Other agents invoke the script by its path,
-`skills/traceforce-lakehouse/scripts/athena_query.sh` (see AGENTS.md).
 
 Requires AWS CLI v2 and credentials (`AWS_PROFILE`, `AWS_REGION`) that carry the module's
 `query_policy_json` policy or broader. Output: CSV on stdout (first 200 rows by default,
@@ -53,53 +48,42 @@ Requires AWS CLI v2 and credentials (`AWS_PROFILE`, `AWS_REGION`) that carry the
 `-- query <id> ok, scanned N MB` on stderr, exit 1 with Athena's reason on failure.
 Unqualified table names resolve in the `traceforce` namespace.
 
-If a query fails on credentials / expired token / no region, that's an environment problem,
-not empty data — never report the lake as broken. If the token expired, have the user refresh
-it (e.g. `aws sso login`) and retry — it's picked up in this session. If AWS auth or the region
-isn't set at all, the agent can't get them mid-session: the user must set up AWS credentials
-(SSO, a profile, or keys) and `AWS_REGION` in a terminal, then relaunch the agent from it.
+A credentials/region error is an environment problem, not empty data: an expired SSO token is
+fixed by `aws sso login` and a retry in this session; missing credentials or `AWS_REGION` need
+`AWS_PROFILE`/`AWS_REGION` set in a terminal and the agent relaunched from it.
 
 ## GCP (BigQuery)
 
-If the lakehouse is on GCP, use `bq_query.sh` instead of `athena_query.sh` (BigQuery instead of
-Athena). Read-only here is enforced by IAM, not the script: `bq` runs multi-statement scripts, so
-the query identity must hold only `bigquery.dataViewer` (+ `jobUser`) — do not query as the
-project owner/editor you deployed with:
+Read-only here is enforced by IAM, not the script: `bq` runs multi-statement scripts, so the
+query identity must hold only `bigquery.dataViewer` (+ `jobUser`) — do not query as the project
+owner/editor you deployed with:
 
 ```bash
 "${CLAUDE_SKILL_DIR}/scripts/bq_query.sh" "SELECT agent, count(*) FROM traceforce_lakehouse.agent_events WHERE ts > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY) GROUP BY 1"
 ```
 
-Needs the gcloud CLI signed in (`gcloud auth login` + `gcloud auth application-default login`)
-with the lakehouse's project as your gcloud default (`gcloud config set project <id>`);
-`bq_query.sh` uses that, or set `TRACEFORCE_LAKEHOUSE_PROJECT` to override. Tables live in the
-`traceforce_lakehouse` dataset — reference them two-part: `traceforce_lakehouse.agent_events`,
-`traceforce_lakehouse.devices`, and so on.
+Needs the gcloud CLI signed in (`gcloud auth login`) with the lakehouse project as default, or
+`TRACEFORCE_LAKEHOUSE_PROJECT`; an auth/project error is an environment problem, not empty data.
+Qualify tables as `traceforce_lakehouse.<table>`.
 
 The reference/* schema (columns, joins, identity, redaction, enforcement) is identical, but its
 example SQL is Athena/Trino. Translate to GoogleSQL:
 - `json_extract_scalar(x, '$.gen_ai.tool.name')` -> `JSON_VALUE(x, '$."gen_ai.tool.name"')` — **quote dotted keys**, or they read as nested paths and return NULL. The reference's bracket form `$["cursor.version"]` maps the same way -> `JSON_VALUE(x, '$."cursor.version"')`.
 - `current_timestamp - interval '7' day` -> `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)`; `date_format(...)` -> `FORMAT_TIMESTAMP` / `FORMAT_DATE`.
-- `"$path"` -> `_FILE_NAME` (external tables only; agent_events already has `source_object`).
 - `SHOW TABLES` / `DESCRIBE` don't exist -> `SELECT table_name FROM traceforce_lakehouse.INFORMATION_SCHEMA.TABLES`; `SELECT column_name, data_type FROM traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<t>'`.
 - No `"<table>$snapshots"` metadata on BigQuery; for mirror freshness use the table's last-load
   time: `SELECT TIMESTAMP_MILLIS(last_modified_time) FROM traceforce_lakehouse.__TABLES__ WHERE table_id = '<mirror>'` — **not** `max(updated_at)`, which is a source-side time.
   `__TABLES__.row_count` is 0 for every table here (Iceberg); count rows with `count(*)`.
 - `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `CROSS JOIN UNNEST(JSON_VALUE_ARRAY(x)) AS elem` (unnesting a JSON array of strings).
-- Raw-object joins match the storage URI scheme: `s3://…` on AWS, `gs://…` on GCP. Match `source_object` to the connected bucket's scheme — a hardcoded `s3://` matches zero rows on GCP.
 
 ## Workflow
 
 1. Pick the tables the question needs and read only their files under `reference/tables/`.
-2. Run a cheap aggregate first (counts, distinct values, date range) to see the data exists:
-   `SELECT max(ingested_at), max(upload_ts) FROM agent_events` (more than two hours behind
-   means the ingest is failing or the schedule is disabled; if neither, the collector side
-   needs TraceForce's attention), and
-   `SELECT count(*) FROM <mirror>` for each metadata table the question joins. An empty mirror
-   means the daily export has not delivered yet; say so instead of answering from a join that
-   returns nothing. Mirror staleness: `SELECT max(committed_at) FROM "<mirror>$snapshots"`
-   (not `max(updated_at)`, which is a source-side time; BigQuery has no `$snapshots` — use the
-   `__TABLES__.last_modified_time` form from "GCP (BigQuery)").
+2. Run a cheap aggregate first: `SELECT max(ingested_at), max(upload_ts) FROM agent_events` (more
+   than two hours stale means an ingest problem; say so) and `SELECT count(*) FROM <mirror>` for
+   each mirror you join (empty means the daily export has not delivered; say so instead of
+   answering from the join). Mirror staleness: `SELECT max(committed_at) FROM "<mirror>$snapshots"`
+   on Athena, the `__TABLES__` form above on BigQuery — not `max(updated_at)`, a source-side time.
 3. Write the targeted query with `ts` bounds; take join rules from `reference/joins.md`.
 4. If a query fails with "column cannot be resolved" or a type error, introspect the schema
    (Athena: `DESCRIBE traceforce.<table>`; BigQuery: `SELECT column_name, data_type FROM
@@ -111,55 +95,28 @@ example SQL is Athena/Trino. Translate to GoogleSQL:
 ## Reference (each one level from here)
 
 - `reference/agent_events.md`: every column of the events table with its meaning.
-- `reference/tables.md`: index of the 18 metadata tables. One file each under
-  `reference/tables/`: devices, sandboxes, agent_accounts, agent_instances,
-  agent_instances_accounts, device_owner_mappings, agent_catalog, sensitive_data_findings,
-  connector_containment_findings, prompt_injection_findings, agent_conversations,
-  agent_conversation_files, mcp_server_instances, mcp_server_agent_instances, mcp_servers,
-  mcp_catalog, org_mcp_catalog, mcp_categories. Each gives purpose, joins, source uniqueness,
-  columns.
+- `reference/tables.md`: index of the 18 metadata tables, one file each under `reference/tables/`
+  (purpose, joins, source uniqueness, columns).
 - `reference/joins.md`: the joins that are not obvious from the schema.
 - `reference/identity.md`: attributing an event or finding to a person, device and account.
 - `reference/redaction.md`: what the stored content columns hold, and where the matched value lives.
 - `reference/enforcement.md`: telling an actual block/reject from a warn, per agent.
 
-The engine is authoritative for names and types — Athena: `SHOW TABLES IN traceforce`,
-`DESCRIBE traceforce.<table>`; BigQuery: `SELECT table_name FROM traceforce_lakehouse.INFORMATION_SCHEMA.TABLES`
-and `... .COLUMNS`.
+## Containment findings
 
-## What people ask
-
-Led by what the logs add (the console cannot answer these): what happened around a finding;
-which tool calls ran without a human approving them; which files, commands and hosts agents
-touched; which installed MCP servers are actually called; what was blocked or rejected; cost
-and tokens by person and model. Also, from TraceForce's own data: findings by person and type,
-risky writes and deletes, agents and accounts per device.
-
-`connector_containment_findings` is the set of **risky** writes and deletes that
-TraceForce's containment engine flagged (`op` = 'write' or 'delete'), not a complete list of
-everything an agent wrote or deleted. For "which risky writes or deletes happened, and how was
-each approved", start from this table and join `agent_events` on `tool_call_id = tool_use_id`
-for the decision. Do not try to reconstruct all writes and deletes from `tool_args`: it is
-truncated and redacted, so any count you derive that way is a guess and will disagree with the
-findings the console shows. Say the answer covers flagged risky operations, not every write.
-
-Read the actual command from the joined event's `tool_args` (the finding's `operation`
-column, when set, is only a short summary). It is not masked unless the command itself contains a detected secret,
-and it is truncated if very long. A finding's matched sensitive *value* is never in the lake.
-See `reference/redaction.md`.
+`connector_containment_findings` holds only the risky writes/deletes containment flagged, not
+every write. Join `agent_events` on `tool_call_id = tool_use_id` for the decision and read the
+command from that event's `tool_args` (`operation` is only a summary). Do not count writes from
+`tool_args`: it is truncated and redacted and will disagree with the console. Say the answer
+covers flagged operations.
 
 ## Known gaps
 
 - GitHub Copilot is pseudonymous: no email, no org id, and most of its rows share one
   `session_id` per VS Code window. Attribute by device owner.
-- Some agents or auth modes emit no user email/identity; attribute the person via the device owner (see `reference/identity.md`).
 - Cursor emits no token counts or cost; Copilot emits tokens but no cost.
-- ChatGPT is not in this table.
-- Rows arrive within about an hour of upload; devices offline for a while upload late.
 - Findings link to the logs only when the event's `session_id` equals the conversation's
   external id; findings without a matching conversation exist.
 - Copilot tool calls: `tool_call_id` and `tool_name` come from the span; count
   `signal = 'span' AND operation = 'execute_tool'` rows if `tool_call_id` is NULL.
-- Claude Code decision source: `attrs_json.$.source` = `hook` (TraceForce), `config` (Claude's
-  own permission rules), or `user_*` (the person). Detecting an actual block or reject per agent
-  is in `reference/enforcement.md`.
+- Block vs warn per agent: `reference/enforcement.md`.
