@@ -57,11 +57,14 @@ resource "google_bigquery_table" "export" {
 # Ingest SOURCE: ONE hive-partitioned external table over every OTel activity object scout writes:
 #   <root>telemetry/agent=<AGENT_IDENTITY_*>/dt=<YYYYMMDD>/<serial>/<account>/<session>/<ts>_<uuid>_(logs|traces).json.gz
 # Both leading segments are Hive key=value, so agent and dt become partition columns (CUSTOM mode
-# declares them and needs no files: an agent with no data yet, or an empty bucket, reads as 0 rows)
-# and the ingest's `WHERE dt >= ...` PRUNES the scan to the lookback window, matching AWS's partition
-# projection. Nothing enumerates agents: a new agent identity shows up in the next hourly run. Browser
-# captures and the pre-telemetry/ layouts live under conversations/ and are never matched. Each object
-# is one JSON document; resourceLogs/resourceSpans are JSON columns. Read via the connection SA.
+# declares them; an agent with no data yet is simply absent) and the ingest's `WHERE dt >= ...`
+# PRUNES the scan to the lookback window, matching AWS's partition projection. With NO matching
+# object at all BigQuery rejects every query ("Cannot query hive partitioned data ... without any
+# associated files"), so on a fresh deployment the hourly ingest fails until scout's first upload
+# lands, then clears on its own (README "Is it working"). Nothing enumerates agents: a new agent
+# identity shows up in the next hourly run. Browser captures and the pre-telemetry/ layouts live
+# under conversations/ and are never matched. Each object is one JSON document;
+# resourceLogs/resourceSpans are JSON columns. Read via the connection SA.
 resource "google_bigquery_table" "raw_telemetry" {
   dataset_id          = google_bigquery_dataset.lakehouse.dataset_id
   table_id            = "raw_telemetry"

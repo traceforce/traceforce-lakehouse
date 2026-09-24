@@ -8,7 +8,6 @@ resource "google_bigquery_dataset_iam_member" "viewers" {
   member     = each.value
 }
 
-
 # Querying the managed Iceberg tables (connection-bound) also needs connection use.
 resource "google_bigquery_connection_iam_member" "viewers_conn" {
   for_each      = toset(var.query_members)

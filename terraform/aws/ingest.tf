@@ -1,6 +1,6 @@
 # One Step Functions state machine runs both jobs, chosen by input:
-#   {"job":"ingest","lookback_days":3} hourly           -> for every agent=... folder under telemetry/, flatten the last 3 upload-day folders (today + 2) into agent_events
-#   {"job":"exports"}                  daily 06:30 UTC  -> MERGE the newest TraceForce metadata snapshots into their mirrors
+#   {"job":"ingest","lookback_days":3} hourly at :57    -> for every agent=... folder under telemetry/, flatten the last 3 upload-day folders (today + 2) into agent_events
+#   {"job":"exports"}                  daily 12:30 UTC  -> MERGE the newest TraceForce metadata snapshots into their mirrors
 # An input without "job" (the console default) runs the ingest; lookback_days defaults to 3.
 # A manual {"job":"ingest","lookback_days":400} re-reads a year of folders (catch-up after an
 # outage longer than two days); the anti-join keeps it exact.
@@ -91,23 +91,24 @@ locals {
         Default = "Route"
       }
       SkippedOverlapping = { Type = "Succeed" }
-      # Which agents exist right now: ONE S3 listing of the telemetry/ root with Delimiter="/"
-      # returns the agent=<AGENT_IDENTITY_*> folders. No agent list lives in this module (a new
-      # identity is ingested on the next hourly run), and the raw table's injected projection
-      # needs each agent named in the query, so the ingest runs once per discovered folder --
-      # sequentially, since every run writes the same Iceberg table.
+      # Which agents exist right now: ONE S3 listing of telemetry/agent= with Delimiter="/"
+      # returns exactly the agent=<AGENT_IDENTITY_*>/ folders (S3 filters; nothing else under
+      # telemetry/ comes back). No agent list lives in this module (a new identity is ingested
+      # on the next hourly run), and the raw table's injected projection needs each agent named
+      # in the query, so the ingest runs once per discovered folder -- sequentially, since every
+      # run writes the same Iceberg table.
       ListAgents = {
         Type     = "Task"
         Resource = "arn:aws:states:::aws-sdk:s3:listObjectsV2"
         Parameters = {
           Bucket    = var.logs_bucket
-          Prefix    = "${local.prefix_slash}telemetry/"
+          Prefix    = "${local.prefix_slash}telemetry/agent="
           Delimiter = "/"
         }
         ResultPath = "$.listing"
         Next       = "HasAgents"
       }
-      # An empty telemetry/ root (new customer, nothing uploaded yet) returns no CommonPrefixes at all.
+      # No agent=... folder yet (new customer, nothing uploaded) returns no CommonPrefixes at all.
       HasAgents = {
         Type    = "Choice"
         Choices = [{ Variable = "$.listing.CommonPrefixes", IsPresent = true, Next = "ForEachAgent" }]
@@ -124,15 +125,8 @@ locals {
         }
         ItemProcessor = {
           ProcessorConfig = { Mode = "INLINE" }
-          StartAt         = "IsAgentFolder"
+          StartAt         = "AgentValue"
           States = {
-            # Only agent=<value>/ folders are partitions; anything else under telemetry/ is skipped.
-            IsAgentFolder = {
-              Type    = "Choice"
-              Choices = [{ Variable = "$.prefix", StringMatches = "*/agent=*", Next = "AgentValue" }]
-              Default = "SkipFolder"
-            }
-            SkipFolder = { Type = "Pass", End = true }
             # ".../telemetry/agent=AGENT_IDENTITY_CURSOR/" -> "AGENT_IDENTITY_CURSOR". The split index
             # skips any '=' inside the customer's own logs_prefix, so agent= is always the one taken.
             AgentValue = {
@@ -154,11 +148,14 @@ locals {
               }
               ResultPath = null
               Retry      = local.ingest_retry
-              End        = true
+              # One agent failing must not stop the others: record the error on the item and move on.
+              Catch = [{ ErrorEquals = ["States.ALL"], ResultPath = "$.error", Next = "AgentFailed" }]
+              End   = true
             }
+            AgentFailed = { Type = "Pass", End = true }
           }
         }
-        End = true
+        Next = "CountFailures"
       }
       },
       {
@@ -210,8 +207,11 @@ locals {
           }
           Next = "CountFailures"
         }
-        # After every table has had its turn, fail the execution if any of them failed, so the
-        # run is visible as an error (the per-item errors are in the execution history).
+      },
+      {
+        # Both jobs end here. After every item (an agent's ingest, or an export table's merge)
+        # has had its turn, fail the execution if any of them failed, so the run is visible as
+        # an error (the per-item errors are in the execution history).
         CountFailures = {
           Type       = "Pass"
           Parameters = { "failed.$" = "States.ArrayLength($[?(@.error)])" }
@@ -219,11 +219,11 @@ locals {
         }
         AnyFailed = {
           Type    = "Choice"
-          Choices = [{ Variable = "$.failed", NumericGreaterThan = 0, Next = "MirrorIncomplete" }]
-          Default = "MirrorDone"
+          Choices = [{ Variable = "$.failed", NumericGreaterThan = 0, Next = "RunIncomplete" }]
+          Default = "Done"
         }
-        MirrorDone       = { Type = "Succeed" }
-        MirrorIncomplete = { Type = "Fail", Error = "MirrorIncomplete", Cause = "One or more export tables failed to merge; see the Map iterations in this execution." }
+        Done          = { Type = "Succeed" }
+        RunIncomplete = { Type = "Fail", Error = "RunIncomplete", Cause = "One or more items in this run failed (an agent's ingest, or an export table's merge); see the Map iterations in this execution." }
       }
     )
   }
@@ -441,7 +441,7 @@ resource "aws_iam_role_policy" "scheduler" {
 resource "aws_scheduler_schedule" "ingest" {
   name                         = "${local.name}-ingest"
   description                  = "TraceForce lakehouse: load new activity objects into agent_events"
-  schedule_expression          = "rate(1 hour)"
+  schedule_expression          = "cron(57 * * * ? *)" # hourly at :57 UTC, the same minute as GCP. A fixed minute (rate(1 hour) fires on whatever minute terraform applied) keeps the ingest clear of the 12:30 exports run, which CheckOverlap would otherwise skip for a day
   schedule_expression_timezone = "UTC"
   flexible_time_window { mode = "OFF" }
   target {
@@ -454,7 +454,7 @@ resource "aws_scheduler_schedule" "ingest" {
 resource "aws_scheduler_schedule" "exports" {
   name                         = "${local.name}-exports"
   description                  = "TraceForce lakehouse: mirror the daily TraceForce metadata snapshots"
-  schedule_expression          = "cron(30 12 * * ? *)" # source snapshots land ~11:00 UTC; run at 12:30 UTC (~8:30am ET) so metadata is fresh for the US business day, off the hour so the hourly ingest is not skipped
+  schedule_expression          = "cron(30 12 * * ? *)" # source snapshots land ~11:00 UTC; run at 12:30 UTC (~8:30am ET) so metadata is fresh for the US business day, half an hour from the :57 ingest so neither run is skipped
   schedule_expression_timezone = "UTC"
   flexible_time_window { mode = "OFF" }
   target {

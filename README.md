@@ -156,7 +156,9 @@ SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1
   execution history.
 - **GCP:** failed loads show in the BigQuery Data Transfer console — the two scheduled queries
   that ingest `agent_events` and mirror the metadata tables. The metadata mirror is a MERGE, so
-  re-running it loads nothing twice.
+  re-running it loads nothing twice. Until scout's first upload lands, the hourly ingest fails
+  with "Cannot query hive partitioned data ... without any associated files"; that is expected on
+  a new deployment and clears on its own once the first object arrives.
 
 ## More
 

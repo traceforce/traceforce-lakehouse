@@ -19,7 +19,9 @@ So this outcome is derived from the agent_events logs, per agent, using the lite
   TraceForce's ask; otherwise Claude's own permission prompt). `source = 'config'` is Claude's
   own permission rules, never TraceForce. Values are `accept` / `reject`. The source lives on
   the `tool_decision` row as `$.source`; a rejected call produces no `tool_result` row, and
-  `tool_result` rows carry only `$.success` for outcome.
+  `tool_result` rows carry only `$.success` for outcome. Claude (claude.ai) emits the same
+  `tool_decision` rows, but TraceForce installs no hook there, so a `hook` source on its rows is
+  the user's own; its enforcement is the proxy (Cowork, next).
 - Cowork: scout's inline proxy blocks with an HTTP 403 whose body is
   `{"error":"access_denied","message":"...blocked because it contains sensitive data."}` — the
   phrase is in `message`, not `error`. That body is not itself a log event: scout emits no
@@ -36,9 +38,11 @@ So this outcome is derived from the agent_events logs, per agent, using the lite
   deny/ask/block, gated on a Copilot rule being enforced), but Copilot rides a trace-only
   pipeline and traces are never stamped — the exporter strips `traceforce.*` off spans and
   leaves outcomes `UNSPECIFIED`. So a Copilot denial cannot be attributed to TraceForce from
-  the lake: `decision` (`approved` / `denied-interactively-by-user`) and `error_type = 'denied'`
-  on its spans are agent-native and indistinguishable from the user's own dialog. Do not read
-  them as proof TraceForce did or didn't act; a real block on Copilot is simply not observable here.
+  the lake: `decision` (`approved` / `cancelled` / `denied-interactively-by-user`) sits on separate
+  `span_name = 'permission'` spans that carry no `tool_call_id`, so it cannot be joined to the
+  call, and `error_type` (`cancelled` / `denied`) on its `execute_tool` spans is agent-native;
+  both are indistinguishable from the user's own dialog. Do not read them as proof TraceForce
+  did or didn't act; a real block on Copilot is simply not observable here.
 - Claude Code sensitive data (prompt blocks): a blocked prompt still emits `user_prompt`
   stamped `sd_enforcement = 'block'`, with matched values masked. Masking is length-preserving:
   each matched value is overwritten with one `*` per byte (newlines kept), so the `*` run is

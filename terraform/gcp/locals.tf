@@ -23,7 +23,6 @@ locals {
   # The managed Iceberg data lives in a module-owned bucket (see bucket.tf), never the logs bucket.
   iceberg_root = "gs://${google_storage_bucket.iceberg.name}/iceberg/"
 
-
   name = "traceforce-lakehouse"
 
   # Postgres/Iceberg type -> BigQuery type. JSON-bearing columns are already string.
@@ -53,7 +52,6 @@ locals {
 
   # biglake_configuration.connection_id wants project.location.connection (location lowercased).
   connection_ref = "${local.project}.${lower(local.bq_location)}.${google_bigquery_connection.gcs.connection_id}"
-
 
   # Rendered ingest SQL (uses the validated template + the two JS routines).
   ingest_sql = templatefile("${path.module}/sql/ingest_agent_events.sql.tftpl", {

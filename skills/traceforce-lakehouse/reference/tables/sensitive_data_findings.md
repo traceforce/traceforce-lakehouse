@@ -3,7 +3,7 @@
 One row per sensitive-data match (a credential, PII value, ...) found in a prompt/response or an attached file. A match is in an attachment when file_id is set, and in message text when file_id IS NULL; handle both.
 
 Joins:
-- person: conversation_id → agent_conversations.agent_account_id → agent_accounts.agent_email (NOT NULL; every finding has one). Do NOT filter agent_accounts.deleted_at here: findings on since-removed accounts still belong to that person. agent_type → agent_catalog for the agent name
+- person: conversation_id → agent_conversations.agent_account_id → agent_accounts.agent_email (NOT NULL; every finding has one). Do NOT filter agent_accounts.deleted_at here: findings on since-removed accounts still belong to that person. Agent name: that agent_accounts row's agent_type → agent_catalog (findings carry no agent_type)
 - device owner (secondary, for display): device_id → devices.device_native_id → device_owner_mappings.owner_email
 - conversation_id → agent_conversations.id → conversation_external_id = agent_events.session_id
 - file_id → agent_conversation_files.id (file name, type, size)

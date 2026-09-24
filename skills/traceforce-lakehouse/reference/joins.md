@@ -62,23 +62,28 @@ LEFT JOIN agent_events e ON e.session_id = c.conversation_external_id
 Use when comparing inventory with usage. Inventory is per (device, agent); usage in the logs
 is per (device serial, agent type, server name), matched case-insensitively. The same server
 name can have several live inventory rows per device (one per project path or location), so
-aggregate the inventory side or the counts multiply. `LEFT JOIN` so a NULL count means
+aggregate the inventory side or the counts multiply. Count calls, not rows: a call is 1-3 rows
+(decision, result, span) sharing a `tool_call_id`, and Claude Code's `mcp_server_connection`
+rows name the server without being a call (`operation` IS NULL there). Cursor's MCP rows carry
+no `tool_call_id`, so id-less rows count one each. `LEFT JOIN` so a NULL count means
 installed and never called. The `calls` side is per serial: a Windows placeholder serial
 shared by several devices repeats its count on each of them (see identity.md). Product name and category come through `mcp_server_type` against
 both catalogs, never through `mcp_servers.mcp_catalog_id` for org-private servers.
 
 ```sql
 WITH calls AS (
-  SELECT device_native_id, agent_type, lower(mcp_server_name) AS name_lc, count(*) AS calls, max(ts) AS last_call
-  FROM agent_events WHERE mcp_server_name IS NOT NULL AND ts > current_timestamp - interval '30' day GROUP BY 1, 2, 3
+  SELECT device_native_id, agent_type, lower(mcp_server_name) AS name_lc,
+         count(DISTINCT tool_call_id) + sum(CASE WHEN tool_call_id IS NULL THEN 1 ELSE 0 END) AS calls, max(ts) AS last_call
+  FROM agent_events
+  WHERE mcp_server_name IS NOT NULL AND operation = 'execute_tool' AND ts > current_timestamp - interval '30' day
+  GROUP BY 1, 2, 3
 ),
 inventory AS (
-  SELECT i.device_id, i.agent_type, lower(i.mcp_native_id) AS name_lc, i.mcp_server_type,
-         min(i.auth_type) AS auth_type, count(*) AS configs
+  SELECT i.device_id, i.agent_type, lower(i.mcp_native_id) AS name_lc, i.mcp_server_type, count(*) AS configs
   FROM mcp_server_instances i WHERE i.deleted_at IS NULL GROUP BY 1, 2, 3, 4
 )
 SELECT d.device_native_id, inv.name_lc AS server, coalesce(mc.mcp_server_name, omc.mcp_server_name) AS product,
-       cat.name AS category, inv.auth_type, inv.configs, c.calls, c.last_call
+       cat.name AS category, inv.configs, c.calls, c.last_call
 FROM inventory inv
 JOIN devices d ON d.id = inv.device_id
 LEFT JOIN mcp_catalog mc ON mc.mcp_server_type = inv.mcp_server_type

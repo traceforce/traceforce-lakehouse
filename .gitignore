@@ -1,6 +1,4 @@
-terraform/.terraform/
 terraform/*.tfstate*
-terraform/.terraform.lock.hcl
 examples/**/.terraform/
 examples/**/*.tfstate*
 examples/**/.terraform.lock.hcl
