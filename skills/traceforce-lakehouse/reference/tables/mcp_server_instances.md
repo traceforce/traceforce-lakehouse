@@ -31,7 +31,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `agent_type` | int | Agent it is configured for. |
 | `project_path` | string | Project/workspace path the MCP is scoped to; NULL for global-scope configs and browser connectors. |
 | `linked_plans` | string | JSON array of AgentPlanType text the instance is reachable through — its direct account plus junction-linked installs (e.g. ["personal","enterprise"]). NULL or `[]` when it has neither a direct account nor an active junction link. Attribute an instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan). |
-| `metadata` | string | JSON text. On the findings tables: reviewer close tracking {statusComment, statusUpdatedAt, statusUpdatedBy}, empty or NULL until a reviewer closes the finding; elsewhere vendor-specific extras (e.g. version). |
+| `metadata` | string | JSON text; detection details: matched patterns, config_type, uid, version, agent_identity, agent_deployment, is_custom. |
 | `security_findings` | string | JSON text; TraceForce's security observations for this instance. |
 | `tools` | string | JSON text; tools the server exposes, as discovered on this install. |
 | `created_at` | timestamp | Row created (UTC). |

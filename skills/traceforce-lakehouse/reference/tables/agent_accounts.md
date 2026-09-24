@@ -23,7 +23,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `agent_email` | string | Email the user authenticated to the agent with. Stored byte-exact; lower() is a tolerance. |
 | `agent_org_id` | string | The AI vendor's workspace/org id (e.g. the Anthropic org for Claude); NULL when the agent has no workspace/org concept. |
 | `security_settings` | string | JSON text; vendor security settings observed for the account. |
-| `metadata` | string | JSON text. On the findings tables: reviewer close tracking {statusComment, statusUpdatedAt, statusUpdatedBy}, empty or NULL until a reviewer closes the finding; elsewhere vendor-specific extras (e.g. version). |
+| `metadata` | string | JSON text; how the account was discovered: source_identifier, source_deployment_type, user_id. |
 | `models_configuration` | string | JSON text; models configured for the account. |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |
