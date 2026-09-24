@@ -53,7 +53,7 @@ element-wise into a JSON text array (e.g. `["remote","local"]`). These columns a
 
 Decoded columns (`[]` = JSON text array):
 
-- `connector_containment_findings`: `op`, `outcome`, `finding_status`
+- `connector_containment_findings`: `op`, `outcome`, `finding_status`, `risky_action_category`, `risky_action_subcategory`
 - `sensitive_data_findings`: `category`, `type`, `finding_status`
 - `prompt_injection_findings`: `finding_status`
 - `sandboxes`: `runtime_type`

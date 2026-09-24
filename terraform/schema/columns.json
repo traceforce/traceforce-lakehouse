@@ -373,6 +373,8 @@
       "detected_at:timestamp",
       "finding_status:string",
       "outcome:string",
+      "risky_action_category:string",
+      "risky_action_subcategory:string",
       "metadata:string",
       "customer_storage:string",
       "conversation_storage:string",
