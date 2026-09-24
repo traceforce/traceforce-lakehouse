@@ -40,8 +40,8 @@ Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glu
   (`deleted_at` set) are included; consumers filter.
 - Columns outside the contract are never exported, so adding a column to TraceForce's database
   never changes the snapshot. Exposing it in Iceberg means adding it to the contract on both
-  sides, the export job's table list and `export_tables`; consumer first or together, since a
-  missing key reads as NULL but an unknown key fails the BigQuery read.
+  sides, the export job's table list and `export_tables`, in either order: a missing key reads as
+  NULL and an unknown key is ignored on both clouds.
 
 ## Decoded enum columns
 
