@@ -19,7 +19,7 @@ How to attribute an event or finding to a person, a device, and a corporate acco
   No signed-in account
   = plan 'unknown'; that is how Copilot appears. Never count agents from `agent_accounts` alone. A
   device's MCP count in the console is `COUNT(DISTINCT mcp_server_type)` over its live
-  `mcp_server_instances`; the console hides `mcp_servers` rollups with `active_users = 0`.
+  `mcp_server_instances`; the console's MCP list shows only live `mcp_servers` rollups with `active_users > 0` and `mcp_catalog_id NOT NULL`.
 - **Live inventory** = `deleted_at IS NULL` on devices, accounts, installs and MCP instances;
   a junction row is live only when both parents are. Do not filter `deleted_at` when walking
   from a finding to its account: signed-out accounts still own their past findings.

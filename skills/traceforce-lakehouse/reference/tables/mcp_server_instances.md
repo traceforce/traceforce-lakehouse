@@ -20,8 +20,8 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `sandbox_id` | string | → sandboxes.id; NULL when the row is about the host device itself. |
 | `agent_account_id` | string | → agent_accounts.id: the account a browser-connector MCP belongs to. NULL for filesystem-discovered MCPs — attribute those via mcp_server_agent_instances → agent_instances_accounts → agent_accounts (take the greatest agent_accounts.last_seen_at when several match). |
 | `mcp_server_id` | string | → mcp_servers.id (org rollup). |
-| `mcp_server_type` | int | Integer product code; join the catalogs for the name. Not an enum. |
-| `mcp_server_location` | string | URL for remote servers, command/path for local ones. |
+| `mcp_server_type` | int | Integer product code; LEFT JOIN the catalogs for the name (0 = unknown, no catalog row). Not an enum. |
+| `mcp_server_location` | string | Where it was found, never a URL or command: the config file path (e.g. mcp.json) for filesystem MCPs, the agent's web domain (e.g. .claude.ai) for browser connectors. |
 | `mcp_native_id` | string | The server's key in the host config (mcp.json). Equals agent_events.mcp_server_name (case-insensitive). |
 | `transport_type` | string | Transport protocol as text ('stdio' / 'http' / 'sse' / 'unknown'); never NULL, 'unknown' = unclassified. |
 | `deployment_model` | string | Where the server runs, as text ('local_process' / 'local_container' / 'local_service' / 'remote' / 'unknown'); never NULL, 'unknown' = unclassified. |
@@ -31,9 +31,9 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `agent_type` | int | Agent it is configured for. |
 | `project_path` | string | Project/workspace path the MCP is scoped to; NULL for global-scope configs and browser connectors. |
 | `linked_plans` | string | JSON array of AgentPlanType text the instance is reachable through — its direct account plus junction-linked installs (e.g. ["personal","enterprise"]). NULL or `[]` when it has neither a direct account nor an active junction link. Attribute an instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan). |
-| `metadata` | string | JSON text; detection details: matched patterns, config_type, uid, version, agent_identity, agent_deployment, is_custom. |
+| `metadata` | string | JSON text; detection details for filesystem MCPs: matched_pattern, auth_matched_pattern, config_type, uid, version, agent_identity, agent_deployment. Browser connectors carry none of these. |
 | `security_findings` | string | JSON text; TraceForce's security observations for this instance. |
-| `tools` | string | JSON text; tools the server exposes, as discovered on this install. |
+| `tools` | string | JSON object: `{}` until tools are discovered; `{"tools": [...]}` once they are (`[]` when none). Elements (json_extract(tools, '$.tools')) carry name, description and integer codes tool_status (1 enabled / 2 disabled), hitl_setting (1 allow_unsupervised / 2 always_ask / 3 blocked), permission_type (1 read / 2 write / 3 delete); 0 = unknown. |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |
 | `last_seen_at` | timestamp | Most recent check-in that observed this row (UTC). |

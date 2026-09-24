@@ -135,7 +135,7 @@ touched; which installed MCP servers are actually called; what was blocked or re
 and tokens by person and model. Also, from TraceForce's own data: findings by person and type,
 risky writes and deletes, agents and accounts per device.
 
-`connector_containment_findings` is the set of **risky** file writes and deletes that
+`connector_containment_findings` is the set of **risky** writes and deletes that
 TraceForce's containment engine flagged (`op` = 'write' or 'delete'), not a complete list of
 everything an agent wrote or deleted. For "which risky writes or deletes happened, and how was
 each approved", start from this table and join `agent_events` on `tool_call_id = tool_use_id`

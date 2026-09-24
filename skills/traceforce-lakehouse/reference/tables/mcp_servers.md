@@ -5,7 +5,7 @@ Org-level rollup per MCP product: counts and scores. One row per product per org
 Joins:
 - mcp_catalog_id → mcp_catalog.id only (FK; never org_mcp_catalog.id). For private/org products resolve by mcp_server_type against both catalogs and coalesce the names
 - mcp_server_instances.mcp_server_id = mcp_servers.id
-- The console's MCP list hides rollups with active_users = 0
+- The console's MCP list shows only live rollups with active_users > 0 and mcp_catalog_id NOT NULL
 
 Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 - (org_id, mcp_server_type): one rollup per product per org
@@ -29,7 +29,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `instance_count` | int | Count of distinct active instances of this type; 0 or NULL when none. |
 | `has_host_instances` | boolean | Any instance on a host (not only sandboxes). |
 | `first_seen_at` | timestamp | First observed (UTC). |
-| `last_reviewed` | timestamp | Last reviewed (UTC). |
+| `last_reviewed` | timestamp | Last reviewed (UTC). Reserved: always NULL today. |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |
 | `deleted_at` | timestamp | Soft delete. NULL = live. Filter `deleted_at IS NULL` for the current inventory. |
