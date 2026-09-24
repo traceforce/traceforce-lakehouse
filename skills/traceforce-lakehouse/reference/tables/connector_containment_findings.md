@@ -20,11 +20,11 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `sandbox_id` | string | → sandboxes.id; NULL when the row is about the host device itself. |
 | `conversation_id` | string | → agent_conversations.id |
 | `op` | string | Kind of mutation: always 'write' or 'delete' (never NULL; denied/unknown are filtered out). |
-| `tool_name` | string | Tool that attempted it: 'Bash', 'Shell' (Cursor) or 'MCP:<server>'; never a built-in file tool (Write/Edit). |
+| `tool_name` | string | The agent's shell tool (e.g. `Bash`, `Shell`) or `MCP:<server>`; never a built-in file tool (Write/Edit). |
 | `operation` | string | Display-safe subject of the op: an MCP tool's bare name, or a file path, redacted and truncated to 512 bytes; '' (empty string) for shell/command ops (Bash/Shell); the verbatim command never lands here, only in customer_storage — read the actual tool input from the joined agent_events.tool_args. |
 | `tool_use_id` | string | Agent's tool-call id; equals agent_events.tool_call_id. |
 | `prompt_id` | string | Id of the prompt/turn that triggered the op, but this table does not populate it (NULL here) — do not filter or aggregate this column. It matches agent_events.prompt_id, so reach the triggering turn (the prompt plus its sibling tool calls) by joining tool_use_id → agent_events.tool_call_id and using that row's prompt_id. |
-| `hook_event_name` | string | Event name of the record that observed it: 'tool_result' / 'tool_decision' (Claude-family) or 'postToolUse' / 'postToolUseFailure' (Cursor). |
+| `hook_event_name` | string | The agent's own event name for the record that observed it (varies by agent, e.g. `tool_result`, `postToolUse`); never a pre-execution hook. |
 | `detected_at` | timestamp | When the op was observed (UTC); the reliable order-by time for containment findings; effectively always set. |
 | `finding_status` | string | Reviewer triage state as text (same set as sensitive_data_findings.finding_status); never NULL, starts 'awaiting_review'. |
 | `outcome` | string | Execution result as text ('executed' / 'failed' / 'unspecified'); never NULL, never 'denied' (denied attempts aren't stored). |

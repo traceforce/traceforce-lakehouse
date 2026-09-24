@@ -33,18 +33,18 @@ a span with no decision row is a gap, not an unapproved call. Cursor: only `post
 | `span_name` | string | Span name (spans only). |
 | `operation` | string | Operation type per GenAI semconv (`chat`, `execute_tool`, `invoke_agent`); the cross-agent grouping key. NULL on non-GenAI rows (e.g. connection/session-lifecycle events). |
 | `prompt_id` | string | Per-turn (request/response) identifier; NULL when the agent emits none. Count distinct to count prompts. |
-| `generation_id` | string | Per-turn identifier for agents that emit one instead of `prompt_id` (Cursor); NULL otherwise. |
+| `generation_id` | string | Per-turn identifier for agents that emit one instead of `prompt_id` (e.g. Cursor); NULL otherwise. |
 | `tool_name` | string | The tool invoked. Claude Code MCP calls: the decision/result rows say `mcp_tool`, the span row of the same `tool_call_id` carries the MCP tool's name; the server is in `mcp_server_name`. |
 | `tool_type` | string | Tool type (function, ...). |
 | `tool_call_id` | string | Per-call id; equals connector_containment_findings.tool_use_id (join key). NULL when the agent emits none. Repeats across the decision/result/span rows of one call, so it is not unique. |
 | `mcp_server_name` | string | MCP server as configured on the device; joins lower(mcp_server_instances.mcp_native_id). Also set on Claude Code's `mcp_server_connection` rows (`operation` NULL), which are connections, not calls: filter `operation = 'execute_tool'` for calls. |
 | `tool_args` | string | Tool input, JSON text; occasionally plain text (e.g. a raw shell command). Large. |
-| `tool_result` | string | Tool output; NULL when the agent doesn't emit it. Claude Code: on the span row only, never on its `tool_result` rows. Large. |
+| `tool_result` | string | Tool output; NULL when the agent doesn't emit it. Some agents (e.g. Claude Code) put it on the span row only, not the `tool_result` log row. Large. |
 | `decision` | string | Permission decision as the agent recorded it (e.g. `accept`/`reject`, `approved`/`denied-interactively-by-user`); NULL when the agent records none. |
 | `sd_enforcement` | string | TraceForce sensitive-data policy mode in force on the prompt (`warn` or `block`), not the outcome; NULL when no policy applied. |
 | `containment_enforcement` | string | TraceForce containment policy mode in force on the tool call (`warn` or `block`), not the outcome; NULL when no policy applied. |
 | `error_type` | string | Error class/type on error rows (e.g. `permission_denied`, `403`); NULL otherwise. |
-| `model` | string | The model requested for the turn; `default` (Cursor) and `auto` (Copilot) mean auto-select, not a model name. |
+| `model` | string | The model requested for the turn; selector values such as `default` or `auto` mean auto-select, not a model name. |
 | `input_tokens` | long | Input tokens for the request; NULL when the agent reports no token counts. |
 | `output_tokens` | long | Output tokens for the request; NULL when the agent reports no token counts. |
 | `cache_read_tokens` | long | Cache-read tokens for the request; NULL when the agent reports no token counts. |

@@ -21,7 +21,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `plan` | string | Account plan (decoded AgentPlanType text, e.g. 'personal', 'enterprise', 'small_business'; 'unknown' for AgentPlanType 0). The console's notion of an agent is an INSTALL's (agent_type, coalesce(plan, 'unknown')): start from agent_instances, LEFT JOIN agent_instances_accounts and agent_accounts; installs with no signed-in account are plan 'unknown'. Never count agents from agent_accounts alone. |
 | `tier` | string | Vendor plan tier text when known. |
 | `agent_email` | string | Email the user authenticated to the agent with. Stored byte-exact; lower() is a tolerance. |
-| `agent_org_id` | string | The AI vendor's workspace/org id (e.g. the Anthropic org for Claude); NULL when the agent has no workspace/org concept ('' for Gemini) — test presence with nullif(agent_org_id, ''). |
+| `agent_org_id` | string | The AI vendor's workspace/org id (e.g. the Anthropic org for Claude); NULL or '' when the agent has no workspace/org concept. |
 | `security_settings` | string | JSON text; vendor security settings observed for the account. |
 | `metadata` | string | JSON text; how the account was discovered: source_identifier, source_deployment_type, user_id. |
 | `models_configuration` | string | JSON text; models configured for the account. |
