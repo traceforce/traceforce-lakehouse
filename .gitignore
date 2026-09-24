@@ -1,6 +1,4 @@
-terraform/.terraform/
 terraform/*.tfstate*
-terraform/.terraform.lock.hcl
 examples/**/.terraform/
 examples/**/*.tfstate*
 examples/**/.terraform.lock.hcl
@@ -10,3 +8,8 @@ examples/**/.terraform.lock.hcl
 __pycache__/
 *.pyc
 .DS_Store
+
+# module-level init artifacts (customers init at their root; the modules are never applied in place)
+terraform/**/.terraform/
+terraform/**/.terraform.lock.hcl
+*.tfplan

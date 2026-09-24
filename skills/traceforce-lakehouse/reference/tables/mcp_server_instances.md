@@ -3,7 +3,7 @@
 MCP servers configured on a device for an agent. The MCP inventory; the name matches what the logs carry.
 
 Joins:
-- lower(mcp_server_instances.mcp_native_id) = lower(agent_events.mcp_server_name) AND same device_id/agent_type. Not a key: the same server name can have several live rows per device (one per project_path or location), so aggregate or SELECT DISTINCT
+- lower(mcp_server_instances.mcp_native_id) = lower(agent_events.mcp_server_name) AND mcp_server_instances.agent_type = agent_events.agent_type, on the same device via mcp_server_instances.device_id → devices.device_native_id = agent_events.device_native_id (events carry no device_id). Not a key: the same server name can have several live rows per device (one per project_path or location), so aggregate or SELECT DISTINCT
 - account: agent_account_id when set; else mcp_server_agent_instances → agent_instances_accounts → agent_accounts, taking the greatest agent_accounts.last_seen_at when several match (the console's rule)
 - mcp_server_id → mcp_servers.id
 - mcp_server_type → mcp_catalog.mcp_server_type or org_mcp_catalog.mcp_server_type (product name)
@@ -30,7 +30,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `distribution_channel` | string | Who provisioned it, as text ('platform' / 'tenant' / 'user' / 'unknown'); never NULL, filesystem MCPs are 'user', 'unknown' = unmatched. |
 | `agent_type` | int | Agent it is configured for. |
 | `project_path` | string | Project/workspace path the MCP is scoped to; NULL for global-scope configs and browser connectors. |
-| `linked_plans` | string | JSON array of AgentPlanType text the instance is reachable through — its direct account plus junction-linked installs (e.g. ["personal","enterprise"]). NULL when it has neither a direct account nor an active junction link. Attribute an instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan). |
+| `linked_plans` | string | JSON array of AgentPlanType text the instance is reachable through — its direct account plus junction-linked installs (e.g. ["personal","enterprise"]). NULL or `[]` when it has neither a direct account nor an active junction link. Attribute an instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan). |
 | `metadata` | string | JSON text; vendor-specific extras (e.g. version). |
 | `security_findings` | string | JSON text; TraceForce's security observations for this instance. |
 | `tools` | string | JSON text; tools the server exposes, as discovered on this install. |

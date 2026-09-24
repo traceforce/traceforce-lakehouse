@@ -34,12 +34,14 @@ Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glu
   column. A `jsonb` column holding a bare scalar (none exist today) is exported as that scalar.
   The consumer parses timestamps with `from_iso8601_timestamp`, so the mirror keeps
   millisecond precision; TraceForce's database microseconds are truncated.
-- Rows: `SELECT * FROM <table> WHERE org_id = $org` for tenant tables; whole table for
+- Rows: exactly the contract columns (`export_tables` in `terraform/schema/columns.json`, the one
+  column list both cloud modules read), `WHERE org_id = $org` for tenant tables; whole table for
   `agent_catalog`, `mcp_catalog` and `mcp_categories` (global, no `org_id` column). Soft-deleted rows
   (`deleted_at` set) are included; consumers filter.
-- Extra columns are ignored by the consumer; missing columns read as NULL. Adding a column
-  to TraceForce's database therefore never breaks the mirror; exposing it in Iceberg is a one-line
-  Terraform change (`export_tables` in `terraform/aws/exports.tf`, or `terraform/gcp/locals.tf` on GCP).
+- Columns outside the contract are never exported, so adding a column to TraceForce's database
+  never changes the snapshot. Exposing it in Iceberg means adding it to the contract on both
+  sides, the export job's table list and `export_tables`; consumer first or together, since a
+  missing key reads as NULL but an unknown key fails the BigQuery read.
 
 ## Decoded enum columns
 
@@ -74,7 +76,6 @@ the catalogs (`agent_catalog`, `mcp_catalog` / `org_mcp_catalog`).
 Before writing a table, the export job checks that every column in this contract exists
 in TraceForce's database with a compatible type. A mismatch fails the run for that table and is reported
 to TraceForce; the previous snapshot stays the newest and the mirror keeps yesterday's rows.
-Extra TraceForce's database columns are exported and ignored by the consumer.
 
 ## Tables (v1, 17)
 

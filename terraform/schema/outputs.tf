@@ -18,3 +18,8 @@ output "export_tables" {
   description = "The 17 metadata mirror tables: { <table> = [\"name:type\", ...] }."
   value       = local.schema.export_tables
 }
+
+output "agent_identities" {
+  description = "AgentIdentity enum name -> integer code, generated from scout-proto by tools/gen_agent_identities.py."
+  value       = jsondecode(file("${path.module}/agent_identities.json")).identities
+}

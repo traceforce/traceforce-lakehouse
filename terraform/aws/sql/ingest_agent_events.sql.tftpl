@@ -2,12 +2,13 @@
 -- Rendered by Terraform (templatefile) and run by Step Functions on a schedule.
 -- Idempotent: an object is loaded once, keyed by its full s3:// path (source_object).
 -- Bounded: only the last N upload-day folders are listed and read (today and the N-1 days
--- before it, plus anything a fast device clock filed under tomorrow), N being the single query
--- parameter (lookback_days) the state machine passes: 3 on the schedule, larger for a manual
--- catch-up after an outage. Fractions round. The anti-join makes the window exact, and its
--- target side is bounded on upload_ts (same day as the folder) so Iceberg skips old data files.
--- The parameter appears twice; these must stay the only two question marks in this file
--- (Athena counts them, and the state machine passes the same value for both).
+-- before it, plus anything a fast device clock filed under tomorrow), N being the lookback_days
+-- the state machine passes: 3 on the schedule, larger for a manual catch-up after an outage.
+-- Fractions round. The anti-join makes the window exact, and its target side is bounded on
+-- upload_ts (same day as the folder) so Iceberg skips old data files.
+-- Three positional parameters, and these must stay the only question marks in this file (Athena
+-- counts them): the agent folder first (the injected projection needs a literal), then the
+-- lookback twice (the state machine passes the same value for both).
 -- One row per log record / span. Attribute values keep their OTLP encoding for
 -- arrays and kvlists; scalars are decoded to text.
 -- INSERT first: Athena accepts a WITH clause only inside the query that follows INSERT INTO,
@@ -20,7 +21,7 @@ WITH objects AS (
   -- so an unqualified reference inside the subquery would bind to t and never match.
   SELECT r."$path" AS src_path, r.agent, r.doc
   FROM ${raw} r
-  WHERE r.agent IN (${agent_in_list})
+  WHERE r.agent = ?
     AND r.dt >= date_format(date_add('day', 1 - CAST(? AS integer), current_date), '%Y%m%d')
     AND NOT EXISTS (SELECT 1 FROM ${target} t
                     WHERE t.source_object = r."$path"
@@ -43,13 +44,9 @@ blocks AS (
     element_at(p.seg, -2) AS path_session_raw,
     element_at(p.seg, -3) AS path_account,
     element_at(p.seg, -4) AS path_serial,
-    -- upload time from the filename: <YYYYMMDD_HHMMSS.mmm>_<uuid>_... (current), or a
-    -- 10-digit unix-seconds prefix on the first days of the current layout
-    COALESCE(
-      TRY(CAST(date_parse(regexp_extract(element_at(p.seg, -1), '^([0-9]{8}_[0-9]{6}\.[0-9]{3})_', 1),
-                          '%Y%m%d_%H%i%S.%f') AS timestamp(6))),
-      TRY(CAST(from_unixtime(CAST(regexp_extract(element_at(p.seg, -1), '^([0-9]{10})_', 1) AS BIGINT))
-               AT TIME ZONE 'UTC' AS timestamp(6)))) AS upload_ts,
+    -- upload time from the filename: <YYYYMMDD_HHMMSS.mmm>_<uuid>_... (minted by our exporter)
+    TRY(CAST(date_parse(regexp_extract(element_at(p.seg, -1), '^([0-9]{8}_[0-9]{6}\.[0-9]{3})_', 1),
+                        '%Y%m%d_%H%i%S.%f') AS timestamp(6))) AS upload_ts,
     -- resource attributes -> map (first value wins on duplicate keys)
     transform_values(multimap_from_entries(transform(
       filter(COALESCE(TRY(CAST(json_extract(b, '$.resource.attributes') AS ARRAY(JSON))), ARRAY[]),

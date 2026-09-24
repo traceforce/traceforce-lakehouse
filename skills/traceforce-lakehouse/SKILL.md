@@ -1,6 +1,6 @@
 ---
 name: traceforce-lakehouse
-description: Query the TraceForce lakehouse (Athena over Iceberg in AWS, or BigQuery over Iceberg in GCP) to answer questions about AI-agent activity from Claude Code, Claude (the claude.ai chat agent), Cursor and GitHub Copilot: prompts, tool calls, MCP servers, tokens and cost, sensitive-data and containment findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena, BigQuery or SQL over TraceForce data. Read-only. Not for the TraceForce REST API or console; ChatGPT activity is not in the lake.
+description: Query the TraceForce lakehouse (Athena over Iceberg in AWS, or BigQuery over Iceberg in GCP) to answer questions about AI-agent activity from agents such as Claude Code, Claude (the claude.ai chat agent), Cursor and GitHub Copilot: prompts, tool calls, MCP servers, tokens and cost, sensitive-data and containment findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena, BigQuery or SQL over TraceForce data. Read-only. Not for the TraceForce REST API or console; ChatGPT activity is not in the lake.
 ---
 
 # TraceForce lakehouse
@@ -11,6 +11,9 @@ description: Query the TraceForce lakehouse (Athena over Iceberg in AWS, or BigQ
   and `INFORMATION_SCHEMA` — no `SHOW`/`DESCRIBE`). Never modify data.
 - Constrain `agent_events` by `ts` unless the user asks for all time, and never `SELECT *` from it:
   `content_input`, `content_output`, `tool_args`, `tool_result` and `attrs_json` are large.
+- `ts` is UTC. For "today" / "yesterday" / "this week", write explicit `ts` bounds (the user's
+  local day converted to UTC, or a rolling window) and state the window in the answer;
+  `current_date` / `date(ts)` roll over at 00:00 UTC, not at the user's midnight.
 - `agent_type` and `mcp_server_type` are integer codes, not names — resolve them via the
   catalogs (`agent_catalog`, `mcp_catalog` / `org_mcp_catalog`).
 - Mention a gap (Known gaps) only when leaving it out would make this answer wrong or
@@ -37,7 +40,8 @@ Use the bundled script; do not reimplement it with raw `aws athena` / `bq` calls
 
 ```bash
 "${CLAUDE_SKILL_DIR}/scripts/athena_query.sh" "SELECT agent, count(*) FROM agent_events WHERE ts > current_timestamp - interval '7' day GROUP BY 1"
-"${CLAUDE_SKILL_DIR}/scripts/athena_query.sh" -f /tmp/q.sql
+Q="$(mktemp)"   # long SQL: write it here, not to a fixed path — concurrent sessions collide
+"${CLAUDE_SKILL_DIR}/scripts/athena_query.sh" -f "$Q"
 ```
 
 `${CLAUDE_SKILL_DIR}` is set by Claude Code. Other agents invoke the script by its path,
@@ -80,6 +84,7 @@ example SQL is Athena/Trino. Translate to GoogleSQL:
 - `SHOW TABLES` / `DESCRIBE` don't exist -> `SELECT table_name FROM traceforce_lakehouse.INFORMATION_SCHEMA.TABLES`; `SELECT column_name, data_type FROM traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<t>'`.
 - No `"<table>$snapshots"` metadata on BigQuery; for mirror freshness use the table's last-load
   time: `SELECT TIMESTAMP_MILLIS(last_modified_time) FROM traceforce_lakehouse.__TABLES__ WHERE table_id = '<mirror>'` — **not** `max(updated_at)`, which is a source-side time.
+  `__TABLES__.row_count` is 0 for every table here (Iceberg); count rows with `count(*)`.
 - `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `CROSS JOIN UNNEST(JSON_VALUE_ARRAY(x)) AS elem` (unnesting a JSON array of strings).
 - Raw-object joins match the storage URI scheme: `s3://…` on AWS, `gs://…` on GCP. Match `source_object` to the connected bucket's scheme — a hardcoded `s3://` matches zero rows on GCP.
 

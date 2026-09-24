@@ -64,7 +64,6 @@ resource "aws_s3tables_table" "agent_events" {
   }
 }
 
-
 # Iceberg primitive types only; a schema change replaces the table (see README, Upgrades).
 locals {
   agent_events_schema = module.schema.agent_events
