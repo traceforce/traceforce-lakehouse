@@ -12,5 +12,4 @@ What the stored content columns contain, and where the matched sensitive value l
   to recover it from them. A containment
   finding's *command* is not a value and is not masked: recover it from the joined event's
   `tool_args`. For anything evidence-only, point the user to the TraceForce console or
-  `GET /api/v1/sensitive-data-findings/{id}/content` (containment:
-  `/api/v1/connector-containment-findings/{id}/content`), which are authorized and audited.
+  `GET /api/v1/{sensitive-data,connector-containment,prompt-injection}-findings/{id}/content`, which are authorized and audited.

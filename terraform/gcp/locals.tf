@@ -40,7 +40,7 @@ locals {
   # the JSON type.
   agent_events_schema = module.schema.agent_events
 
-  # 17 metadata mirror tables from the shared ../schema module.
+  # 18 metadata mirror tables from the shared ../schema module.
   export_tables = module.schema.export_tables
 
   # "name:type" -> { name, type }

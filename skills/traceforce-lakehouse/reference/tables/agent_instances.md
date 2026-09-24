@@ -19,7 +19,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `agent_type` | int | Which agent product. |
 | `agent_deployment` | string | Form factor of this install, as text ('desktop_app' / 'vscode_extension' / 'cli' / 'browser' / 'ai_browser' / 'service' / 'unknown'). |
 | `tenant` | string | OS-level user (uid on macOS/Linux, SID on Windows) the install belongs to; resolve to a username via devices.account_metadata. |
-| `metadata` | string | JSON text; vendor-specific extras (e.g. version). |
+| `metadata` | string | JSON text. On the findings tables: reviewer close tracking {statusComment, statusUpdatedAt, statusUpdatedBy}, empty or NULL until a reviewer closes the finding; elsewhere vendor-specific extras (e.g. version). |
 | `configuration` | string | JSON text; detected agent configuration. |
 | `installations` | string | JSON text; filesystem installation records (paths, versions). |
 | `created_at` | timestamp | Row created (UTC). |
