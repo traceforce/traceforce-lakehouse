@@ -4,8 +4,9 @@ terraform {
   required_version = ">= 1.5"
   required_providers {
     google = {
-      source  = "hashicorp/google"
-      version = ">= 6.0.0"
+      source = "hashicorp/google"
+      # 7.31.0 is the first release where ignore_auto_generated_schema works for external tables.
+      version = ">= 7.31.0"
     }
     time = {
       source  = "hashicorp/time"

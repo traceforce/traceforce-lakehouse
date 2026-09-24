@@ -16,6 +16,18 @@ resource "google_bigquery_connection" "gcs" {
   cloud_resource {}
 }
 
+# BigQuery provisions the connection's service account ASYNCHRONOUSLY: terraform gets its email back
+# immediately, but the IAM backend does not yet know the identity, so binding a role to it in the
+# same apply can fail with "Service account bqcx-...@gcp-sa-bigquery-condel.iam.gserviceaccount.com
+# does not exist" (observed on a fresh apply; re-running then succeeds). This short wait lets the SA
+# register before the two grants below reference it, so a customer's first apply is one-shot. Keyed
+# on the SA email so it re-fires if the connection (hence its SA) is ever replaced; the grants take
+# the email from here, which is what orders them after the wait.
+resource "time_sleep" "connection_sa_ready" {
+  triggers        = { sa = google_bigquery_connection.gcs.cloud_resource[0].service_account_id }
+  create_duration = "30s"
+}
+
 # The connection SA's access is split so it holds NO write/delete on the customer's data:
 #  - customer logs bucket: READ-ONLY (objectViewer + legacyBucketReader) -- it only reads the raw
 #    activity objects and the daily export snapshots there.
@@ -27,23 +39,26 @@ resource "google_storage_bucket_iam_member" "connection_logs_read" {
   for_each = toset(["roles/storage.objectViewer", "roles/storage.legacyBucketReader"])
   bucket   = var.logs_bucket
   role     = each.value
-  member   = "serviceAccount:${google_bigquery_connection.gcs.cloud_resource[0].service_account_id}"
+  member   = "serviceAccount:${time_sleep.connection_sa_ready.triggers.sa}"
 }
 
 resource "google_storage_bucket_iam_member" "connection_iceberg_rw" {
   for_each = toset(["roles/storage.objectUser", "roles/storage.legacyBucketReader"])
   bucket   = google_storage_bucket.iceberg.name
   role     = each.value
-  member   = "serviceAccount:${google_bigquery_connection.gcs.cloud_resource[0].service_account_id}"
+  member   = "serviceAccount:${time_sleep.connection_sa_ready.triggers.sa}"
 }
 
 # GCS IAM is eventually consistent (Google: "typically 2 minutes, potentially 7 minutes or
 # longer"), so let the connection SA's grants propagate before the managed Iceberg tables write
 # their first metadata object, else table creation can hit a transient storage.objects.create
 # denial. A fixed wait can't cover the 7-min tail; if a create still races, re-running apply is
-# idempotent (the empty table recreates). 180s covers the typical case; fires once, at create only.
+# idempotent (the empty table recreates). 180s covers the typical case. Keyed on the same SA as
+# the wait above so a connection replacement re-runs the whole chain (new SA -> new grants ->
+# propagate -> tables).
 resource "time_sleep" "iam_propagation" {
   depends_on      = [google_storage_bucket_iam_member.connection_logs_read, google_storage_bucket_iam_member.connection_iceberg_rw]
+  triggers        = { sa = time_sleep.connection_sa_ready.triggers.sa }
   create_duration = "180s"
 }
 

@@ -1,16 +1,18 @@
-# The ingest's SOURCE: a Glue table over the raw gzipped OTLP-JSON objects. Each object
-# is one compact JSON document on a single line, so the table is a single string column
-# and Athena's JSON functions unnest it. Nobody queries this table directly; it exists so
+# The ingest's SOURCE: a Glue table over the raw gzipped OTLP-JSON objects scout writes under
+#   <root>telemetry/agent=<AGENT_IDENTITY_*>/dt=<YYYYMMDD>/...
+# Each object is one compact JSON document on a single line, so the table is a single string
+# column and Athena's JSON functions unnest it. Nobody queries this table directly; it exists so
 # the scheduled INSERT can read the objects in place.
 #
-# Two projected partitions: the agent folder (Athena lists only the four supported agents;
-# ChatGPT's .json.zip capture and pre-day-partition layouts are never touched) and the
-# upload day the collector writes as dt=YYYYMMDD right after the agent. The ingest reads
-# only the last few days of folders, so cost and run time do not grow with history.
-# Requires collector release 1.0.42 or later; objects written by older collectors (flat
-# layout, no dt= folder) are not read.
-resource "aws_glue_catalog_table" "raw_conversations" {
-  name          = "raw_conversations"
+# Two projected partitions, so no catalog partitions are ever registered and nothing is listed
+# beyond the folders a run reads: `agent` is INJECTED -- the state machine discovers the
+# agent=... folders with one S3 listing and runs the ingest once per agent (Athena requires the
+# value in the query) -- and `dt` is the upload day. No agent list lives in this module: a new
+# agent identity is ingested on the next hourly run. Browser captures and pre-telemetry/ layouts
+# live under conversations/ and are never touched. Requires the scout release that writes the
+# telemetry/ layout; objects written by older collectors are not read.
+resource "aws_glue_catalog_table" "raw_telemetry" {
+  name          = "raw_telemetry"
   database_name = aws_glue_catalog_database.lakehouse.name
   table_type    = "EXTERNAL_TABLE"
   description   = "TraceForce raw activity objects, one OTLP-JSON document per row. Ingest source only; query agent_events instead."
@@ -18,14 +20,13 @@ resource "aws_glue_catalog_table" "raw_conversations" {
   parameters = {
     EXTERNAL                      = "TRUE"
     "projection.enabled"          = "true"
-    "projection.agent.type"       = "enum"
-    "projection.agent.values"     = join(",", keys(local.agents))
+    "projection.agent.type"       = "injected"
     "projection.dt.type"          = "date"
     "projection.dt.format"        = "yyyyMMdd"
     "projection.dt.range"         = "${local.day_layout_since},NOW+1DAYS"
     "projection.dt.interval"      = "1"
     "projection.dt.interval.unit" = "DAYS"
-    "storage.location.template"   = "${local.raw_root}$${agent}/dt=$${dt}/"
+    "storage.location.template"   = "${local.raw_root}agent=$${agent}/dt=$${dt}/"
   }
 
   storage_descriptor {

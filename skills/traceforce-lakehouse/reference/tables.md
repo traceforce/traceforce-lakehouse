@@ -24,7 +24,7 @@ One file per table under `tables/`; read only the ones a question needs.
 | `agent_conversation_files` | Files attached to conversations (uploads) | `tables/agent_conversation_files.md` |
 | `mcp_server_instances` | MCP servers configured on a device for an agent | `tables/mcp_server_instances.md` |
 | `mcp_server_agent_instances` | Junction: which install (agent_instances) an MCP server instance is configured in | `tables/mcp_server_agent_instances.md` |
-| `mcp_servers` | Org-level rollup per MCP product: counts, scores, status | `tables/mcp_servers.md` |
+| `mcp_servers` | Org-level rollup per MCP product: counts and scores | `tables/mcp_servers.md` |
 | `mcp_catalog` | Global reference: MCP products TraceForce knows | `tables/mcp_catalog.md` |
 | `org_mcp_catalog` | Same shape as mcp_catalog, for private/custom MCP servers specific to your org | `tables/org_mcp_catalog.md` |
 | `mcp_categories` | Global reference: MCP product categories (Databases & Data Storage, OS and Local File Systems, Security Tools, ...) | `tables/mcp_categories.md` |

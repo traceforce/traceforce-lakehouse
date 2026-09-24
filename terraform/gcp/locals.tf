@@ -13,23 +13,15 @@ locals {
   # and regions lowercase (us-east1), so lowercase only when it is a region (contains a hyphen).
   bq_location = strcontains(data.google_storage_bucket.logs.location, "-") ? lower(data.google_storage_bucket.logs.location) : data.google_storage_bucket.logs.location
 
-  # Where TraceForce's collector writes activity objects, per agent and upload day (UTC):
-  #   gs://<bucket>/<prefix>/conversations/<AGENT_IDENTITY_*>/dt=<YYYYMMDD>/<serial>/<email>[_<org>]/<session>/<ts>_<uuid>_logs|traces.json.gz
+  # Where scout's OTel exporter writes activity objects -- Hive key=value for agent and upload day (UTC):
+  #   gs://<bucket>/<prefix>/telemetry/agent=<AGENT_IDENTITY_*>/dt=<YYYYMMDD>/<serial>/<email>[_<org>]/<session>/<ts>_<uuid>_logs|traces.json.gz
   prefix_slash = var.logs_prefix == "" ? "" : "${var.logs_prefix}/"
-  raw_root     = "gs://${var.logs_bucket}/${local.prefix_slash}conversations/"
+  raw_root     = "gs://${var.logs_bucket}/${local.prefix_slash}telemetry/"
   # TraceForce's daily metadata snapshots land under this subtree in the customer's logs bucket.
   derived_root = "gs://${var.logs_bucket}/${local.prefix_slash}_traceforce/lakehouse/"
   exports_root = "${local.derived_root}exports/"
   # The managed Iceberg data lives in a module-owned bucket (see bucket.tf), never the logs bucket.
   iceberg_root = "gs://${google_storage_bucket.iceberg.name}/iceberg/"
-
-  # Only these four rails are in the standardized OTLP GenAI format (same as AWS).
-  agents = {
-    "AGENT_IDENTITY_CLAUDE_CODE"    = 111
-    "AGENT_IDENTITY_CURSOR"         = 2
-    "AGENT_IDENTITY_CLAUDE"         = 1
-    "AGENT_IDENTITY_GITHUB_COPILOT" = 8
-  }
 
   name = "traceforce-lakehouse"
 
@@ -61,20 +53,13 @@ locals {
   # biglake_configuration.connection_id wants project.location.connection (location lowercased).
   connection_ref = "${local.project}.${lower(local.bq_location)}.${google_bigquery_connection.gcs.connection_id}"
 
-  # objects source for the ingest: one SELECT per agent over its hive-partitioned raw table,
-  # UNION'd. dt (INT64 partition column) prunes the scan to the last lookback_days upload days;
-  # the anti-join skips already-loaded objects (keyed by source_object = _FILE_NAME).
-  ingest_objects_sql = join("\n  UNION ALL\n", [
-    for a in keys(local.agents) :
-    "SELECT _FILE_NAME AS src_path, '${a}' AS agent, resourceLogs, resourceSpans FROM `${local.project}.${var.dataset_id}.${google_bigquery_table.raw_conversations[a].table_id}` WHERE dt >= CAST(FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${var.lookback_days} - 1 DAY)) AS INT64) AND NOT EXISTS (SELECT 1 FROM `${local.project}.${var.dataset_id}.agent_events` t WHERE t.source_object = _FILE_NAME AND (t.upload_ts >= TIMESTAMP(DATE_SUB(CURRENT_DATE(), INTERVAL ${var.lookback_days} DAY)) OR t.upload_ts IS NULL))"
-  ])
-
   # Rendered ingest SQL (uses the validated template + the two JS routines).
   ingest_sql = templatefile("${path.module}/sql/ingest_agent_events.sql.tftpl", {
     target          = "${local.project}.${var.dataset_id}.agent_events"
-    objects_sql     = local.ingest_objects_sql
+    raw             = "${local.project}.${var.dataset_id}.${google_bigquery_table.raw_telemetry.table_id}"
+    lookback_days   = var.lookback_days
     dataset         = "${local.project}.${var.dataset_id}"
-    agent_type_case = join(" ", [for k, v in local.agents : "WHEN '${k}' THEN ${v}"])
+    agent_type_case = join(" ", [for k, v in module.schema.agent_identities : "WHEN '${k}' THEN ${v}"])
     cols            = join(", ", [for c in local.agent_events_schema : c.name])
   })
 
