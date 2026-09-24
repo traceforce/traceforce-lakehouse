@@ -122,5 +122,8 @@ resource "google_bigquery_table" "export_src" {
     compression   = "GZIP" # gzip snapshots; must be explicit, see raw_telemetry above
     source_uris   = ["${local.exports_root}${each.key}/*"]
     connection_id = local.connection_ref
+    # A snapshot may carry keys this module version does not know yet (the exporter added a column
+    # before the customer re-applied); skip them like Athena's SerDe does instead of failing the read.
+    ignore_unknown_values = true
   }
 }
