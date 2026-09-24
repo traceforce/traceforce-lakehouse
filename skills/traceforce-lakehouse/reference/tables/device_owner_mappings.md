@@ -1,6 +1,6 @@
 # device_owner_mappings
 
-Device owner from your MDM. The attribution path for agents whose logs carry no email.
+Device owner from your MDM.
 
 Joins:
 - device_owner_mappings.device_native_id = agent_events.device_native_id (or = devices.device_native_id)

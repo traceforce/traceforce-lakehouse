@@ -5,7 +5,7 @@ Junction: which account is signed in through which install.
 Joins:
 - agent_instance_id → agent_instances.id
 - agent_account_id → agent_accounts.id
-- No deleted_at of its own. A link is live only when BOTH parents are: agent_instances.deleted_at IS NULL AND agent_accounts.deleted_at IS NULL (the console's active_agent_instances_accounts view)
+- No deleted_at of its own. A link is live only when BOTH parents are: agent_instances.deleted_at IS NULL AND agent_accounts.deleted_at IS NULL
 
 Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 - (org_id, device_id, sandbox_id, agent_instance_id, agent_account_id)

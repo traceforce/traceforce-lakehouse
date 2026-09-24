@@ -40,8 +40,8 @@ Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glu
   (`deleted_at` set) are included; consumers filter.
 - Columns outside the contract are never exported, so adding a column to TraceForce's database
   never changes the snapshot. Exposing it in Iceberg means adding it to the contract on both
-  sides, the export job's table list and `export_tables`; consumer first or together, since a
-  missing key reads as NULL but an unknown key fails the BigQuery read.
+  sides, the export job's table list and `export_tables`, in either order: a missing key reads as
+  NULL and an unknown key is ignored on both clouds.
 
 ## Decoded enum columns
 
@@ -53,8 +53,9 @@ element-wise into a JSON text array (e.g. `["remote","local"]`). These columns a
 
 Decoded columns (`[]` = JSON text array):
 
-- `connector_containment_findings`: `op`, `outcome`, `finding_status`
+- `connector_containment_findings`: `op`, `outcome`, `finding_status`, `risky_action_category`, `risky_action_subcategory`
 - `sensitive_data_findings`: `category`, `type`, `finding_status`
+- `prompt_injection_findings`: `finding_status`
 - `sandboxes`: `runtime_type`
 - `agent_accounts`: `plan`
 - `agent_instances`: `agent_deployment`
@@ -77,13 +78,13 @@ Before writing a table, the export job checks that every column in this contract
 in TraceForce's database with a compatible type. A mismatch fails the run for that table and is reported
 to TraceForce; the previous snapshot stays the newest and the mirror keeps yesterday's rows.
 
-## Tables (v1, 17)
+## Tables (v1, 18)
 
 | Group | Tables |
 |---|---|
 | Identity | devices, sandboxes, agent_accounts, agent_instances, agent_instances_accounts, device_owner_mappings |
 | Agent names | agent_catalog (global) |
-| Findings + bridge to logs | sensitive_data_findings, connector_containment_findings, agent_conversations, agent_conversation_files |
+| Findings + bridge to logs | sensitive_data_findings, connector_containment_findings, prompt_injection_findings, agent_conversations, agent_conversation_files |
 | MCP | mcp_server_instances, mcp_server_agent_instances, mcp_servers, mcp_catalog (global), org_mcp_catalog, mcp_categories (global) |
 
 Deferred: user_groups / user_group_devices / user_group_members / idp_directory_users

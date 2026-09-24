@@ -21,7 +21,7 @@ So this outcome is derived from the agent_events logs, per agent, using the lite
   the `tool_decision` row as `$.source`; a rejected call produces no `tool_result` row, and
   `tool_result` rows carry only `$.success` for outcome. Claude (claude.ai) emits the same
   `tool_decision` rows, but TraceForce installs no hook there, so a `hook` source on its rows is
-  the user's own; its enforcement is the proxy (Cowork, next).
+  the user's own; its enforcement is the proxy (see Cowork below).
 - Cowork: scout's inline proxy blocks with an HTTP 403 whose body is
   `{"error":"access_denied","message":"...blocked because it contains sensitive data."}` — the
   phrase is in `message`, not `error`. That body is not itself a log event: scout emits no

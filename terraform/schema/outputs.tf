@@ -15,7 +15,7 @@ output "agent_events" {
 }
 
 output "export_tables" {
-  description = "The 17 metadata mirror tables: { <table> = [\"name:type\", ...] }."
+  description = "The 18 metadata mirror tables: { <table> = [\"name:type\", ...] }."
   value       = local.schema.export_tables
 }
 

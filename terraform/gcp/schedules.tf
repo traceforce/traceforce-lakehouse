@@ -52,7 +52,7 @@ resource "google_bigquery_data_transfer_config" "ingest" {
   ]
 }
 
-# Daily mirror ~12:30 UTC: one multi-statement script of 17 guarded atomic MERGEs (each
+# Daily mirror ~12:30 UTC: one multi-statement script of 18 guarded atomic MERGEs (each
 # upserts the newest snapshot and deletes rows no longer in it, in one race-free statement).
 resource "google_bigquery_data_transfer_config" "mirror" {
   display_name         = "${local.name}-mirror"

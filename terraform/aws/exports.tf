@@ -1,7 +1,7 @@
 # TraceForce's control-plane metadata, mirrored into the same S3 Tables namespace so
-# Claude can join it against agent_events with plain SQL. v1 = 17 tables: identity
+# Claude can join it against agent_events with plain SQL. v1 = 18 tables: identity
 # (devices, sandboxes, accounts, installs and their junction, MDM owners), agent names,
-# the two finding types with their bridges to the logs (conversations, files), and the
+# the three finding types with their bridges to the logs (conversations, files), and the
 # whole MCP chain (instances, junction to installs, rollups, global + org catalogs,
 # categories).
 # Deferred until a customer question needs them: user groups and IdP users, issues and

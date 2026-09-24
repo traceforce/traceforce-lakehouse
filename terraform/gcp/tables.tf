@@ -29,7 +29,7 @@ resource "google_bigquery_table" "agent_events" {
   clustering = ["source_object"]
 }
 
-# 17 metadata mirror tables: managed Iceberg, typed, same names as in TraceForce.
+# 18 metadata mirror tables: managed Iceberg, typed, same names as in TraceForce.
 resource "google_bigquery_table" "export" {
   depends_on = [time_sleep.iam_propagation]
   for_each   = local.export_columns
@@ -98,7 +98,7 @@ resource "google_bigquery_table" "raw_telemetry" {
   }
 }
 
-# 17 snapshot external tables: typed NDJSON so the mirror MERGE needs no casts. Non-hive (unlike
+# 18 snapshot external tables: typed NDJSON so the mirror MERGE needs no casts. Non-hive (unlike
 # raw_telemetry above) so the table can be created before any snapshots exist; the mirror
 # derives dt from _FILE_NAME. Read via the connection SA. No metadata cache.
 resource "google_bigquery_table" "export_src" {
@@ -122,5 +122,8 @@ resource "google_bigquery_table" "export_src" {
     compression   = "GZIP" # gzip snapshots; must be explicit, see raw_telemetry above
     source_uris   = ["${local.exports_root}${each.key}/*"]
     connection_id = local.connection_ref
+    # A snapshot may carry keys this module version does not know yet (the exporter added a column
+    # before the customer re-applied); skip them like Athena's SerDe does instead of failing the read.
+    ignore_unknown_values = true
   }
 }

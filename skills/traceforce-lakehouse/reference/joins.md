@@ -42,7 +42,7 @@ ORDER BY e.ts
 Use when asking how a write or delete was approved. `tool_use_id` on the finding equals
 `tool_call_id` on the events of the same session, and the `tool_decision` row carries the
 source. Cursor rows carry no `tool_decision`, so join the finding's `tool_use_id` to its
-`tool_result`/span row instead. On rows that reached the findings table, `source = 'hook'` means the user's own
+`postToolUse` row instead. On rows that reached the findings table, `source = 'hook'` means the user's own
 PreToolUse hook approved (TraceForce's hook never returns allow); `config` means Claude's own
 permission rules; `user_*` means a person clicked. Denied attempts never reach this table;
 they are `decision = 'reject'` events only.

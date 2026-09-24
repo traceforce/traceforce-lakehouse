@@ -17,7 +17,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `description` | string | Catalog description. |
 | `website` | string | Vendor website. |
 | `logo_url` | string | Logo URL. |
-| `agent_type` | int | The integer code used everywhere else; join key, not decoded. |
+| `agent_type` | int | Join key. |
 | `domain` | string | Vendor domain. |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |

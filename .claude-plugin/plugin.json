@@ -1,7 +1,7 @@
 {
   "name": "traceforce-lakehouse",
   "description": "Query your TraceForce AI-agent activity lakehouse (read-only Athena over Iceberg in AWS, or BigQuery over Iceberg in GCP) in plain language.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
     "name": "TraceForce"
   },
