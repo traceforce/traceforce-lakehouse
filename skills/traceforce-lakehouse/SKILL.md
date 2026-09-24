@@ -111,12 +111,13 @@ example SQL is Athena/Trino. Translate to GoogleSQL:
 ## Reference (each one level from here)
 
 - `reference/agent_events.md`: every column of the events table with its meaning.
-- `reference/tables.md`: index of the 17 metadata tables. One file each under
+- `reference/tables.md`: index of the 18 metadata tables. One file each under
   `reference/tables/`: devices, sandboxes, agent_accounts, agent_instances,
   agent_instances_accounts, device_owner_mappings, agent_catalog, sensitive_data_findings,
-  connector_containment_findings, agent_conversations, agent_conversation_files,
-  mcp_server_instances, mcp_server_agent_instances, mcp_servers, mcp_catalog,
-  org_mcp_catalog, mcp_categories. Each gives purpose, joins, source uniqueness, columns.
+  connector_containment_findings, prompt_injection_findings, agent_conversations,
+  agent_conversation_files, mcp_server_instances, mcp_server_agent_instances, mcp_servers,
+  mcp_catalog, org_mcp_catalog, mcp_categories. Each gives purpose, joins, source uniqueness,
+  columns.
 - `reference/joins.md`: the joins that are not obvious from the schema.
 - `reference/identity.md`: attributing an event or finding to a person, device and account.
 - `reference/redaction.md`: what the stored content columns hold, and where the matched value lives.
