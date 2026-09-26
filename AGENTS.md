@@ -16,23 +16,20 @@ Install as a plugin:
 
 ## Any other agent (Cursor, GitHub Copilot, OpenAI Codex, ...)
 
-Point your agent at `skills/traceforce-lakehouse/`:
+These load skills from `~/.agents/skills/`. Copy the skill there, then start a new session:
 
-- Load `skills/traceforce-lakehouse/SKILL.md` and everything under
-  `skills/traceforce-lakehouse/reference/` as context.
-- Run queries with the bundled script for your cloud:
+```
+git clone https://github.com/traceforce/traceforce-lakehouse.git ~/traceforce-lakehouse
+mkdir -p ~/.agents/skills && cp -R ~/traceforce-lakehouse/skills/traceforce-lakehouse ~/.agents/skills/
+```
 
-  ```
-  # AWS (Athena):
-  skills/traceforce-lakehouse/scripts/athena_query.sh "SELECT ..."
-  # GCP (BigQuery):
-  skills/traceforce-lakehouse/scripts/bq_query.sh "SELECT ..."
-  ```
+To update:
 
-  (Cursor: add `SKILL.md` under `.cursor/rules`. Copilot: reference it from
-  `.github/copilot-instructions.md`. Others: add it to your system prompt.)
+```
+git -C ~/traceforce-lakehouse pull && rm -rf ~/.agents/skills/traceforce-lakehouse && cp -R ~/traceforce-lakehouse/skills/traceforce-lakehouse ~/.agents/skills/
+```
 
-Only Claude Code is verified end to end so far. The skill content is identical for every agent; what differs is how you load it, which script your cloud uses (`athena_query.sh` for AWS, `bq_query.sh` for GCP), and how you invoke it (Claude Code injects `${CLAUDE_SKILL_DIR}`; other agents use the path shown above).
+Only Claude Code is verified end to end so far.
 
 ## Prerequisites
 

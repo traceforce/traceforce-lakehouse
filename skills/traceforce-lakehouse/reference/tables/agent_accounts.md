@@ -17,7 +17,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `device_id` | string | → devices.id |
 | `sandbox_id` | string | → sandboxes.id; NULL when the row is about the host device itself. |
 | `agent_id` | string | → the org-level agent rollup (that table is not in the lake). |
-| `agent_type` | int | Which agent product. |
+| `agent_type` | string | Which agent product. |
 | `plan` | string | Account plan (decoded AgentPlanType text, e.g. 'personal', 'enterprise', 'small_business'; 'unknown' for AgentPlanType 0). Counting agents: reference/identity.md. |
 | `tier` | string | Vendor plan tier text when known. |
 | `agent_email` | string | Email the user authenticated to the agent with. Stored byte-exact; lower() is a tolerance. |

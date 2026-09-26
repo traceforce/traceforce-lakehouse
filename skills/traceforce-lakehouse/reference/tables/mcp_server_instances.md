@@ -28,10 +28,10 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `auth_type` | string | Authentication method as text ('oauth' / 'token' / 'basic_auth' / 'no_auth' / 'unknown'); never NULL, 'unknown' = no method detected. |
 | `transport_security_type` | string | Transport encryption as text ('none' / 'tls' / 'unknown'); never NULL, 'unknown' = unclassified. |
 | `distribution_channel` | string | Who provisioned it, as text ('platform' / 'tenant' / 'user' / 'unknown'); never NULL, filesystem MCPs are 'user', 'unknown' = unmatched. |
-| `agent_type` | int | Agent it is configured for. |
+| `agent_type` | string | Agent it is configured for. |
 | `project_path` | string | Project/workspace path the MCP is scoped to; NULL for global-scope configs and browser connectors. |
 | `linked_plans` | string | JSON array of AgentPlanType text the instance is reachable through — its direct account plus junction-linked installs (e.g. ["personal","enterprise"]). NULL or '[]' when it has neither a direct account nor an active junction link. Attribute an instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan). |
-| `metadata` | string | JSON text; detection details for filesystem MCPs: matched_pattern, auth_matched_pattern, config_type, uid, version, agent_identity, agent_deployment. |
+| `metadata` | string | JSON text; detection details for filesystem MCPs: matched_pattern, auth_matched_pattern, config_type, uid, version, agent_deployment. |
 | `security_findings` | string | JSON text; TraceForce's security observations for this instance. |
 | `tools` | string | JSON object: '{}' until tools are discovered; '{"tools": [...]}' once they are ('[]' when none). Elements (json_extract(tools, '$.tools')) carry name, description and integer codes tool_status (1 enabled / 2 disabled), hitl_setting (1 allow_unsupervised / 2 always_ask / 3 blocked), permission_type (1 read / 2 write / 3 delete); 0 = unknown. |
 | `created_at` | timestamp | Row created (UTC). |

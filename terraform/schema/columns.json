@@ -7,7 +7,7 @@
     },
     {
       "name": "agent_type",
-      "type": "int",
+      "type": "string",
       "required": false
     },
     {
@@ -269,7 +269,7 @@
       "device_id:string",
       "sandbox_id:string",
       "agent_id:string",
-      "agent_type:int",
+      "agent_type:string",
       "plan:string",
       "tier:string",
       "agent_email:string",
@@ -289,7 +289,7 @@
       "device_id:string",
       "sandbox_id:string",
       "agent_catalog_id:string",
-      "agent_type:int",
+      "agent_type:string",
       "agent_deployment:string",
       "tenant:string",
       "metadata:string",
@@ -327,7 +327,7 @@
       "description:string",
       "website:string",
       "logo_url:string",
-      "agent_type:int",
+      "agent_type:string",
       "domain:string",
       "created_at:timestamp",
       "updated_at:timestamp"
@@ -444,7 +444,7 @@
       "auth_type:string",
       "transport_security_type:string",
       "distribution_channel:string",
-      "agent_type:int",
+      "agent_type:string",
       "project_path:string",
       "linked_plans:string",
       "metadata:string",

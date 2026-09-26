@@ -57,20 +57,21 @@ Decoded columns (`[]` = JSON text array):
 - `sensitive_data_findings`: `category`, `type`, `finding_status`
 - `prompt_injection_findings`: `finding_status`
 - `sandboxes`: `runtime_type`
-- `agent_accounts`: `plan`
-- `agent_instances`: `agent_deployment`
+- `agent_accounts`: `agent_type`, `plan`
+- `agent_instances`: `agent_type`, `agent_deployment`
+- `agent_catalog`: `agent_type`
 - `mcp_catalog`: `source_type`, `execution_environment[]`, `authentication_methods[]`
 - `org_mcp_catalog`: `source_type`, `execution_environment[]`, `authentication_methods[]`
-- `mcp_server_instances`: `transport_type`, `transport_security_type`, `deployment_model`,
-  `auth_type`, `distribution_channel`, `linked_plans[]`
+- `mcp_server_instances`: `agent_type`, `transport_type`, `transport_security_type`,
+  `deployment_model`, `auth_type`, `distribution_channel`, `linked_plans[]`
 - `mcp_servers`: `distribution_channels[]`, `auth_types[]`, `sandbox_runtime_types[]`
 - `mcp_categories`: `resource_type`
 
 `mcp_categories.resource_type` uses an explicit `ISSUE_DETAIL_MCP_RESOURCE_TYPE_` prefix, so it
 reads `public` / `internal_apps`.
 
-`agent_type` and `mcp_server_type` are NOT decoded: they stay integer join keys, resolved through
-the catalogs (`agent_catalog`, `mcp_catalog` / `org_mcp_catalog`).
+`mcp_server_type` is NOT decoded: it is a catalog-assigned product key, not a proto enum, resolved
+through `mcp_catalog` / `org_mcp_catalog`.
 
 ## Producer-side validation
 

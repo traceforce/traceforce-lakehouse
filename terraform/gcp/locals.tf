@@ -55,12 +55,11 @@ locals {
 
   # Rendered ingest SQL (uses the validated template + the two JS routines).
   ingest_sql = templatefile("${path.module}/sql/ingest_agent_events.sql.tftpl", {
-    target          = "${local.project}.${var.dataset_id}.agent_events"
-    raw             = "${local.project}.${var.dataset_id}.${google_bigquery_table.raw_telemetry.table_id}"
-    lookback_days   = var.lookback_days
-    dataset         = "${local.project}.${var.dataset_id}"
-    agent_type_case = join(" ", [for k, v in module.schema.agent_identities : "WHEN '${k}' THEN ${v}"])
-    cols            = join(", ", [for c in local.agent_events_schema : c.name])
+    target        = "${local.project}.${var.dataset_id}.agent_events"
+    raw           = "${local.project}.${var.dataset_id}.${google_bigquery_table.raw_telemetry.table_id}"
+    lookback_days = var.lookback_days
+    dataset       = "${local.project}.${var.dataset_id}"
+    cols          = join(", ", [for c in local.agent_events_schema : c.name])
   })
 
   # Rendered mirror SQL: one guarded atomic MERGE per table, concatenated into one daily script.

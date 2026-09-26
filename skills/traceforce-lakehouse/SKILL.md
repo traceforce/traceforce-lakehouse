@@ -1,6 +1,6 @@
 ---
 name: traceforce-lakehouse
-description: Query the TraceForce lakehouse (Athena over Iceberg in AWS, or BigQuery over Iceberg in GCP) to answer questions about AI-agent activity from agents such as Claude Code, Claude (the claude.ai chat agent), Cursor and GitHub Copilot: prompts, tool calls, MCP servers, tokens and cost, sensitive-data, containment and prompt-injection findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena, BigQuery or SQL over TraceForce data. Read-only. Not for the TraceForce REST API or console; ChatGPT activity is not in the lake.
+description: "Query the TraceForce lakehouse (Athena over Iceberg in AWS, or BigQuery over Iceberg in GCP) to answer questions about AI-agent activity from agents such as Claude Code, Claude (the claude.ai chat agent), Cursor and GitHub Copilot: prompts, tool calls, MCP servers, tokens and cost, sensitive-data, containment and prompt-injection findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena, BigQuery or SQL over TraceForce data. Read-only. Not for the TraceForce REST API or console; ChatGPT activity is not in the lake."
 ---
 
 # TraceForce lakehouse
@@ -14,8 +14,8 @@ description: Query the TraceForce lakehouse (Athena over Iceberg in AWS, or BigQ
 - `ts` is UTC. For "today" / "yesterday" / "this week", write explicit `ts` bounds (the user's
   local day converted to UTC, or a rolling window) and state the window in the answer;
   `current_date` / `date(ts)` roll over at 00:00 UTC, not at the user's midnight.
-- `agent_type` and `mcp_server_type` are integer codes, not names — resolve them via the
-  catalogs (`agent_catalog`, `mcp_catalog` / `org_mcp_catalog`).
+- `agent_type` is a lowercase label (e.g. `claude_code`; display name in `agent_catalog`);
+  `mcp_server_type` is an integer code, not a name — resolve it via `mcp_catalog` / `org_mcp_catalog`.
 - Mention a gap (Known gaps) only when leaving it out would make this answer wrong or
   misleading — the question asked for something the lake doesn't have, or a gap silently skews
   the result (e.g. cost by agent omits Cursor). Otherwise don't.

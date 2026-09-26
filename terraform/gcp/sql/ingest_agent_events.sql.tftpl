@@ -53,7 +53,7 @@ records AS (
 flat AS (
   SELECT
     agent,
-    CASE agent ${agent_type_case} END                                        AS agent_type,
+    LOWER(REGEXP_REPLACE(agent, r'^AGENT_IDENTITY_', ''))                    AS agent_type,
     COALESCE(JSON_VALUE(res, '$."traceforce.device.native_id"'), path_serial) AS device_native_id,
     JSON_VALUE(res, '$."traceforce.device.uuid"')                            AS device_uuid,
     JSON_VALUE(res, '$."traceforce.sandbox.native_id"')                      AS sandbox_native_id,
