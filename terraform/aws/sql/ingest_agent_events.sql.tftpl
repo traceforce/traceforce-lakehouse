@@ -114,7 +114,7 @@ records AS (
 flat AS (
 SELECT
   agent,
-  CASE agent ${agent_type_case} END                                     AS agent_type,
+  lower(regexp_replace(agent, '^AGENT_IDENTITY_', ''))                   AS agent_type,
   COALESCE(element_at(res, 'traceforce.device.native_id'), path_serial)  AS device_native_id,
   element_at(res, 'traceforce.device.uuid')                              AS device_uuid,
   element_at(res, 'traceforce.sandbox.native_id')                        AS sandbox_native_id,
