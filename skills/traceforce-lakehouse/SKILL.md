@@ -14,8 +14,8 @@ description: Query the TraceForce lakehouse (Athena over Iceberg in AWS, or BigQ
 - `ts` is UTC. For "today" / "yesterday" / "this week", write explicit `ts` bounds (the user's
   local day converted to UTC, or a rolling window) and state the window in the answer;
   `current_date` / `date(ts)` roll over at 00:00 UTC, not at the user's midnight.
-- `agent_type` and `mcp_server_type` are integer codes, not names — resolve them via the
-  catalogs (`agent_catalog`, `mcp_catalog` / `org_mcp_catalog`).
+- `agent_type` is a lowercase label (e.g. `claude_code`; display name in `agent_catalog`);
+  `mcp_server_type` is an integer code, not a name — resolve it via `mcp_catalog` / `org_mcp_catalog`.
 - Mention a gap (Known gaps) only when leaving it out would make this answer wrong or
   misleading — the question asked for something the lake doesn't have, or a gap silently skews
   the result (e.g. cost by agent omits Cursor). Otherwise don't.

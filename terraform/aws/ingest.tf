@@ -13,10 +13,9 @@ locals {
   agent_events_fqn = "\"s3tablescatalog/${aws_s3tables_table_bucket.lakehouse.name}\".\"${aws_s3tables_namespace.tf.namespace}\".\"agent_events\""
 
   ingest_sql = templatefile("${path.module}/sql/ingest_agent_events.sql.tftpl", {
-    target          = local.agent_events_fqn
-    raw             = "\"${aws_glue_catalog_database.lakehouse.name}\".\"raw_telemetry\""
-    agent_type_case = join(" ", [for k, v in module.schema.agent_identities : "WHEN '${k}' THEN ${v}"])
-    cols            = join(", ", [for c in local.agent_events_schema : c.name])
+    target = local.agent_events_fqn
+    raw    = "\"${aws_glue_catalog_database.lakehouse.name}\".\"raw_telemetry\""
+    cols   = join(", ", [for c in local.agent_events_schema : c.name])
   })
 
   # Athena's .sync integration surfaces a FAILED query as States.TaskFailed whatever the
