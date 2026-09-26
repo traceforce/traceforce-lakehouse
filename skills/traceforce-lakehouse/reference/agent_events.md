@@ -12,7 +12,7 @@ a span with no decision row is a gap, not an unapproved call. Cursor: only `post
 | column | type | meaning |
 |---|---|---|
 | `agent` | string | The agent's proto AgentIdentity name, e.g. AGENT_IDENTITY_CLAUDE_CODE (Claude Code), AGENT_IDENTITY_CLAUDE (the claude.ai chat agent, any deployment — not the desktop app specifically), AGENT_IDENTITY_CURSOR, AGENT_IDENTITY_GITHUB_COPILOT. |
-| `agent_type` | string | `agent` lowercased without the AGENT_IDENTITY_ prefix (e.g. `claude_code`, `cursor`). Join on this, not on `agent`: it equals agent_type in agent_catalog and the metadata tables. |
+| `agent_type` | string | `agent` lowercased without the AGENT_IDENTITY_ prefix (e.g. `claude_code`, `cursor`). Join on this, not on `agent`. |
 | `device_native_id` | string | Device serial. Joins devices.device_native_id. |
 | `device_uuid` | string | A stable per-install device GUID; NULL when the agent doesn't provide one. Prefer it over the serial when present. |
 | `sandbox_native_id` | string | Always NULL today; joins sandboxes.sandbox_native_id. |

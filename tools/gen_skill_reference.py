@@ -219,7 +219,7 @@ TABLES = {
 # agent_events column meanings (hand-maintained; the generator asserts every column has one).
 EVENT_NOTES = {
     "agent": "The agent's proto AgentIdentity name, e.g. AGENT_IDENTITY_CLAUDE_CODE (Claude Code), AGENT_IDENTITY_CLAUDE (the claude.ai chat agent, any deployment \u2014 not the desktop app specifically), AGENT_IDENTITY_CURSOR, AGENT_IDENTITY_GITHUB_COPILOT.",
-    "agent_type": "`agent` lowercased without the AGENT_IDENTITY_ prefix (e.g. `claude_code`, `cursor`). Join on this, not on `agent`: it equals agent_type in agent_catalog and the metadata tables.",
+    "agent_type": "`agent` lowercased without the AGENT_IDENTITY_ prefix (e.g. `claude_code`, `cursor`). Join on this, not on `agent`.",
     "device_native_id": "Device serial. Joins devices.device_native_id.",
     "device_uuid": "A stable per-install device GUID; NULL when the agent doesn't provide one. Prefer it over the serial when present.",
     "sandbox_native_id": "Always NULL today; joins sandboxes.sandbox_native_id.",
