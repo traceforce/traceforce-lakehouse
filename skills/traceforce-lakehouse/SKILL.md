@@ -42,6 +42,13 @@ Use the bundled script; do not reimplement it with raw `aws athena` / `bq` calls
 "${CLAUDE_SKILL_DIR}/scripts/athena_query.sh" "SELECT agent, count(*) FROM agent_events WHERE ts > current_timestamp - interval '7' day GROUP BY 1"
 ```
 
+In PowerShell (Windows), save the SQL to a new file (one per query) and run the PowerShell twin;
+inline SQL can lose its double quotes there:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/scripts/athena_query.ps1" -f "$env:TEMP\<name>.sql"
+```
+
 Requires AWS CLI v2 and credentials (`AWS_PROFILE`, `AWS_REGION`) that carry the module's
 `query_policy_json` policy or broader. Output: CSV on stdout (first 200 rows by default,
 `TRACEFORCE_LAKEHOUSE_MAX_ROWS=0` for all, a truncation note on stderr), one line
@@ -60,6 +67,12 @@ owner/editor you deployed with:
 
 ```bash
 "${CLAUDE_SKILL_DIR}/scripts/bq_query.sh" "SELECT agent, count(*) FROM traceforce_lakehouse.agent_events WHERE ts > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY) GROUP BY 1"
+```
+
+In PowerShell (Windows), the same way as for Athena:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/scripts/bq_query.ps1" -f "$env:TEMP\<name>.sql"
 ```
 
 Needs the gcloud CLI signed in (`gcloud auth login`) with the lakehouse project as default, or

@@ -30,7 +30,10 @@ if [[ -z "$SQL" ]]; then
   exit 2
 fi
 # Read-only by construction: the policy forbids writes anyway, this just fails faster.
-FIRST="$(printf '%s\n' "$SQL" | grep -vE '^[[:space:]]*(--|$)' | awk '{print toupper($1); exit}')"
+# A CR also ends a line here (files saved on Windows end lines with \r\n, and Athena ends a
+# -- comment at a lone \r). Below, tr -d '\r' strips it from the CLIs' output: on Windows (Git
+# Bash) that ends lines with \r\n, and $( ) strips only the \n.
+FIRST="$(printf '%s\n' "$SQL" | tr '\r' '\n' | grep -vE '^[[:space:]]*(--|$)' | awk '{print toupper($1); exit}')"
 case "$FIRST" in
   SELECT|WITH|SHOW|DESCRIBE|DESC|EXPLAIN) ;;
   *) echo "refusing to run a non-read statement (first keyword: $FIRST)" >&2; exit 2 ;;
@@ -41,7 +44,7 @@ QID="$(aws athena start-query-execution \
   --work-group "$WG" \
   --query-execution-context "Catalog=$CATALOG,Database=$NS" \
   --query-string "$SQL" \
-  --query QueryExecutionId --output text)"
+  --query QueryExecutionId --output text | tr -d '\r')"
 # Ctrl-C or a tool timeout cancels the scan instead of leaving it running.
 trap 'aws athena stop-query-execution --query-execution-id "$QID" >/dev/null 2>&1 || true' INT TERM
 
@@ -49,7 +52,7 @@ while :; do
   # A transient CLI failure (throttle, expired token) must not kill the poll loop.
   if ! LINE="$(aws athena get-query-execution --query-execution-id "$QID" \
       --query '[QueryExecution.Status.State, QueryExecution.Status.StateChangeReason, QueryExecution.ResultConfiguration.OutputLocation]' \
-      --output text)"; then
+      --output text | tr -d '\r')"; then
     sleep 2
     continue
   fi
@@ -63,14 +66,15 @@ done
 trap - INT TERM
 
 SCANNED="$(aws athena get-query-execution --query-execution-id "$QID" \
-  --query 'QueryExecution.Statistics.DataScannedInBytes' --output text)"
+  --query 'QueryExecution.Statistics.DataScannedInBytes' --output text | tr -d '\r')"
 echo "-- query $QID ok, scanned $((SCANNED / 1048576)) MB" >&2
 
 # Download to a file first: piping into head would kill the download mid-stream on large
-# results and turn a successful query into a broken-pipe failure.
+# results and turn a successful query into a broken-pipe failure. The shell writes the file
+# (aws streams to stdout), so a Windows aws.exe never has to resolve a bash temp path.
 TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
-aws s3 cp --only-show-errors "$OUT" "$TMP"
+aws s3 cp --only-show-errors "$OUT" - > "$TMP"
 if [[ "$MAX_ROWS" == "0" ]]; then
   cat "$TMP"
   exit 0
