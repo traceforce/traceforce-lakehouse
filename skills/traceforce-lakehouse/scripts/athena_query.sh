@@ -33,7 +33,7 @@ fi
 # A CR also ends a line here (files saved on Windows end lines with \r\n, and Athena ends a
 # -- comment at a lone \r). Below, tr -d '\r' strips it from the CLIs' output: on Windows (Git
 # Bash) that ends lines with \r\n, and $( ) strips only the \n.
-FIRST="$(printf '%s\n' "$SQL" | tr '\r' '\n' | grep -vE '^[[:space:]]*(--|$)' | awk '{print toupper($1); exit}')"
+FIRST="$(printf '%s\n' "$SQL" | tr '\r' '\n' | grep -vE '^[[:space:]]*(--|$)' | awk 'NR==1 {print toupper($1)}')"
 case "$FIRST" in
   SELECT|WITH|SHOW|DESCRIBE|DESC|EXPLAIN) ;;
   *) echo "refusing to run a non-read statement (first keyword: $FIRST)" >&2; exit 2 ;;

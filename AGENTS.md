@@ -3,8 +3,8 @@
 This repo is a Terraform module plus a portable skill for querying the TraceForce lakehouse in
 plain language: read-only, over Apache Iceberg tables in your own cloud — **Athena** on AWS
 (S3), or **BigQuery** on GCP (GCS). Your lakehouse is set up on one of them; use that cloud's
-script (`athena_query.sh` for AWS, `bq_query.sh` for GCP; in PowerShell (Windows), the `.ps1`
-twins).
+script (`athena_query.sh` for AWS, `bq_query.sh` for GCP; on Windows, the `.ps1`
+twins, run from PowerShell).
 
 ## Claude Code
 

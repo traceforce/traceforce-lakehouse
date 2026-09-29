@@ -18,23 +18,33 @@ param(
   [Alias('f')][string]$File = ''
 )
 
+# Every deliberate exit goes through Quit, so the finally block can tell an interrupt (Ctrl-C)
+# from a normal end.
+$script:done = $false
+function Quit([int]$Code) {
+  $script:done = $true
+  exit $Code
+}
+function Fail([string]$Message, [int]$Code) {
+  [Console]::Error.WriteLine($Message)
+  Quit $Code
+}
+# An unexpected error ends the run with exit 1 instead of carrying on to a misleading exit 0.
+trap { [Console]::Error.WriteLine($_); Quit 1 }
+
 $WG = 'traceforce-lakehouse'
 $Catalog = 's3tablescatalog/traceforce-lakehouse'
 $NS = 'traceforce'
 $MaxRows = 200
 if ($env:TRACEFORCE_LAKEHOUSE_MAX_ROWS) { $MaxRows = [long]$env:TRACEFORCE_LAKEHOUSE_MAX_ROWS }
 
-function Fail([string]$Message, [int]$Code) {
-  [Console]::Error.WriteLine($Message)
-  exit $Code
-}
 
 # -f files: UTF-8 with or without a BOM, else the system code page (what Windows PowerShell's
 # Set-Content writes by default).
 function Read-SqlFile([string]$Path) {
   $full = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
   try { return (New-Object Text.UTF8Encoding($false, $true)).GetString([IO.File]::ReadAllBytes($full)).TrimStart([char]0xFEFF) }
-  catch { return [IO.File]::ReadAllText($full, [Text.Encoding]::Default) }
+  catch { return [IO.File]::ReadAllText($full, [Text.Encoding]::GetEncoding(0)) }
 }
 
 if ($File) { $Sql = Read-SqlFile $File }
@@ -70,7 +80,7 @@ try {
     '--query-execution-context', "Catalog=$Catalog,Database=$NS",
     '--query-string', "file://$sqlFile", '--query', 'QueryExecutionId', '--output', 'text')
   $qid = "$(& aws @start)".Trim()
-  if ($LASTEXITCODE -ne 0) { $finished = $true; exit $LASTEXITCODE }
+  if ($LASTEXITCODE -ne 0) { $finished = $true; Quit $LASTEXITCODE }
 
   $poll = @('athena', 'get-query-execution', '--query-execution-id', $qid, '--query',
     '[QueryExecution.Status.State, QueryExecution.Status.StateChangeReason, QueryExecution.ResultConfiguration.OutputLocation]',
@@ -97,13 +107,13 @@ try {
 
   # Download to a file first, then print from it.
   & aws s3 cp --only-show-errors $out $csvFile
-  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  if ($LASTEXITCODE -ne 0) { Quit $LASTEXITCODE }
   $bytes = [IO.File]::ReadAllBytes($csvFile)
   $stdout = [Console]::OpenStandardOutput()
   if ($MaxRows -eq 0) {
     $stdout.Write($bytes, 0, $bytes.Length)
     $stdout.Flush()
-    exit 0
+    Quit 0
   }
   # Header plus MaxRows lines, as the bash twin's head does; the rest is counted, not printed.
   $lines = 0
@@ -122,12 +132,20 @@ try {
   if ($total -gt $MaxRows) {
     [Console]::Error.WriteLine("-- showing $MaxRows of $total result lines; set TRACEFORCE_LAKEHOUSE_MAX_ROWS=0 for all (lines, not rows: quoted content can span lines)")
   }
+  $script:done = $true
+} catch {
+  [Console]::Error.WriteLine($_)
+  Quit 1
 } finally {
   Remove-Item -LiteralPath $sqlFile, $csvFile -Force -ErrorAction SilentlyContinue
-  # Ctrl-C cancels the scan instead of leaving it running, and must not read as success.
-  if ($qid -and -not $finished) {
-    & aws athena stop-query-execution --query-execution-id $qid *> $null
-    [Console]::Error.WriteLine("-- interrupted; cancelled query $qid")
+  # Interrupted (Ctrl-C): cancel a running scan, and don't let the run read as success.
+  if (-not $script:done) {
+    if ($qid -and -not $finished) {
+      & aws athena stop-query-execution --query-execution-id $qid *> $null
+      [Console]::Error.WriteLine("-- interrupted; cancelled query $qid")
+    } else {
+      [Console]::Error.WriteLine('-- interrupted')
+    }
     [Environment]::Exit(130)
   }
 }

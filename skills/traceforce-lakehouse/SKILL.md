@@ -37,13 +37,14 @@ Do not infer the cloud from which credentials are present — a machine often ha
 task doesn't name one, ask.
 
 Use the bundled script; do not reimplement it with raw `aws athena` / `bq` calls.
+`${CLAUDE_SKILL_DIR}` in the commands below is this skill's folder (the one containing this SKILL.md).
 
 ```bash
 "${CLAUDE_SKILL_DIR}/scripts/athena_query.sh" "SELECT agent, count(*) FROM agent_events WHERE ts > current_timestamp - interval '7' day GROUP BY 1"
 ```
 
-In PowerShell (Windows), save the SQL to a new file (one per query) and run the PowerShell twin;
-inline SQL can lose its double quotes there:
+On Windows, run the PowerShell twin from PowerShell. Save the SQL to a new file (one per query)
+first; inline SQL can lose its double quotes there:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/scripts/athena_query.ps1" -f "$env:TEMP\<name>.sql"
@@ -69,7 +70,7 @@ owner/editor you deployed with:
 "${CLAUDE_SKILL_DIR}/scripts/bq_query.sh" "SELECT agent, count(*) FROM traceforce_lakehouse.agent_events WHERE ts > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY) GROUP BY 1"
 ```
 
-In PowerShell (Windows), the same way as for Athena:
+On Windows, the same way as for Athena:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/scripts/bq_query.ps1" -f "$env:TEMP\<name>.sql"

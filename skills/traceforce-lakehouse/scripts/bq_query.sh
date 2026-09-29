@@ -49,7 +49,7 @@ fi
 # NOT the read-only guarantee -- see the note after the case block. GoogleSQL has no
 # SHOW/DESCRIBE/EXPLAIN (INFORMATION_SCHEMA replaces them, see SKILL.md), so only SELECT/WITH.
 # A CR also ends a line (files saved on Windows end lines with \r\n).
-FIRST="$(printf '%s\n' "$SQL" | tr '\r' '\n' | grep -vE '^[[:space:]]*(--|$)' | awk '{print toupper($1); exit}')"
+FIRST="$(printf '%s\n' "$SQL" | tr '\r' '\n' | grep -vE '^[[:space:]]*(--|$)' | awk 'NR==1 {print toupper($1)}')"
 case "$FIRST" in
   SELECT|WITH) ;;
   *) echo "refusing to run a non-read statement (first keyword: $FIRST)" >&2; exit 2 ;;

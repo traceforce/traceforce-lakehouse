@@ -17,10 +17,19 @@ param(
   [Alias('f')][string]$File = ''
 )
 
-function Fail([string]$Message, [int]$Code) {
-  [Console]::Error.WriteLine($Message)
+# Every deliberate exit goes through Quit, so the finally block can tell an interrupt (Ctrl-C)
+# from a normal end.
+$script:done = $false
+function Quit([int]$Code) {
+  $script:done = $true
   exit $Code
 }
+function Fail([string]$Message, [int]$Code) {
+  [Console]::Error.WriteLine($Message)
+  Quit $Code
+}
+# An unexpected error ends the run with exit 1 instead of carrying on to a misleading exit 0.
+trap { [Console]::Error.WriteLine($_); Quit 1 }
 
 $project = $env:TRACEFORCE_LAKEHOUSE_PROJECT
 $maxRows = [long]200
@@ -39,7 +48,7 @@ if (-not $project -or $project -eq '(unset)') {
 function Read-SqlFile([string]$Path) {
   $full = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
   try { return (New-Object Text.UTF8Encoding($false, $true)).GetString([IO.File]::ReadAllBytes($full)).TrimStart([char]0xFEFF) }
-  catch { return [IO.File]::ReadAllText($full, [Text.Encoding]::Default) }
+  catch { return [IO.File]::ReadAllText($full, [Text.Encoding]::GetEncoding(0)) }
 }
 
 if ($File) { $Sql = Read-SqlFile $File }
@@ -77,9 +86,18 @@ try {
   $stdout = [Console]::OpenStandardOutput()
   $stdout.Write($bytes, 0, $bytes.Length)
   $stdout.Flush()
-  if ($p.ExitCode -ne 0) { exit 1 }
+  if ($p.ExitCode -ne 0) { Quit 1 }
   # An empty result prints nothing at all (no header either), which reads as "the script broke".
   if ($bytes.Length -eq 0) { [Console]::Error.WriteLine('-- 0 rows') }
+  $script:done = $true
+} catch {
+  [Console]::Error.WriteLine($_)
+  Quit 1
 } finally {
   Remove-Item -LiteralPath $sqlFile, $outFile -Force -ErrorAction SilentlyContinue
+  # Interrupted (Ctrl-C): don't let the run read as success.
+  if (-not $script:done) {
+    [Console]::Error.WriteLine('-- interrupted')
+    [Environment]::Exit(130)
+  }
 }

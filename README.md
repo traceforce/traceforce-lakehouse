@@ -126,10 +126,10 @@ By hand:
 
 - **AWS:** the Athena console (data source `AwsDataCatalog`, catalog
   `s3tablescatalog/traceforce-lakehouse`, database `traceforce`) or
-  `skills/traceforce-lakehouse/scripts/athena_query.sh "SELECT ..."`; in PowerShell (Windows),
+  `skills/traceforce-lakehouse/scripts/athena_query.sh "SELECT ..."`; on Windows, from PowerShell,
   `powershell -NoProfile -ExecutionPolicy Bypass -File skills\traceforce-lakehouse\scripts\athena_query.ps1 -f query.sql`.
 - **GCP:** the BigQuery console (dataset `traceforce_lakehouse`) or
-  `skills/traceforce-lakehouse/scripts/bq_query.sh "SELECT ..."`; in PowerShell (Windows),
+  `skills/traceforce-lakehouse/scripts/bq_query.sh "SELECT ..."`; on Windows, from PowerShell,
   `powershell -NoProfile -ExecutionPolicy Bypass -File skills\traceforce-lakehouse\scripts\bq_query.ps1 -f query.sql`.
 
 ```sql
