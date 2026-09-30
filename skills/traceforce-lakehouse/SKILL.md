@@ -71,25 +71,21 @@ example SQL is Athena/Trino. Translate to GoogleSQL:
 - `json_extract_scalar(x, '$.gen_ai.tool.name')` -> `JSON_VALUE(x, '$."gen_ai.tool.name"')` — **quote dotted keys**, or they read as nested paths and return NULL. The reference's bracket form `$["cursor.version"]` maps the same way -> `JSON_VALUE(x, '$."cursor.version"')`.
 - `current_timestamp - interval '7' day` -> `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)`; `date_format(...)` -> `FORMAT_TIMESTAMP` / `FORMAT_DATE`.
 - `SHOW TABLES` / `DESCRIBE` don't exist -> `SELECT table_name FROM traceforce_lakehouse.INFORMATION_SCHEMA.TABLES`; `SELECT column_name, data_type FROM traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<t>'`.
-- No `"<table>$snapshots"` metadata on BigQuery; for mirror freshness use the table's last-load
-  time: `SELECT TIMESTAMP_MILLIS(last_modified_time) FROM traceforce_lakehouse.__TABLES__ WHERE table_id = '<mirror>'` — **not** `max(updated_at)`, which is a source-side time.
-  `__TABLES__.row_count` is 0 for every table here (Iceberg); count rows with `count(*)`.
+- `__TABLES__.row_count` is 0 for every table here (Iceberg); count rows with `count(*)`.
 - `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `CROSS JOIN UNNEST(JSON_VALUE_ARRAY(x)) AS elem` (unnesting a JSON array of strings).
 
 ## Workflow
 
 1. Pick the tables the question needs and read only their files under `reference/tables/`.
-2. Run a cheap aggregate first: `SELECT max(ingested_at), max(upload_ts) FROM agent_events` (more
-   than two hours stale means an ingest problem; say so) and `SELECT count(*) FROM <mirror>` for
-   each mirror you join (empty means the daily export has not delivered; say so instead of
-   answering from the join). Mirror staleness: `SELECT max(committed_at) FROM "<mirror>$snapshots"`
-   on Athena, the `__TABLES__` form above on BigQuery — not `max(updated_at)`, a source-side time.
+2. Note how current the data is; this never blocks the answer. `SELECT max(ingested_at) FROM
+   agent_events` is the newest loaded activity: state it (no activity and a stopped load look the
+   same here).
 3. Write the targeted query with `ts` bounds; take join rules from `reference/joins.md`.
 4. If a query fails with "column cannot be resolved" or a type error, introspect the schema
    (Athena: `DESCRIBE traceforce.<table>`; BigQuery: `SELECT column_name, data_type FROM
    traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<table>'`), fix, rerun.
    If it returns 0 rows: widen the window, check `deleted_at`, and check that every
-   joined mirror has rows (0 rows from an empty mirror is a delivery gap, not an absence).
+   joined mirror has rows (an empty mirror may mean its data has not arrived; say so).
 5. Resolve `agent_type` / `mcp_server_type` names via the catalogs, state gaps, answer.
 
 ## Reference (each one level from here)
