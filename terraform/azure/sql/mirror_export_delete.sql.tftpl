@@ -1,0 +1,32 @@
+-- Rows that left the newest snapshot (hard-deleted at TraceForce) leave the mirror too.
+-- The EXISTS guard and the NOT IN set scope to the same newest file: a stale snapshot with ids
+-- plus a broken newest file would otherwise delete every row. Known consequence: a table that
+-- genuinely dropped to zero rows keeps its stale rows until one row exists again.
+-- dt is bounded on both ends so a future-dated partition cannot win MAX(METADATA$FILENAME).
+-- Source columns are uppercase/unquoted; target columns are quoted lowercase.
+-- Snowflake skips unreadable files silently, so a damaged newest snapshot can over-delete until
+-- the next good one repairs the mirror (AWS/GCP fail the run instead). Accepted: the export does
+-- not write to Azure yet, and this path is validated live together with its producer.
+DELETE FROM ${target}
+WHERE EXISTS (
+    SELECT 1 FROM ${source}
+    WHERE dt >= TO_VARCHAR(DATEADD(day, -7, CURRENT_DATE()), 'YYYY-MM-DD')
+      AND dt <= TO_VARCHAR(CURRENT_DATE(), 'YYYY-MM-DD')
+      AND METADATA$FILENAME = (
+        SELECT MAX(METADATA$FILENAME) FROM ${source}
+        WHERE dt >= TO_VARCHAR(DATEADD(day, -7, CURRENT_DATE()), 'YYYY-MM-DD')
+          AND dt <= TO_VARCHAR(CURRENT_DATE(), 'YYYY-MM-DD')
+      )
+      AND id IS NOT NULL
+  )
+  AND "id" NOT IN (
+    SELECT id FROM ${source}
+    WHERE dt >= TO_VARCHAR(DATEADD(day, -7, CURRENT_DATE()), 'YYYY-MM-DD')
+      AND dt <= TO_VARCHAR(CURRENT_DATE(), 'YYYY-MM-DD')
+      AND METADATA$FILENAME = (
+        SELECT MAX(METADATA$FILENAME) FROM ${source}
+        WHERE dt >= TO_VARCHAR(DATEADD(day, -7, CURRENT_DATE()), 'YYYY-MM-DD')
+          AND dt <= TO_VARCHAR(CURRENT_DATE(), 'YYYY-MM-DD')
+      )
+      AND id IS NOT NULL
+  )
