@@ -1,6 +1,7 @@
-# Canonical lakehouse column lists -- the SINGLE source of truth, shared by both cloud modules
-# (../aws, ../gcp) and tools/gen_skill_reference.py. Edit columns.json only; each module consumes
-# these outputs and applies its own engine type-map (GCP's bq_type, AWS's Iceberg/Glue types).
+# Canonical lakehouse column lists -- the SINGLE source of truth, shared by the three cloud modules
+# (../aws, ../gcp, ../azure) and tools/gen_skill_reference.py. Edit columns.json only; each module
+# consumes these outputs and applies its own engine type-map (AWS's Iceberg/Glue types, GCP's
+# bq_type, Azure's snowflake_type).
 #
 # Source types are the platform/Iceberg tokens string, int, long, double, boolean, timestamp
 # (Postgres -> uuid/text = string, integer = int, bigint = long, numeric = double, boolean,

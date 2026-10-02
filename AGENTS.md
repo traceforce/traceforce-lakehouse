@@ -2,9 +2,9 @@
 
 This repo is a Terraform module plus a portable skill for querying the TraceForce lakehouse in
 plain language: read-only, over Apache Iceberg tables in your own cloud — **Athena** on AWS
-(S3), or **BigQuery** on GCP (GCS). Your lakehouse is set up on one of them; use that cloud's
-script (`athena_query.sh` for AWS, `bq_query.sh` for GCP; on Windows, the `.ps1`
-twins, run from PowerShell).
+(S3), **BigQuery** on GCP (GCS), or **Snowflake** on Azure (Blob Storage). Your lakehouse is set
+up on one of them; use that cloud's script (`athena_query.sh` for AWS, `bq_query.sh` for GCP,
+`snowflake_query.sh` for Azure; on Windows, the `.ps1` twins, run from PowerShell).
 
 ## Claude Code
 
@@ -55,5 +55,9 @@ Only Claude Code is verified end to end so far.
 - **GCP (BigQuery):** the gcloud CLI signed in (`gcloud auth login` + `gcloud auth
   application-default login`) with the lakehouse's project as your default
   (`gcloud config set project <id>`).
+- **Azure (Snowflake):** python3 with `snowflake-connector-python`, and either all five
+  `SNOWFLAKE_*` environment variables (listed in `snowflake_query.sh`) or a `connections.toml`
+  connection, for a user that holds the `traceforce_lakehouse_reader` role.
 - Read-only: the query scripts refuse non-read statements (see each script's allowlist), and
-  the query identity grants no writes.
+  the query identity grants no writes; on Snowflake the script also runs every query as the
+  read-only reader role.

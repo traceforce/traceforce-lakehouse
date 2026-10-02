@@ -20,7 +20,7 @@ a span with no decision row is a gap, not an unapproved call. Cursor: only `post
 | `path_org` | string | Vendor org id associated with the source object; NULL when absent. |
 | `path_session` | string | Session id associated with the source object; NULL when unknown. |
 | `upload_ts` | timestamp | When the source object was uploaded, UTC. |
-| `source_object` | string | Storage URI of the raw object this row came from — `s3://bucket/key` on AWS, `gs://bucket/key` on GCP. Equals a finding's conversation_storage URI. |
+| `source_object` | string | Storage path of the raw object this row came from. |
 | `signal` | string | Whether the row is an OTLP `log` record or a `span`. |
 | `user_email` | string | End-user email as reported by the agent; NULL when the agent reports none (see identity.md). |
 | `agent_org_id` | string | The AI vendor's org id for the user (e.g. the Anthropic org for Claude); NULL when the agent reports none. |
