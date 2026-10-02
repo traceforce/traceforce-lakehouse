@@ -1,7 +1,8 @@
 # Read-only Snowflake role for engineers/Claude Code to query the lakehouse. This is
 # Snowflake-side RBAC for humans, distinct from the Azure RBAC in role_assignments.tf. Nobody
-# holds it until reader_users lists usernames or someone runs GRANT ROLE
-# "traceforce_lakehouse_reader" TO USER <name> -- quoted, since the role is a lowercase identifier.
+# holds it until reader_users lists usernames, query_user_public_key creates the module's query
+# user (below), or someone runs GRANT ROLE "traceforce_lakehouse_reader" TO USER <name> --
+# quoted, since the role is a lowercase identifier.
 # To test what this role alone permits, run USE SECONDARY ROLES NONE first: sessions default to
 # SECONDARY ROLES ALL, so a user who also holds a broader role can still write while using this one.
 resource "snowflake_account_role" "reader" {

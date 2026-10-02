@@ -182,8 +182,15 @@ fi
 # monitor is notify-only so it never suspends the ingest/export Tasks.
 PREAMBLE="USE ROLE \"$READER_ROLE\"; USE SECONDARY ROLES NONE; USE WAREHOUSE \"$WAREHOUSE\"; USE DATABASE \"$DB\"; USE SCHEMA \"$SCHEMA\"; ALTER SESSION SET TIMEZONE = 'UTC'; ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = $STATEMENT_TIMEOUT"
 
-python3 -c 'import snowflake.connector' 2>/dev/null \
-  || { echo "snowflake-connector-python is not installed: pip install snowflake-connector-python" >&2; exit 2; }
+# Capture the import's own error: a missing package gets the install command, a broken one
+# (e.g. a cryptography/pyOpenSSL mismatch) gets its real last line.
+if ! IMPORT_ERR="$(python3 -c 'import snowflake.connector' 2>&1 >/dev/null)"; then
+  case "$IMPORT_ERR" in
+    *"No module named"*) echo "snowflake-connector-python is not installed: pip install snowflake-connector-python" >&2 ;;
+    *) echo "snowflake-connector-python failed to import: $(printf '%s\n' "$IMPORT_ERR" | tail -1)" >&2 ;;
+  esac
+  exit 2
+fi
 
 python3 - "$PREAMBLE" "$SQL_FILE" "$MAX_ROWS" "$HAVE_ENV_CREDS" <<'PY'
 import csv
@@ -267,7 +274,8 @@ if not rows:
     print("-- 0 rows", file=sys.stderr)
     sys.exit(0)
 
-# rowcount is None for result types that carry no total; the fetched rows are the total then.
+# rowcount is None for result types that carry no total; then only "more exist" is known.
+exact_total = total is not None
 if total is None:
     total = len(rows)
 out_rows = rows if max_rows == 0 else rows[:max_rows]
@@ -282,8 +290,6 @@ except BrokenPipeError:
     os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
     sys.exit(0)
 if max_rows != 0 and total > max_rows:
-    print(
-        f"-- showing {max_rows} of {total} rows; set TRACEFORCE_LAKEHOUSE_MAX_ROWS=0 for all",
-        file=sys.stderr,
-    )
+    shown = f"-- showing {max_rows} of {total} rows" if exact_total else f"-- showing {max_rows} rows; more exist"
+    print(f"{shown}; set TRACEFORCE_LAKEHOUSE_MAX_ROWS=0 for all", file=sys.stderr)
 PY

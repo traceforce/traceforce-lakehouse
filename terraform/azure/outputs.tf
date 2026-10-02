@@ -4,7 +4,7 @@ output "azure_consent_url" {
 }
 
 output "reader_role_name" {
-  description = "Snowflake role to GRANT to whoever should query the lakehouse (query_role.tf), already quoted: GRANT ROLE <this> TO USER <them>. Not needed if you set reader_users."
+  description = "Snowflake role to GRANT to whoever should query the lakehouse (query_role.tf), already quoted: GRANT ROLE <this> TO USER <them>. Not needed if you set reader_users or query_user_public_key."
   value       = snowflake_account_role.reader.fully_qualified_name
 }
 
