@@ -270,9 +270,10 @@ The first load runs within the hour and covers the last few days.
    ```
 
    Any other agent (Cursor, Copilot, Codex): see [`AGENTS.md`](AGENTS.md). Querying needs
-   python3 with `snowflake-connector-python` and, as the step 4 user, either the five
-   `SNOWFLAKE_*` environment variables (listed in `snowflake_query.sh`) or a `connections.toml`
-   connection. Then ask questions.
+   Python 3 with `snowflake-connector-python` installed in the interpreter the script picks
+   (`python3`; on Windows the `py` launcher, so `py -3 -m pip install snowflake-connector-python`,
+   or `python`) and, as the step 4 user, either the five `SNOWFLAKE_*` environment variables
+   (listed in `snowflake_query.sh`) or a `connections.toml` connection. Then ask questions.
 
 The first load runs within the hour and covers the last few days.
 
@@ -289,13 +290,18 @@ By hand:
 
 - **AWS:** the Athena console (data source `AwsDataCatalog`, catalog
   `s3tablescatalog/traceforce-lakehouse`, database `traceforce`) or
-  `skills/traceforce-lakehouse/scripts/athena_query.sh "SELECT ..."`.
+  `skills/traceforce-lakehouse/scripts/athena_query.sh "SELECT ..."`; on Windows, from PowerShell,
+  `powershell -NoProfile -ExecutionPolicy Bypass -File skills\traceforce-lakehouse\scripts\athena_query.ps1 -f query.sql`.
 - **GCP:** the BigQuery console (dataset `traceforce_lakehouse`) or
-  `skills/traceforce-lakehouse/scripts/bq_query.sh "SELECT ..."`.
+  `skills/traceforce-lakehouse/scripts/bq_query.sh "SELECT ..."`; on Windows, from PowerShell,
+  `powershell -NoProfile -ExecutionPolicy Bypass -File skills\traceforce-lakehouse\scripts\bq_query.ps1 -f query.sql`.
 - **Azure:** Snowsight with the reader role from step 4 above active, every name quoted:
   `USE ROLE "traceforce_lakehouse_reader"; USE WAREHOUSE "traceforce_lakehouse"; USE DATABASE
   "traceforce_lakehouse"; USE SCHEMA "traceforce";` — the reader only has `USAGE` on that
-  specific warehouse, so a query fails without it selected.
+  specific warehouse, so a query fails without it selected. Or
+  `skills/traceforce-lakehouse/scripts/snowflake_query.sh "SELECT ..."`, which sets those itself;
+  on Windows, from PowerShell,
+  `powershell -NoProfile -ExecutionPolicy Bypass -File skills\traceforce-lakehouse\scripts\snowflake_query.ps1 -f query.sql`.
 
 ```sql
 SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1;

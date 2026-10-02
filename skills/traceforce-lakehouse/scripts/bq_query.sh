@@ -28,7 +28,8 @@ fi
 # who ran `gcloud config set project <id>` doesn't have to repeat it here. (get-value prints
 # "(unset)" when no project is configured.)
 if [[ -z "$PROJECT" ]]; then
-  PROJECT="$(gcloud config get-value project 2>/dev/null)"
+  # tr -d '\r': on Windows (Git Bash) gcloud's output ends in \r\n, and $( ) strips only the \n.
+  PROJECT="$(gcloud config get-value project 2>/dev/null | tr -d '\r')"
 fi
 if [[ -z "$PROJECT" || "$PROJECT" == "(unset)" ]]; then
   echo "no GCP project: set TRACEFORCE_LAKEHOUSE_PROJECT or run 'gcloud config set project <id>'" >&2
@@ -47,7 +48,8 @@ fi
 # First-keyword allowlist: a fast fail for an obvious DML/DDL statement. This is a convenience,
 # NOT the read-only guarantee -- see the note after the case block. GoogleSQL has no
 # SHOW/DESCRIBE/EXPLAIN (INFORMATION_SCHEMA replaces them, see SKILL.md), so only SELECT/WITH.
-FIRST="$(printf '%s\n' "$SQL" | grep -vE '^[[:space:]]*(--|$)' | awk '{print toupper($1); exit}')"
+# A CR also ends a line (files saved on Windows end lines with \r\n).
+FIRST="$(printf '%s\n' "$SQL" | tr '\r' '\n' | grep -vE '^[[:space:]]*(--|$)' | awk 'NR==1 {print toupper($1)}')"
 case "$FIRST" in
   SELECT|WITH) ;;
   *) echo "refusing to run a non-read statement (first keyword: $FIRST)" >&2; exit 2 ;;

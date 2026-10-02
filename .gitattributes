@@ -1,0 +1,6 @@
+# Shell scripts must stay LF on every checkout: Git for Windows defaults to core.autocrlf=true,
+# and bash cannot run a CRLF script. The Python script ships LF too, so the scripts are
+# byte-identical on every platform (Python itself reads either ending; so does PowerShell, which
+# is why *.ps1 is not pinned).
+*.sh text eol=lf
+*.py text eol=lf
