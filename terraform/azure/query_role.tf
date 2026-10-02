@@ -81,14 +81,10 @@ resource "snowflake_grant_privileges_to_account_role" "reader_tables" {
   depends_on = [snowflake_grant_privileges_to_account_role.reader_future_tables]
 }
 
-# MONITOR, not SELECT -- Tasks aren't queried directly, but MONITOR is what controls whether a
-# role can see a Task's own run history. Without it, INFORMATION_SCHEMA.TASK_HISTORY silently
-# returns zero rows instead of an error, easy to mistake for "no runs yet". This is the reader's
-# real path to per-run error messages for a failed ingest/export Task, richer than the
-# timestamp-only signal INFORMATION_SCHEMA.TABLES.LAST_ALTERED gives (see SKILL.md). MONITOR
-# also grants SHOW TASKS/DESCRIBE TASK (a Task's full SQL body, not just state/timing/error
-# text), but still no write capability -- it doesn't grant EXECUTE TASK or any ability to
-# change what a Task does.
+# MONITOR, not SELECT -- Tasks aren't queried directly, but MONITOR is what lets a role see a
+# Task's run history: without it INFORMATION_SCHEMA.TASK_HISTORY silently returns zero rows
+# instead of an error. It also allows SHOW TASKS / DESCRIBE TASK, but grants no EXECUTE TASK or
+# any ability to change a Task.
 #
 # reader_tasks (ALL) depends_on reader_future_tasks (FUTURE): same creation-gap reasoning as
 # reader_future_tables/reader_tables above, applied to Tasks instead of tables.

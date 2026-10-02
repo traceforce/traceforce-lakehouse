@@ -4,6 +4,16 @@ output "azure_consent_url" {
 }
 
 output "reader_role_name" {
-  description = "Snowflake role to GRANT to whoever should query the lakehouse (query_role.tf) -- already quoted (a case-preserved lowercase identifier), so substitute it as-is: GRANT ROLE <this> TO USER <them>, not GRANT ROLE \"<this>\" (that would double the quotes). Not needed if you set reader_users instead."
+  description = "Snowflake role to GRANT to whoever should query the lakehouse (query_role.tf), already quoted: GRANT ROLE <this> TO USER <them>. Not needed if you set reader_users."
   value       = snowflake_account_role.reader.fully_qualified_name
+}
+
+output "agent_events_fqn" {
+  description = "Fully qualified table name for Snowflake SQL."
+  value       = snowflake_iceberg_table.agent_events.fully_qualified_name
+}
+
+output "exports_root" {
+  description = "Where TraceForce's export job writes <table>/dt=YYYY-MM-DD/<HHMMSS>.jsonl.gz"
+  value       = local.exports_root
 }

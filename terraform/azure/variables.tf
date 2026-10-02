@@ -30,9 +30,8 @@ variable "logs_prefix" {
 }
 
 # --- Globally-unique name for the storage account this module creates for Iceberg table data ---
-# Required, with no default: must be a plain, explicit value, not derived from any other input.
 variable "iceberg_storage_account_name" {
-  description = "Name for the Azure Storage account this module creates to hold Iceberg table data (storage.tf) -- must be globally unique across all of Azure, since storage account names share one namespace account-wide. Pick it once; changing it later makes Terraform destroy and recreate the storage account, deleting the Iceberg table files."
+  description = "Name of the storage account this module creates for Iceberg table data. Globally unique across Azure. Pick it once: changing it later destroys and recreates the account, deleting the Iceberg table files."
   type        = string
   validation {
     # Azure's own naming rules for a storage account: 3-24 characters, lowercase letters and
@@ -45,21 +44,6 @@ variable "iceberg_storage_account_name" {
 
 # --- Only when your account differs from the default ---
 
-variable "container_name" {
-  description = "Name of the container this module creates (in its own module-owned storage account, not logs_storage_account_name) to hold Iceberg table data. Matches the Snowflake database name by default."
-  type        = string
-  default     = "traceforce-lakehouse"
-  validation {
-    # Rejects Azure's reserved containers, matching the same product decision this module's
-    # Go-side config validation already makes for the customer-facing logs container ($root in
-    # particular also already exists implicitly on every storage account, so creating a
-    # container by this name here wouldn't make a new one -- it would point Iceberg table data
-    # at the account's own root blob namespace instead).
-    condition     = !contains(["$root", "$web", "$logs", "$blobchangefeed"], lower(var.container_name))
-    error_message = "container_name can't be one of Azure's reserved containers ($root, $web, $logs, $blobchangefeed)."
-  }
-}
-
 variable "warehouse_size" {
   description = "Snowflake warehouse size for ad-hoc queries from engineers or Claude Code."
   type        = string
@@ -67,7 +51,7 @@ variable "warehouse_size" {
 }
 
 variable "alarm_notification_email" {
-  description = "Email to notify when a scheduled Task fails. Leave null for no notification. Must be a verified email address of a Snowflake user in this account -- Snowflake only emails addresses its own users have verified (Snowsight or the Classic Console), not arbitrary addresses or team distribution lists; CREATE NOTIFICATION INTEGRATION fails on apply otherwise."
+  description = "Email to notify when a scheduled Task fails. Must be the verified address of a Snowflake user in this account (Snowflake does not email arbitrary addresses or team lists). Leave null for no notification."
   type        = string
   default     = null
   validation {
@@ -94,7 +78,7 @@ variable "lookback_days" {
 # --- Only when someone should get read access without a manual GRANT ROLE afterward ---
 
 variable "reader_users" {
-  description = "Existing Snowflake usernames to grant the read-only reader role (query_role.tf) to, e.g. [\"JDOE\"]. Matches AWS's query_trusted_principals / GCP's query_members -- for when the engineers/Claude Code querying the lakehouse aren't the ones running this Terraform. Empty = no grant; run GRANT ROLE \"traceforce_lakehouse_reader\" TO USER <you> by hand instead (quoted -- the role is created as a case-preserved lowercase identifier)."
+  description = "Existing Snowflake usernames granted the read-only reader role (query_role.tf), e.g. [\"JDOE\"]. Like AWS's query_trusted_principals / GCP's query_members. Empty = no grant; run GRANT ROLE \"traceforce_lakehouse_reader\" TO USER <name> by hand instead."
   type        = list(string)
   default     = []
 }
@@ -102,7 +86,7 @@ variable "reader_users" {
 # --- Only when someone should be emailed as the shared warehouse's credit usage climbs ---
 
 variable "credit_notification_users" {
-  description = "Existing Snowflake usernames to email as the warehouse's monthly credit usage crosses 50%/80%/100% of credit_quota (compute.tf), in addition to any account administrator who has separately opted in to resource-monitor notifications for themselves -- e.g. [\"JDOE\"]. Snowflake emails each listed user's own verified address directly; do not list an administrator here, since this list is for non-administrator users only (max 5) -- an opted-in admin is notified either way, regardless of this list. The monitor itself never suspends the warehouse, so these are the only way usage climbing out of band gets noticed. Empty = no additional non-admin recipients."
+  description = "Existing non-admin Snowflake usernames (max 5) emailed as the warehouse's monthly credit usage crosses 50/80/100% of the resource monitor's quota (compute.tf), e.g. [\"JDOE\"]. The monitor never suspends the warehouse. Empty = no recipients."
   type        = list(string)
   default     = []
   validation {

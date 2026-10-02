@@ -1,6 +1,6 @@
 ---
 name: traceforce-lakehouse
-description: "Query the TraceForce lakehouse (Athena over Iceberg in AWS, BigQuery over Iceberg in GCP, or Snowflake over Iceberg in Azure) to answer questions about AI-agent activity from agents such as Claude Code, Claude (the claude.ai chat agent), Cursor and GitHub Copilot: prompts, tool calls, MCP servers, tokens and cost on all three clouds; sensitive-data, containment and prompt-injection findings, devices, users and accounts on AWS/GCP only for now (Azure's metadata export doesn't exist yet, see \"Azure (Snowflake)\" below). Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena, BigQuery, Snowflake or SQL over TraceForce data. Read-only. Not for the TraceForce REST API or console; ChatGPT activity is not in the lake."
+description: "Query the TraceForce lakehouse (Athena over Iceberg in AWS, BigQuery over Iceberg in GCP, or Snowflake over Iceberg in Azure) to answer questions about AI-agent activity from agents such as Claude Code, Claude (the claude.ai chat agent), Cursor and GitHub Copilot: prompts, tool calls, MCP servers, tokens and cost, sensitive-data, containment and prompt-injection findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena, BigQuery, Snowflake or SQL over TraceForce data. Read-only. Not for the TraceForce REST API or console; ChatGPT activity is not in the lake."
 ---
 
 # TraceForce lakehouse
@@ -77,99 +77,35 @@ example SQL is Athena/Trino. Translate to GoogleSQL:
 
 ## Azure (Snowflake)
 
-**Quote this module's table and column names.** They're case-preserved lowercase in this
-module's schema — exactly the spelling in the reference files below — but Snowflake folds any
-*unquoted* identifier to uppercase and then can't find it. This is the single most common way a
-query fails here: every reference example's SQL is unquoted Trino dialect (case-insensitive
-there); wrap each table/column name in double quotes, do not rename it — the spelling is
-already right: `SELECT "agent", count(*) FROM "agent_events" WHERE "ts" > ...`. This doesn't
-extend to Snowflake's own built-in names (`TASK_HISTORY`'s `NAME`/`STATE`, `FLATTEN`'s `VALUE`,
-`INFORMATION_SCHEMA` columns) — those are genuinely uppercase and unquoted, as the examples
-below show; quoting one of those lowercase (e.g. `"value"`) looks for a column that doesn't
-exist and fails the same way an unquoted module name does.
+Quote every table and column name: `SELECT "agent", count(*) FROM "agent_events" WHERE "ts" > ...`.
+This module's identifiers are case-preserved lowercase and Snowflake folds unquoted names to
+uppercase, so an unquoted `agent_events` is not found. Snowflake's own names (`TASK_HISTORY`,
+`INFORMATION_SCHEMA` columns, `FLATTEN`'s `VALUE`) are uppercase and stay unquoted.
 
-Read-only here is enforced by Snowflake's own RBAC *and* the script's own statement controls
-together, not RBAC alone: every query runs as the module's `traceforce_lakehouse_reader` role
-with `SECONDARY ROLES NONE`, so even a connecting identity that also holds a broader role (e.g.
-whoever deployed the module, commonly `ACCOUNTADMIN`) is genuinely restricted to that role's own
-grants for this one query — `SELECT` on the tables plus `MONITOR` on the Tasks, no write
-privilege anywhere — rather than Snowflake's default `SECONDARY ROLES ALL` session behavior
-letting that identity's other privileges leak through. RBAC alone isn't the whole guarantee,
-though: that identity could still switch to its broader role and write, all within one
-Snowflake-parsed statement, via a multi-statement escape or Snowflake's `->>` flow operator —
-the script rejects both before the query ever reaches Snowflake. Do not try to bypass this by
-connecting as a different, broader role or account.
+Read-only here is enforced by Snowflake RBAC together with the script: every query runs as the
+module's `traceforce_lakehouse_reader` role with secondary roles off, and the script rejects
+multi-statement input and the `->>` operator. Do not work around it by connecting as another role.
 
-Query as a dedicated read-only user, not the user this module was deployed with (in practice
-`ACCOUNTADMIN`), even though the controls above hold either way: an anonymous-procedure call
-(`WITH p AS PROCEDURE ... CALL p()`, a single Snowflake-parsed statement) still runs with the
-caller's rights, genuinely restricted by `SECONDARY ROLES NONE` the same as a direct statement,
-not a way around it. The reason for a separate user is blast radius outside this script's own
-protections, not a gap in them: an agent's shell holding the deploy user's unencrypted key can
-authenticate as that broader role directly with the Snowflake connector, entirely bypassing this
-script (see README.md's "Grant query access" step). Matches GCP's own guidance here (don't query
-as the project owner/editor you deployed with).
+TraceForce's metadata export does not write to Azure yet, so the 18 mirror tables are empty
+there: answer from `agent_events`, and say so when a question needs a mirror.
 
 ```bash
 "${CLAUDE_SKILL_DIR}/scripts/snowflake_query.sh" "SELECT \"agent\", count(*) FROM \"agent_events\" WHERE \"ts\" > DATEADD('day', -7, CURRENT_TIMESTAMP()) GROUP BY 1"
 ```
 
-Needs python3 with the `snowflake-connector-python` package installed
-(`pip install snowflake-connector-python`) and either key-pair auth credentials as environment
-variables -- `SNOWFLAKE_ORGANIZATION_NAME`, `SNOWFLAKE_ACCOUNT_NAME`, `SNOWFLAKE_USER`,
-`SNOWFLAKE_AUTHENTICATOR` (= `SNOWFLAKE_JWT`), `SNOWFLAKE_PRIVATE_KEY` -- all five, unlike the
-Terraform module's own provider, which only reads `SNOWFLAKE_PRIVATE_KEY` from the environment
-(the organization name, account name, and user are non-secret provider arguments there, not env
-vars) -- or a named connection in `connections.toml`, which `connect()` resolves with no
-arguments if none of the five env vars above are set (SSO, password or encrypted-key auth all
-work this way); a partial set of the five is always a hard error instead, never a silent
-fall-through to `connections.toml`'s default connection (which could otherwise be a different
-Snowflake account than the one those env vars are trying to reach), so an auth/connection error
-is an environment problem, not empty data. Whichever
-Snowflake user actually connects -- named directly via `SNOWFLAKE_USER`, or implied by the
-`connections.toml` entry picked -- must actually hold the `traceforce_lakehouse_reader` role --
-the module leaves `reader_users` empty by default, so valid credentials alone aren't enough: the
-script's own `USE ROLE` fails with "Requested role ... is not assigned to the executing user"
-until either `reader_users` is set in Terraform or someone runs the `GRANT ROLE` command from
-README.md's "Grant query access" step.
+Needs python3 with `snowflake-connector-python`, and either all five `SNOWFLAKE_*` environment
+variables (`SNOWFLAKE_ORGANIZATION_NAME`, `SNOWFLAKE_ACCOUNT_NAME`, `SNOWFLAKE_USER`,
+`SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT`, `SNOWFLAKE_PRIVATE_KEY`) or none of them and a
+`connections.toml` connection. The connecting user must hold the reader role (README, "Grant
+query access"). An auth or role error is an environment problem, not empty data.
 
 The reference/* schema (columns, joins, identity, redaction, enforcement) is identical, but its
-example SQL is Athena/Trino. Translate to Snowflake SQL, on top of quoting this module's table
-and column names:
-- `json_extract_scalar(x, '$.gen_ai.tool.name')` -> `PARSE_JSON(x):"gen_ai.tool.name"::string`
-  — **double-quote dotted keys** in colon-path (a single-quoted key is a syntax error; an
-  unquoted dotted key reads as nested paths and returns NULL). Bracket notation works too:
-  `PARSE_JSON(x)['gen_ai.tool.name']::string`. `x` itself is stored as a string column here
-  (`TO_JSON(...)` at ingest), so it needs `PARSE_JSON()` first — colon-path/bracket notation
-  only works on VARIANT, not VARCHAR.
-- `current_timestamp - interval '7' day` -> `DATEADD('day', -7, CURRENT_TIMESTAMP())`;
-  `date_format(...)` -> `TO_CHAR(...)`.
-- `SHOW TABLES` -> `SHOW TABLES IN SCHEMA "traceforce"`; `DESCRIBE <table>` ->
-  `DESCRIBE TABLE "<table>"` (both need the schema/table name quoted, same rule as above).
-- Mirror/ingest health: `SELECT NAME, STATE, SCHEDULED_TIME, ERROR_MESSAGE FROM TABLE(
-  INFORMATION_SCHEMA.TASK_HISTORY(SCHEDULED_TIME_RANGE_START => DATEADD('day', -1,
-  CURRENT_TIMESTAMP())))` gives the ingest/export Tasks' own real run history — state, timing,
-  and Snowflake's actual error text on a failed run, richer than a bare freshness timestamp.
-  Needs `MONITOR` on the Tasks (`terraform/azure/query_role.tf`'s `reader_tasks`/
-  `reader_future_tasks` grants) — without it, `TASK_HISTORY` silently returns zero rows instead
-  of an error, easy to mistake for "no runs yet" instead of a missing grant.
-  `INFORMATION_SCHEMA.TABLES.LAST_ALTERED` is **not** a reliable delivery-freshness signal: the
-  scheduled mirror Task issues its `MERGE`/`DELETE` on schedule whether or not that day's export
-  actually delivered a new file, and a `MERGE` matching zero rows still bumps `LAST_ALTERED` --
-  so it can look recent for days into a real export outage, exactly the failure it would be used
-  to catch. Treat it only as table-activity metadata ("did the Task attempt to run"), not
-  evidence new data arrived: `SELECT LAST_ALTERED FROM INFORMATION_SCHEMA.TABLES WHERE
-  TABLE_SCHEMA = 'traceforce' AND TABLE_NAME = '<mirror>'` — quote the comparison values in
-  lowercase (`TABLE_SCHEMA`/`TABLE_NAME` store the real case-preserved spelling; an uppercase
-  literal matches nothing and silently returns 0 rows). There is no reliable delivery-freshness
-  signal available to the reader role on Azure/Snowflake yet: unlike Athena's
-  `"<mirror>$snapshots"` or BigQuery's `__TABLES__.last_modified_time`, Snowflake exposes no
-  queryable Iceberg snapshot-commit history here, and the reader role has no grant on the raw
-  export-source external tables to check their own newest partition directly. `TASK_HISTORY`'s
-  `STATE`/`SCHEDULED_TIME` above is the closest available signal, with the same caveat: a
-  successful run only means the Task executed without error, not that it found new data to merge.
-- `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `, LATERAL FLATTEN(input =>
-  PARSE_JSON(x)) AS elem` (no `UNNEST` in Snowflake; the flattened value lands in `elem.VALUE`).
+example SQL is Athena/Trino. Translate to Snowflake SQL, quoting this module's names as above:
+- `json_extract_scalar(x, '$.gen_ai.tool.name')` -> `PARSE_JSON(x):"gen_ai.tool.name"::string` — **double-quote dotted keys**. The JSON columns are strings here, so `PARSE_JSON()` first.
+- `current_timestamp - interval '7' day` -> `DATEADD('day', -7, CURRENT_TIMESTAMP())`; `date_format(...)` -> `TO_CHAR(...)`.
+- `SHOW TABLES` -> `SHOW TABLES IN SCHEMA "traceforce"`; `DESCRIBE <table>` -> `DESCRIBE TABLE "<table>"`.
+- `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `, LATERAL FLATTEN(input => PARSE_JSON(x)) AS elem` (the value is `elem.VALUE`).
+- Ingest/mirror run history: `SELECT NAME, STATE, SCHEDULED_TIME, ERROR_MESSAGE FROM TABLE(INFORMATION_SCHEMA.TASK_HISTORY(SCHEDULED_TIME_RANGE_START => DATEADD('day', -1, CURRENT_TIMESTAMP())))`; the reader role holds `MONITOR` on the Tasks for this.
 
 ## Workflow
 

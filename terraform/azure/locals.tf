@@ -1,7 +1,8 @@
 locals {
   # Fixed names: the skill, docs and Snowflake examples all assume them. Snowflake's unquoted
   # identifiers don't allow hyphens, so the database name uses an underscore even though the
-  # container (var.container_name) defaults to a hyphenated name.
+  # Iceberg container (storage.tf) is hyphenated like the AWS/GCP buckets.
+  name          = "traceforce-lakehouse"
   database_name = "traceforce_lakehouse"
   schema_name   = "traceforce"
 

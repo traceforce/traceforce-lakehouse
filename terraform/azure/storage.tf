@@ -36,7 +36,7 @@ resource "azurerm_storage_account" "iceberg" {
 # storage_account_id (Resource Manager API) rather than the deprecated storage_account_name
 # (Data Plane API) is the modern, non-deprecated way to create a container.
 resource "azurerm_storage_container" "iceberg" {
-  name                  = var.container_name
+  name                  = local.name
   storage_account_id    = azurerm_storage_account.iceberg.id
   container_access_type = "private" # explicit, not relied on as the provider's own default
 }

@@ -1,11 +1,9 @@
 # Export contract: TraceForce metadata snapshots
 
 Producer: TraceForce's export job, run daily around 11:00 UTC for every org with a CONNECTED
-S3 or GCS Storage Provider. Azure Blob Storage is not a supported producer yet -- tracked as
-separate work on TraceForce's side, not something this module's own Terraform can affect.
+S3 or GCS Storage Provider (Azure Blob Storage is not a producer yet).
 Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glue tables on AWS
-(Athena), the external tables on GCP (BigQuery), or the external tables on Azure (Snowflake) --
-the Azure consumer already exists and runs correctly, it just has nothing real to merge yet.
+(Athena), or the external tables on GCP (BigQuery) and Azure (Snowflake).
 
 ## Location
 

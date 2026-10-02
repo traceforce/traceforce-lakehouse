@@ -29,32 +29,17 @@ bucket this module owns, which TraceForce cannot read.
   datasets/connections/transfers and a service account, set IAM, and enable the BigQuery APIs —
   in practice **project Owner**.
 - **Azure** *(early access)*: an existing Snowflake account on Azure, in the logs storage
-  account's region — otherwise every hourly load and every query pays cross-region egress, and
-  the logs leave that region. A Snowflake user set up for key-pair auth, with rights to create
-  databases, warehouses and Tasks — in practice `ACCOUNTADMIN`. Deploying needs
-  `SNOWFLAKE_PRIVATE_KEY` as an environment variable (the one
-  real secret; the organization name, account name, and user below are non-secret provider
-  arguments filled in directly in the snippet, not env vars, so a generated `main.tf` can supply
-  them the same way). Querying afterward is separate: either all five `SNOWFLAKE_*` values as
-  environment variables, or a named connection in `connections.toml` (SSO, password or
-  encrypted-key auth all work this way; see "Install the skill" below). The Azure CLI signed in
-  (`az login`) as an identity that can create a storage account and container, and role
-  assignments, in the logs resource group — in practice **Owner** or **User Access
-  Administrator** + **Storage Account Contributor**, scoped to that resource group, not just the
-  logs storage account itself: this module also creates its own, separate storage account there
-  (to hold Iceberg table data, kept out of the logs account so a lifecycle rule on your logs
-  can't reach it) and grants role assignments on it too. The subscription and Entra tenant IDs
-  below are also plain provider arguments, not env vars (`az account show --query
-  "{id:id,tenantId:tenantId}"` prints both): AzureRM v4 no longer infers the subscription from
-  the CLI's active context the way v3 did, and pinning the tenant explicitly avoids depending on
-  which one the CLI's current context defaults to if you're signed into more than one.
-  Separately, the first deployment against a given Snowflake account/tenant pair needs a
-  Microsoft Entra admin to grant tenant-wide admin consent (step 3 below) — subscription roles
-  like Owner don't include this; it's a different permission system (Entra directory roles, not
-  Azure resource RBAC). One more separate permission:
-  whichever storage account holds your Terraform state (not the logs account above) needs
-  `Storage Blob Data Contributor` if you use `use_azuread_auth` like the example below —
-  Owner/Contributor are control-plane roles and don't grant blob data access on their own.
+  account's region (anywhere else pays cross-region egress on every load and query), with a
+  key-pair user that can create databases, warehouses and Tasks — in practice `ACCOUNTADMIN`.
+  Deploying reads `SNOWFLAKE_PRIVATE_KEY` from the environment; the organization, account and
+  user are plain provider arguments in the snippet. The Azure CLI signed in (`az login`) as an
+  identity that can create a storage account and role assignments in the logs resource group —
+  **Owner**, or **User Access Administrator** + **Storage Account Contributor** on that group
+  (the module creates its own storage account there for the Iceberg data). The subscription and
+  tenant IDs are provider arguments too (`az account show --query "{id:id,tenantId:tenantId}"`).
+  The first deployment against a Snowflake account/tenant pair needs a Microsoft Entra admin to
+  grant admin consent (step 3 below); subscription roles like Owner don't include that. With
+  `use_azuread_auth`, the state storage account also needs `Storage Blob Data Contributor`.
 
 ## Deploy — AWS (Athena)
 
@@ -192,10 +177,10 @@ The first load runs within the hour and covers the last few days.
    }
 
    provider "snowflake" {
-     organization_name = "acmeorg"         # Snowsight account selector, top-left
-     account_name      = "acmeaccount"     # the account name, not the account locator
-     user              = "acmedeployuser"  # the Snowflake user Terraform authenticates as
-     authenticator     = "SNOWFLAKE_JWT"   # key-pair auth; this module always uses it, not a choice
+     organization_name = "acmeorg"        # Snowsight account selector, top-left
+     account_name      = "acmeaccount"    # the account name, not the account locator
+     user              = "acmedeployuser" # the Snowflake user Terraform authenticates as
+     authenticator     = "SNOWFLAKE_JWT"  # key-pair auth; this module always uses it, not a choice
 
      # private_key is the one real secret here -- deliberately not set above like the rest:
      # reads from SNOWFLAKE_PRIVATE_KEY in the environment, never hardcoded in this file.
@@ -268,14 +253,10 @@ The first load runs within the hour and covers the last few days.
    /plugin install traceforce-lakehouse@traceforce
    ```
 
-   Any other agent (Cursor, Copilot, Codex): see [`AGENTS.md`](AGENTS.md). Then ask questions.
-   Needs python3 with the `snowflake-connector-python` package installed
-   (`pip install snowflake-connector-python`) and either all five key-pair auth values as
-   environment variables -- `SNOWFLAKE_ORGANIZATION_NAME`/`SNOWFLAKE_ACCOUNT_NAME`/
-   `SNOWFLAKE_USER`/`SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT`/`SNOWFLAKE_PRIVATE_KEY` -- unlike
-   step 1's provider block, which only reads `SNOWFLAKE_PRIVATE_KEY` from the environment, or a
-   named connection in `connections.toml` (SSO, password or encrypted-key auth all work this
-   way too).
+   Any other agent (Cursor, Copilot, Codex): see [`AGENTS.md`](AGENTS.md). Querying needs
+   python3 with `snowflake-connector-python` and, as the step 4 user, either the five
+   `SNOWFLAKE_*` environment variables (listed in `snowflake_query.sh`) or a `connections.toml`
+   connection. Then ask questions.
 
 The first load runs within the hour and covers the last few days.
 

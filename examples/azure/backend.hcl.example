@@ -1,8 +1,0 @@
-# Copy to backend.hcl (gitignored) and fill in your own values, then:
-#   terraform init -backend-config=backend.hcl
-# Never commit backend.hcl.
-
-subscription_id      = "00000000-0000-0000-0000-000000000000" # az account show --query id -o tsv
-tenant_id            = "00000000-0000-0000-0000-000000000000" # az account show --query tenantId -o tsv
-resource_group_name  = "your-resource-group"
-storage_account_name = "your-storage-account"
