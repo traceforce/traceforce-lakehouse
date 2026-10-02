@@ -270,9 +270,10 @@ The first load runs within the hour and covers the last few days.
    ```
 
    Any other agent (Cursor, Copilot, Codex): see [`AGENTS.md`](AGENTS.md). Querying needs
-   python3 with `snowflake-connector-python` and, as the step 4 user, either the five
-   `SNOWFLAKE_*` environment variables (listed in `snowflake_query.sh`) or a `connections.toml`
-   connection. Then ask questions.
+   Python 3 (`python3`; on Windows `python` or the `py` launcher) with
+   `snowflake-connector-python` and, as the step 4 user, either the five `SNOWFLAKE_*`
+   environment variables (listed in `snowflake_query.sh`) or a `connections.toml` connection.
+   Then ask questions.
 
 The first load runs within the hour and covers the last few days.
 
@@ -297,7 +298,10 @@ By hand:
 - **Azure:** Snowsight with the reader role from step 4 above active, every name quoted:
   `USE ROLE "traceforce_lakehouse_reader"; USE WAREHOUSE "traceforce_lakehouse"; USE DATABASE
   "traceforce_lakehouse"; USE SCHEMA "traceforce";` — the reader only has `USAGE` on that
-  specific warehouse, so a query fails without it selected.
+  specific warehouse, so a query fails without it selected. Or
+  `skills/traceforce-lakehouse/scripts/snowflake_query.sh "SELECT ..."`, which sets those itself;
+  on Windows, from PowerShell,
+  `powershell -NoProfile -ExecutionPolicy Bypass -File skills\traceforce-lakehouse\scripts\snowflake_query.ps1 -f query.sql`.
 
 ```sql
 SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1;

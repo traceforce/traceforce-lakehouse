@@ -55,9 +55,10 @@ Only Claude Code is verified end to end so far.
 - **GCP (BigQuery):** the gcloud CLI signed in (`gcloud auth login` + `gcloud auth
   application-default login`) with the lakehouse's project as your default
   (`gcloud config set project <id>`).
-- **Azure (Snowflake):** python3 with `snowflake-connector-python`, and either all five
-  `SNOWFLAKE_*` environment variables (listed in `snowflake_query.sh`) or a `connections.toml`
-  connection, for a user that holds the `traceforce_lakehouse_reader` role.
+- **Azure (Snowflake):** Python 3 (`python3` on macOS/Linux, `python` or the `py` launcher on
+  Windows) with `snowflake-connector-python`, and either all five `SNOWFLAKE_*` environment
+  variables (listed in `snowflake_query.sh`) or a `connections.toml` connection, for a user
+  that holds the `traceforce_lakehouse_reader` role.
 - Read-only: the query scripts refuse non-read statements (see each script's allowlist), and
   the query identity grants no writes; on Snowflake the script also runs every query as the
   read-only reader role.
