@@ -1,9 +1,9 @@
 # Export contract: TraceForce metadata snapshots
 
 Producer: TraceForce's export job, run daily around 11:00 UTC for every org with a CONNECTED
-S3 or GCS Storage Provider (Azure follows with its lakehouse module).
+S3 or GCS Storage Provider (Azure Blob Storage is not a producer yet).
 Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glue tables on AWS
-(Athena), or the external tables on GCP (BigQuery).
+(Athena), or the external tables on GCP (BigQuery) and Azure (Snowflake).
 
 ## Location
 
@@ -20,10 +20,11 @@ Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glu
 - Permissions: the job runs under the TraceForce role the customer's Storage Provider grant
   already trusts and only ever calls PutObject on a new key; it never overwrites or deletes.
 - One file per table per run (gzip, JSON Lines, UTF-8). An empty table still writes a
-  zero-line file, but Athena reads no rows from it, so the newest non-empty file stays the
+  zero-line file, but no engine reads rows from it, so the newest non-empty file stays the
   effective snapshot: a table that genuinely drops to zero rows keeps its stale mirror rows
   until it has a row again (see `terraform/aws/sql/mirror_export_delete.sql.tftpl`; GCP folds the
-  same delete into `terraform/gcp/sql/mirror_export.sql.tftpl`).
+  same delete into `terraform/gcp/sql/mirror_export.sql.tftpl`; Azure keeps it separate too, in
+  `terraform/azure/sql/mirror_export_delete.sql.tftpl`).
 
 ## Content
 
@@ -35,13 +36,13 @@ Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glu
   The consumer parses timestamps with `from_iso8601_timestamp`, so the mirror keeps
   millisecond precision; TraceForce's database microseconds are truncated.
 - Rows: exactly the contract columns (`export_tables` in `terraform/schema/columns.json`, the one
-  column list both cloud modules read), `WHERE org_id = $org` for tenant tables; whole table for
+  column list all three cloud modules read), `WHERE org_id = $org` for tenant tables; whole table for
   `agent_catalog`, `mcp_catalog` and `mcp_categories` (global, no `org_id` column). Soft-deleted rows
   (`deleted_at` set) are included; consumers filter.
 - Columns outside the contract are never exported, so adding a column to TraceForce's database
   never changes the snapshot. Exposing it in Iceberg means adding it to the contract on both
   sides, the export job's table list and `export_tables`, in either order: a missing key reads as
-  NULL and an unknown key is ignored on both clouds.
+  NULL and an unknown key is ignored on every cloud.
 
 ## Decoded enum columns
 

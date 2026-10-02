@@ -1,6 +1,6 @@
 ---
 name: traceforce-lakehouse
-description: "Query the TraceForce lakehouse (Athena over Iceberg in AWS, or BigQuery over Iceberg in GCP) to answer questions about AI-agent activity from agents such as Claude Code, Claude (the claude.ai chat agent), Cursor and GitHub Copilot: prompts, tool calls, MCP servers, tokens and cost, sensitive-data, containment and prompt-injection findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena, BigQuery or SQL over TraceForce data. Read-only. Not for the TraceForce REST API or console; ChatGPT activity is not in the lake."
+description: "Query the TraceForce lakehouse (Athena over Iceberg in AWS, BigQuery over Iceberg in GCP, or Snowflake over Iceberg in Azure) to answer questions about AI-agent activity from agents such as Claude Code, Claude (the claude.ai chat agent), Cursor and GitHub Copilot: prompts, tool calls, MCP servers, tokens and cost, sensitive-data, containment and prompt-injection findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena, BigQuery, Snowflake or SQL over TraceForce data. Read-only. Not for the TraceForce REST API or console; ChatGPT activity is not in the lake."
 ---
 
 # TraceForce lakehouse
@@ -29,14 +29,15 @@ description: "Query the TraceForce lakehouse (Athena over Iceberg in AWS, or Big
 ## Run a query
 
 First pick the engine. The lakehouse is set up on **one** cloud and your task names it (the
-TraceForce setup prompt says "on AWS (Athena)" or "on GCP (BigQuery)"):
+TraceForce setup prompt says "on AWS (Athena)", "on GCP (BigQuery)" or "on Azure (Snowflake)"):
 - **AWS / Athena** → `athena_query.sh` (below).
 - **GCP / BigQuery** → `bq_query.sh` (see "GCP (BigQuery)" below).
+- **Azure / Snowflake** → `snowflake_query.sh` (see "Azure (Snowflake)" below).
 
 Do not infer the cloud from which credentials are present — a machine often has both. If the
 task doesn't name one, ask.
 
-Use the bundled script; do not reimplement it with raw `aws athena` / `bq` calls.
+Use the bundled script; do not reimplement it with raw `aws athena` / `bq` / Snowflake connector calls.
 
 ```bash
 "${CLAUDE_SKILL_DIR}/scripts/athena_query.sh" "SELECT agent, count(*) FROM agent_events WHERE ts > current_timestamp - interval '7' day GROUP BY 1"
@@ -74,6 +75,40 @@ example SQL is Athena/Trino. Translate to GoogleSQL:
 - `__TABLES__.row_count` is 0 for every table here (Iceberg); count rows with `count(*)`.
 - `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `CROSS JOIN UNNEST(JSON_VALUE_ARRAY(x)) AS elem` (unnesting a JSON array of strings).
 
+## Azure (Snowflake)
+
+Quote every table and column name: `SELECT "agent", count(*) FROM "agent_events" WHERE "ts" > ...`.
+This module's identifiers are case-preserved lowercase and Snowflake folds unquoted names to
+uppercase, so an unquoted `agent_events` is not found. Snowflake's own names (`TASK_HISTORY`,
+`INFORMATION_SCHEMA` columns, `FLATTEN`'s `VALUE`) are uppercase and stay unquoted.
+
+Read-only here is enforced by Snowflake RBAC together with the script: every query runs as the
+module's `traceforce_lakehouse_reader` role with secondary roles off, and the script runs only a
+single `SELECT`/`WITH`/`SHOW`/`DESCRIBE`/`EXPLAIN` statement, refusing stored-procedure calls and
+the `->>` operator. Do not work around it by connecting as another role.
+
+TraceForce's metadata export does not write to Azure yet, so the 18 mirror tables are empty
+there: answer from `agent_events`, and say so when a question needs a mirror.
+
+```bash
+"${CLAUDE_SKILL_DIR}/scripts/snowflake_query.sh" "SELECT \"agent\", count(*) FROM \"agent_events\" WHERE \"ts\" > DATEADD('day', -7, CURRENT_TIMESTAMP()) GROUP BY 1"
+```
+
+Needs python3 with `snowflake-connector-python`, and either all five `SNOWFLAKE_*` environment
+variables (`SNOWFLAKE_ORGANIZATION_NAME`, `SNOWFLAKE_ACCOUNT_NAME`, `SNOWFLAKE_USER`,
+`SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT`, `SNOWFLAKE_PRIVATE_KEY`) or none of them and a
+`connections.toml` connection (preferred: `SNOWFLAKE_PRIVATE_KEY` is also the Terraform deploy
+key's variable). The connecting user must hold the reader role (README, "Grant query access").
+An auth or role error is an environment problem, not empty data.
+
+The reference/* schema (columns, joins, identity, redaction, enforcement) is identical, but its
+example SQL is Athena/Trino. Translate to Snowflake SQL, quoting this module's names as above:
+- `json_extract_scalar(x, '$.gen_ai.tool.name')` -> `PARSE_JSON(x):"gen_ai.tool.name"::string` — **double-quote dotted keys**. The JSON columns are strings here, so `PARSE_JSON()` first.
+- `current_timestamp - interval '7' day` -> `DATEADD('day', -7, CURRENT_TIMESTAMP())`; `date_format(...)` -> `TO_CHAR(...)`.
+- `SHOW TABLES` -> `SHOW TABLES IN SCHEMA "traceforce"`; `DESCRIBE <table>` -> `DESCRIBE TABLE "<table>"`.
+- `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `, LATERAL FLATTEN(input => PARSE_JSON(x)) AS elem` (the value is `elem.VALUE`).
+- Ingest/mirror run history: `SELECT NAME, STATE, SCHEDULED_TIME, ERROR_MESSAGE FROM TABLE(INFORMATION_SCHEMA.TASK_HISTORY(SCHEDULED_TIME_RANGE_START => DATEADD('day', -1, CURRENT_TIMESTAMP())))`; the reader role holds `MONITOR` on the Tasks for this.
+
 ## Workflow
 
 1. Pick the tables the question needs and read only their files under `reference/tables/`.
@@ -83,7 +118,8 @@ example SQL is Athena/Trino. Translate to GoogleSQL:
 3. Write the targeted query with `ts` bounds; take join rules from `reference/joins.md`.
 4. If a query fails with "column cannot be resolved" or a type error, introspect the schema
    (Athena: `DESCRIBE traceforce.<table>`; BigQuery: `SELECT column_name, data_type FROM
-   traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<table>'`), fix, rerun.
+   traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<table>'`; Azure/
+   Snowflake: `DESCRIBE TABLE "<table>"`), fix, rerun.
    If it returns 0 rows: widen the window, check `deleted_at`, and check that every
    joined mirror has rows (an empty mirror may mean its data has not arrived; say so).
 5. Resolve `agent_type` / `mcp_server_type` names via the catalogs, state gaps, answer.
