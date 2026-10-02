@@ -51,8 +51,10 @@ def usage():
 
 
 def read_max_rows(env):
+    # 18 digits at most: keeps int() cheap and the check well inside 64 bits, as the bash
+    # script's arithmetic did.
     value = env.get("TRACEFORCE_LAKEHOUSE_MAX_ROWS") or "200"
-    if not re.fullmatch("[0-9]+", value):
+    if not re.fullmatch("[0-9]{1,18}", value):
         raise Exit("invalid TRACEFORCE_LAKEHOUSE_MAX_ROWS: %s -- must be a non-negative integer" % value, 2)
     return int(value)
 
@@ -61,7 +63,7 @@ def read_statement_timeout(env):
     value = env.get("TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT") or "300"
     if not re.fullmatch("[0-9]+", value):
         raise Exit("invalid TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT: %s -- must be a non-negative integer" % value, 2)
-    if int(value) > MAX_STATEMENT_TIMEOUT:
+    if len(value) > 18 or int(value) > MAX_STATEMENT_TIMEOUT:
         raise Exit(
             "invalid TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT: %s -- must be <= 604800 (Snowflake's own max, 7 days)" % value,
             2,
@@ -89,9 +91,31 @@ def read_query(argv):
     return raw
 
 
+def looks_utf16(raw):
+    """A UTF-16 BOM, or ASCII text with every other byte NUL (what Windows PowerShell's > and
+    Out-File write by default)."""
+    if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
+        return True
+    head = raw[:64]
+    if len(head) < 4:
+        return False
+    odd, even = head[1::2], head[0::2]
+    return odd.count(0) * 10 >= len(odd) * 9 or even.count(0) * 10 >= len(even) * 9
+
+
 def decode_query(raw):
     """UTF-8 text with a leading BOM dropped and CR/CRLF read as newlines, as a text-mode file
-    read would; so a bare CR never reaches the scanner or Snowflake."""
+    read would; so a bare CR never reaches the scanner or Snowflake. UTF-16 and NUL bytes are
+    refused: the first is the common Windows save mistake, the second could split a token the
+    scanner looks for."""
+    if looks_utf16(raw):
+        raise Exit(
+            "refusing to run: the query file is UTF-16 (what Windows PowerShell's > and Out-File write by default);"
+            " save it as UTF-8, e.g. Out-File -Encoding utf8 or Set-Content -Encoding UTF8",
+            2,
+        )
+    if b"\x00" in raw:
+        raise Exit("refusing to run: the query contains a NUL byte", 2)
     try:
         sql = raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -221,7 +245,11 @@ def import_connector():
     except Exception as e:
         last = traceback.format_exception_only(type(e), e)[-1].strip()
         if "No module named" in last:
-            raise Exit("snowflake-connector-python is not installed: pip install snowflake-connector-python", 2)
+            # Name the interpreter that ran, so the install lands where this script looks.
+            raise Exit(
+                "snowflake-connector-python is not installed: %s -m pip install snowflake-connector-python" % sys.executable,
+                2,
+            )
         raise Exit("snowflake-connector-python failed to import: %s" % last, 2)
     return snowflake.connector
 
@@ -332,6 +360,10 @@ def main(argv):
     except Exit as e:
         print(e.message, file=sys.stderr)
         return e.code
+    except KeyboardInterrupt:
+        # The connector cancels the statement on Ctrl-C; report it the way the wrappers do.
+        print("-- interrupted", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":
