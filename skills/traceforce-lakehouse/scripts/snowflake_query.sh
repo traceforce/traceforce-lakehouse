@@ -32,4 +32,5 @@
 set -euo pipefail
 
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required (see the header)" >&2; exit 2; }
-SNOWFLAKE_QUERY_PROG="${0##*/}" exec python3 "$(cd "$(dirname "$0")" && pwd)/snowflake_query.py" "$@"
+# realpath via python3 (macOS has no readlink -f), so a symlinked wrapper still finds the module.
+SNOWFLAKE_QUERY_PROG="${0##*/}" exec python3 "$(python3 -c 'import os, sys; print(os.path.dirname(os.path.realpath(sys.argv[1])))' "$0")/snowflake_query.py" "$@"

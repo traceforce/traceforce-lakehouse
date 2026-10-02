@@ -270,10 +270,10 @@ The first load runs within the hour and covers the last few days.
    ```
 
    Any other agent (Cursor, Copilot, Codex): see [`AGENTS.md`](AGENTS.md). Querying needs
-   Python 3 (`python3`; on Windows `python` or the `py` launcher) with
-   `snowflake-connector-python` and, as the step 4 user, either the five `SNOWFLAKE_*`
-   environment variables (listed in `snowflake_query.sh`) or a `connections.toml` connection.
-   Then ask questions.
+   Python 3 with `snowflake-connector-python` installed in the interpreter the script picks
+   (`python3`; on Windows the `py` launcher, so `py -3 -m pip install snowflake-connector-python`,
+   or `python`) and, as the step 4 user, either the five `SNOWFLAKE_*` environment variables
+   (listed in `snowflake_query.sh`) or a `connections.toml` connection. Then ask questions.
 
 The first load runs within the hour and covers the last few days.
 

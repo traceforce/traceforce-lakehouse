@@ -6,7 +6,8 @@
 Stdlib only. The module is imported by path; snowflake.connector and cryptography are stubbed in
 sys.modules (or replaced by a stub package on PYTHONPATH for the subprocess tests), so nothing
 here ever talks to Snowflake. A few tests use the real cryptography package when it is
-installed, and the PowerShell launcher is exercised only when /usr/local/bin/pwsh-preview exists.
+installed; the PowerShell launcher is exercised when pwsh/pwsh-preview/powershell is on PATH (or
+TF_TEST_PWSH names it), and the bash launcher only on POSIX systems with bash.
 """
 import contextlib
 import errno
@@ -28,7 +29,10 @@ SCRIPTS = ROOT / "skills" / "traceforce-lakehouse" / "scripts"
 MODULE_PATH = SCRIPTS / "snowflake_query.py"
 SH = SCRIPTS / "snowflake_query.sh"
 PS1 = SCRIPTS / "snowflake_query.ps1"
-PWSH = "/usr/local/bin/pwsh-preview"
+# PowerShell: TF_TEST_PWSH overrides; else whatever is on PATH (pwsh, pwsh-preview, powershell).
+PWSH = (os.environ.get("TF_TEST_PWSH") or shutil.which("pwsh") or shutil.which("pwsh-preview")
+        or shutil.which("powershell") or "/usr/local/bin/pwsh-preview")
+BASH = shutil.which("bash") if os.name != "nt" else None
 
 PREAMBLE_300 = (
     'USE ROLE "traceforce_lakehouse_reader"; USE SECONDARY ROLES NONE;'
@@ -308,7 +312,7 @@ class MaxRowsTests(unittest.TestCase):
         self.assertEqual(self.read("1"), 1)
         self.assertEqual(self.read("007"), 7)  # base 10, never octal
         self.assertEqual(self.read("00"), 0)
-        self.assertEqual(self.read("1" * 25), int("1" * 25))
+        self.assertEqual(self.read("1" * 18), int("1" * 18))  # 18 digits is the cap
 
     def test_invalid_values(self):
         for v in ("-1", "abc", "1e3", " 5", "5 ", "1.0", "+5", "٣"):
@@ -721,7 +725,8 @@ class ImportConnectorTests(unittest.TestCase):
                 sq.import_connector()
         self.assertEqual(cm.exception.code, 2)
         self.assertEqual(
-            cm.exception.message, "snowflake-connector-python is not installed: pip install snowflake-connector-python"
+            cm.exception.message,
+            "snowflake-connector-python is not installed: %s -m pip install snowflake-connector-python" % sys.executable,
         )
 
     def test_present_but_failing_gets_its_real_last_line(self):
@@ -774,7 +779,10 @@ class ImportConnectorTests(unittest.TestCase):
         with failing_import("snowflake", ModuleNotFoundError("No module named 'snowflake'")):
             with mock.patch.dict(os.environ, clean_env(), clear=True), captured() as cap:
                 self.assertEqual(sq.main(["SELECT 1"]), 2)
-        self.assertEqual(cap.stderr.strip(), "snowflake-connector-python is not installed: pip install snowflake-connector-python")
+        self.assertEqual(
+            cap.stderr.strip(),
+            "snowflake-connector-python is not installed: %s -m pip install snowflake-connector-python" % sys.executable,
+        )
 
 
 class RunFlowTests(unittest.TestCase):
@@ -1350,6 +1358,8 @@ class PythonModuleSubprocessTests(LauncherTestBase):
         self.assertEqual(err, b"")
 
 
+
+@unittest.skipUnless(BASH, "bash is not available (POSIX only)")
 class BashLauncherTests(LauncherTestBase):
     def launch(self, argv, env, cwd=None):
         return self.run_cmd([str(SH)] + argv, env, cwd=cwd)
@@ -1394,7 +1404,7 @@ class BashLauncherTests(LauncherTestBase):
         env = self.env("rows")
         env["PATH"] = os.path.join(self.tmp, "empty-path")
         os.makedirs(env["PATH"], exist_ok=True)
-        r = self.run_cmd(["/bin/bash", str(SH), "SELECT 1"], env)
+        r = self.run_cmd([BASH, str(SH), "SELECT 1"], env)
         self.assertEqual(r.returncode, 2)
         self.assertEqual(r.stderr, b"python3 is required (see the header)\n")
 
@@ -1404,9 +1414,22 @@ class BashLauncherTests(LauncherTestBase):
         self.assertEqual(len(code), 3, code)
         self.assertEqual(code[0], "set -euo pipefail")
         self.assertIn("command -v python3", code[1])
-        # The wrapper passes its own name down for the usage message, then execs the module.
+        # The wrapper passes its own name down for the usage message, resolves its real
+        # directory (so a symlink works), then execs the module.
         self.assertTrue(code[2].startswith('SNOWFLAKE_QUERY_PROG="${0##*/}" exec python3 '), code[2])
+        self.assertIn("os.path.realpath", code[2])
         self.assertIn('snowflake_query.py" "$@"', code[2])
+
+    def test_works_through_a_symlink(self):
+        link = os.path.join(self.tmp, "sfq-link")
+        if os.path.lexists(link):
+            os.unlink(link)
+        os.symlink(str(SH), link)
+        r = self.run_cmd([link, "DELETE FROM t"], self.env())
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn(b"first keyword: DELETE", r.stderr)
+        r = self.run_cmd([link], self.env())
+        self.assertIn(b"usage: sfq-link", r.stderr)
 
 
 @unittest.skipUnless(os.path.exists(PWSH), "%s is not installed" % PWSH)
@@ -1493,6 +1516,71 @@ class PowerShellLauncherTests(LauncherTestBase):
         r = self.launch(["SELECT 1"], env)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(os.listdir(tmpdir), [])
+
+
+class ReviewFixTests(unittest.TestCase):
+    """Fixes from the Windows review: UTF-16 and NUL input, digit caps, Ctrl-C."""
+
+    def refuse(self, raw, needle):
+        with self.assertRaises(sq.Exit) as cm:
+            sq.check_query(raw)
+        self.assertEqual(cm.exception.code, 2)
+        self.assertIn(needle, cm.exception.message)
+        return cm.exception.message
+
+    def test_utf16_file_with_bom_is_named_as_such(self):
+        for enc in ("utf-16-le", "utf-16-be"):
+            bom = b"\xff\xfe" if enc.endswith("le") else b"\xfe\xff"
+            msg = self.refuse(bom + 'SELECT count(*) FROM "agent_events"'.encode(enc), "UTF-16")
+            self.assertIn("Out-File -Encoding utf8", msg)
+
+    def test_utf16_file_without_bom_is_named_as_such(self):
+        self.refuse("SELECT 1 FROM t".encode("utf-16-le"), "UTF-16")
+        self.refuse("SELECT 1 FROM t".encode("utf-16-be"), "UTF-16")
+
+    def test_short_or_sparse_nul_text_is_not_mistaken_for_utf16(self):
+        self.assertFalse(sq.looks_utf16(b"SELECT 1"))
+        self.assertFalse(sq.looks_utf16(b"S\x00ELECT 1 FROM a_long_enough_table_name_here"))
+
+    def test_nul_byte_is_refused_not_split(self):
+        self.refuse(b"SELECT 1 FROM t CA\x00LL p()", "NUL byte")
+        self.refuse(b"SELECT 1 -\x00>> SELECT 2", "NUL byte")
+
+    def test_digit_caps(self):
+        too_long = "9" * 5000
+        with self.assertRaises(sq.Exit) as cm:
+            sq.read_statement_timeout({"TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT": too_long})
+        self.assertEqual(cm.exception.code, 2)
+        self.assertIn("<= 604800", cm.exception.message)
+        with self.assertRaises(sq.Exit) as cm:
+            sq.read_max_rows({"TRACEFORCE_LAKEHOUSE_MAX_ROWS": too_long})
+        self.assertEqual(cm.exception.code, 2)
+        self.assertIn("non-negative integer", cm.exception.message)
+        # 18 digits still parse; leading zeros are fine.
+        self.assertEqual(sq.read_max_rows({"TRACEFORCE_LAKEHOUSE_MAX_ROWS": "9" * 18}), int("9" * 18))
+        self.assertEqual(sq.read_statement_timeout({"TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT": "0000300"}), 300)
+
+    def test_keyboard_interrupt_exits_130(self):
+        with mock.patch.object(sq, "read_max_rows", side_effect=KeyboardInterrupt), captured() as cap:
+            self.assertEqual(sq.main(["SELECT 1"]), 130)
+        self.assertEqual(cap.stderr.strip(), "-- interrupted")
+
+
+@unittest.skipUnless(os.path.exists(PWSH), "%s is not installed" % PWSH)
+class PowerShellUsageNameTests(LauncherTestBase):
+    def test_module_usage_names_the_ps1(self):
+        empty = self.write("empty.sql", b"")
+        cmd = [PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(PS1), "-f", empty]
+        r = self.run_cmd(cmd, self.env())
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertTrue(r.stderr.startswith(b"usage: snowflake_query.ps1"), r.stderr)
+
+    def test_utf16_file_message_through_the_twin(self):
+        p = self.write("u16.sql", b"\xff\xfe" + "SELECT 1".encode("utf-16-le"))
+        cmd = [PWSH, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(PS1), "-f", p]
+        r = self.run_cmd(cmd, self.env())
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn(b"UTF-16", r.stderr)
 
 
 if __name__ == "__main__":

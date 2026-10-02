@@ -108,20 +108,23 @@ there: answer from `agent_events`, and say so when a question needs a mirror.
 "${CLAUDE_SKILL_DIR}/scripts/snowflake_query.sh" "SELECT \"agent\", count(*) FROM \"agent_events\" WHERE \"ts\" > DATEADD('day', -7, CURRENT_TIMESTAMP()) GROUP BY 1"
 ```
 
-On Windows, the same way as for Athena:
+On Windows, the same way as for Athena (save the file as UTF-8; Windows PowerShell's `>` writes
+UTF-16, which is refused):
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_SKILL_DIR}/scripts/snowflake_query.ps1" -f "$env:TEMP\<name>.sql"
 ```
 
-Needs Python 3 (`python3`; on Windows `python` or the `py` launcher) with
-`snowflake-connector-python`, and either all five `SNOWFLAKE_*` environment variables
+Needs Python 3 with `snowflake-connector-python` installed in the interpreter the script picks
+(`python3`; on Windows the `py` launcher, so `py -3 -m pip install snowflake-connector-python`, or
+`python`), and either all five `SNOWFLAKE_*` environment variables
 (`SNOWFLAKE_ORGANIZATION_NAME`, `SNOWFLAKE_ACCOUNT_NAME`, `SNOWFLAKE_USER`,
 `SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT`, `SNOWFLAKE_PRIVATE_KEY`) or none of them and a
 `connections.toml` connection (preferred: `SNOWFLAKE_PRIVATE_KEY` is also the Terraform deploy
-key's variable). On Windows the variables are set with `$env:` and `connections.toml` lives
-under `%USERPROFILE%\.snowflake\`. The connecting user must hold the reader role (README,
-"Grant query access"). An auth or role error is an environment problem, not empty data.
+key's variable). On Windows the variables are set with `$env:`, and `connections.toml` is read
+from `%USERPROFILE%\.snowflake\` (or `%USERPROFILE%\AppData\Local\snowflake\` when that folder
+does not exist; `SNOWFLAKE_HOME` overrides). The connecting user must hold the reader role
+(README, "Grant query access"). An auth or role error is an environment problem, not empty data.
 
 The reference/* schema (columns, joins, identity, redaction, enforcement) is identical, but its
 example SQL is Athena/Trino. Translate to Snowflake SQL, quoting this module's names as above:

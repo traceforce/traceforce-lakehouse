@@ -8,7 +8,11 @@
 #   powershell -NoProfile -ExecutionPolicy Bypass -File snowflake_query.ps1 'SELECT count(*) FROM "agent_events"'
 #
 # Prefer -f: PowerShell can alter double quotes in SQL passed inline, and Snowflake's lowercase
-# identifiers need them.
+# identifiers need them; inline SQL that begins with "-" (a leading -- comment) is read as a
+# parameter name by PowerShell and fails before this script runs (exit 1, a binder message).
+# Save -f files as UTF-8: Windows PowerShell's > and Out-File write UTF-16 by default, which
+# is refused with a message saying so. Python is found as py -3, python, python3; the py
+# launcher of the newer python.org install manager may offer to install Python when none is.
 # Env: authentication is either all five of SNOWFLAKE_ORGANIZATION_NAME, SNOWFLAKE_ACCOUNT_NAME,
 #      SNOWFLAKE_USER, SNOWFLAKE_AUTHENTICATOR (= SNOWFLAKE_JWT) and SNOWFLAKE_PRIVATE_KEY
 #      (key-pair auth), or none of them (the connector's default connections.toml connection);
@@ -82,6 +86,7 @@ try {
   # stdout as text and rewrite it with CRLF line endings and the console code page. Its stdout
   # is copied here byte for byte; stderr is inherited and reaches the console untouched.
   $env:PYTHONIOENCODING = 'utf-8'
+  $env:SNOWFLAKE_QUERY_PROG = 'snowflake_query.ps1'
   $psi = New-Object Diagnostics.ProcessStartInfo
   $psi.FileName = $python
   $psi.UseShellExecute = $false
