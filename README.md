@@ -1,11 +1,17 @@
 # TraceForce lakehouse
 
-Query your AI-agent activity logs and TraceForce metadata with SQL, or in plain English from
-Claude Code. Everything runs in your own cloud — the tables, the hourly load and the queries:
-**Athena over Iceberg in AWS (S3)**, or **BigQuery over Iceberg in GCP (GCS)**. Your lakehouse
-is set up on one of them; compute is serverless either way, so there are no servers to run and
-nothing to upgrade. The easiest way to get the exact `main.tf` for your cloud is the Lakehouse
-tile in TraceForce Settings.
+Query your AI-agent activity logs with SQL, or in plain English from Claude Code — on AWS and
+GCP, also query TraceForce metadata (findings, catalogs, and more) the same way. Everything
+runs in your own cloud — the tables, the hourly load and the queries: **Athena over Iceberg in
+AWS (S3)**, **BigQuery over Iceberg in GCP (GCS)**, or **Snowflake over Iceberg in Azure (Blob
+Storage)** *(early access — activity logs only for now; TraceForce's metadata export doesn't
+support Azure yet)*. Your lakehouse is set up on one of them; compute is serverless either way,
+so there are no servers to run and nothing to upgrade. The easiest way to get the exact
+`main.tf` for your cloud is the Lakehouse tile in TraceForce Settings.
+
+Azure is the one exception to "serverless either way, no separate account needed": it runs on
+Snowflake, so unlike Athena/BigQuery (native to the same AWS/GCP account as your logs) you need
+an existing Snowflake account and warehouse credits of your own.
 
 Two things to know about data flow. The daily metadata snapshots are written into your bucket
 by TraceForce's storage role under the grant you already gave it. Query results stay in a
@@ -13,8 +19,8 @@ bucket this module owns, which TraceForce cannot read.
 
 ## Before you start
 
-- TraceForce Settings has an S3 or GCS Storage Provider configured: the bucket and prefix that
-  TraceForce writes to. You will need both values.
+- TraceForce Settings has an S3, GCS, or Azure Blob Storage Provider configured: the
+  bucket/container and prefix that TraceForce writes to. You will need both values.
 - Terraform 1.5 or later.
 - **AWS:** a principal that can create S3 Tables, Glue, Athena, Step Functions and IAM resources
   in that account; deploy in the bucket's region.
@@ -22,6 +28,33 @@ bucket this module owns, which TraceForce cannot read.
   login`) on the project that owns the bucket, as an identity that can create BigQuery
   datasets/connections/transfers and a service account, set IAM, and enable the BigQuery APIs —
   in practice **project Owner**.
+- **Azure** *(early access)*: an existing Snowflake account on Azure, in the logs storage
+  account's region — otherwise every hourly load and every query pays cross-region egress, and
+  the logs leave that region. A Snowflake user set up for key-pair auth, with rights to create
+  databases, warehouses and Tasks — in practice `ACCOUNTADMIN`. Deploying needs
+  `SNOWFLAKE_PRIVATE_KEY` as an environment variable (the one
+  real secret; the organization name, account name, and user below are non-secret provider
+  arguments filled in directly in the snippet, not env vars, so a generated `main.tf` can supply
+  them the same way). Querying afterward is separate: either all five `SNOWFLAKE_*` values as
+  environment variables, or a named connection in `connections.toml` (SSO, password or
+  encrypted-key auth all work this way; see "Install the skill" below). The Azure CLI signed in
+  (`az login`) as an identity that can create a storage account and container, and role
+  assignments, in the logs resource group — in practice **Owner** or **User Access
+  Administrator** + **Storage Account Contributor**, scoped to that resource group, not just the
+  logs storage account itself: this module also creates its own, separate storage account there
+  (to hold Iceberg table data, kept out of the logs account so a lifecycle rule on your logs
+  can't reach it) and grants role assignments on it too. The subscription and Entra tenant IDs
+  below are also plain provider arguments, not env vars (`az account show --query
+  "{id:id,tenantId:tenantId}"` prints both): AzureRM v4 no longer infers the subscription from
+  the CLI's active context the way v3 did, and pinning the tenant explicitly avoids depending on
+  which one the CLI's current context defaults to if you're signed into more than one.
+  Separately, the first deployment against a given Snowflake account/tenant pair needs a
+  Microsoft Entra admin to grant tenant-wide admin consent (step 3 below) — subscription roles
+  like Owner don't include this; it's a different permission system (Entra directory roles, not
+  Azure resource RBAC). One more separate permission:
+  whichever storage account holds your Terraform state (not the logs account above) needs
+  `Storage Blob Data Contributor` if you use `use_azuread_auth` like the example below —
+  Owner/Contributor are control-plane roles and don't grant blob data access on their own.
 
 ## Deploy — AWS (Athena)
 
@@ -42,7 +75,7 @@ bucket this module owns, which TraceForce cannot read.
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws?ref=1.2.0"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws?ref=1.3.0"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
@@ -94,7 +127,7 @@ The first load runs within the hour and covers the last few days.
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform/gcp?ref=1.2.0"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform/gcp?ref=1.3.0"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
@@ -113,6 +146,139 @@ The first load runs within the hour and covers the last few days.
 
    The first load runs within the hour and covers the last few days.
 
+## Deploy — Azure (Snowflake) *(early access)*
+
+1. Create a root configuration. Keep the state in your own state storage account, never the
+   logs storage account.
+
+   ```hcl
+   terraform {
+     required_version = ">= 1.5"
+     backend "azurerm" {
+       subscription_id      = "00000000-0000-0000-0000-000000000000" # az account show --query id -o tsv
+       tenant_id            = "00000000-0000-0000-0000-000000000000" # az account show --query tenantId -o tsv
+       resource_group_name  = "acme-terraform-rg"
+       storage_account_name = "acmetfstate"
+       container_name       = "tfstate"
+       key                  = "traceforce-lakehouse/terraform.tfstate"
+       use_azuread_auth     = true
+     }
+     required_providers {
+       azurerm = {
+         source  = "hashicorp/azurerm"
+         version = "~> 4.0"
+       }
+       azuread = {
+         source  = "hashicorp/azuread"
+         version = "~> 3.0"
+       }
+       snowflake = {
+         source  = "snowflakedb/snowflake"
+         version = "~> 2.0"
+       }
+     }
+   }
+
+   provider "azurerm" {
+     subscription_id = "00000000-0000-0000-0000-000000000000" # az account show --query id -o tsv
+     tenant_id       = "00000000-0000-0000-0000-000000000000" # az account show --query tenantId -o tsv
+     features {}
+   }
+
+   # tenant_id pins this to the same directory as azurerm, rather than whichever tenant the
+   # Azure CLI's current context happens to default to.
+   provider "azuread" {
+     tenant_id = "00000000-0000-0000-0000-000000000000" # az account show --query tenantId -o tsv
+   }
+
+   provider "snowflake" {
+     organization_name = "acmeorg"         # Snowsight account selector, top-left
+     account_name      = "acmeaccount"     # the account name, not the account locator
+     user              = "acmedeployuser"  # the Snowflake user Terraform authenticates as
+     authenticator     = "SNOWFLAKE_JWT"   # key-pair auth; this module always uses it, not a choice
+
+     # private_key is the one real secret here -- deliberately not set above like the rest:
+     # reads from SNOWFLAKE_PRIVATE_KEY in the environment, never hardcoded in this file.
+
+     # preview_features_enabled is required: several resource types this module needs (external
+     # tables, Iceberg tables, email notifications, alerts) are still preview-status in the
+     # provider.
+     preview_features_enabled = [
+       "snowflake_external_table_resource",
+       "snowflake_iceberg_table_resource",
+       "snowflake_email_notification_integration_resource",
+       "snowflake_alert_resource",
+     ]
+   }
+
+   module "traceforce_lakehouse" {
+     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure?ref=1.3.0"
+
+     # Must be globally unique across all of Azure (storage account names share one namespace
+     # account-wide) and stable for the life of the deployment: changing it later destroys and
+     # recreates the storage account, deleting the Iceberg table files.
+     iceberg_storage_account_name = "acmetraceforcelakehouse"
+
+     logs_storage_account_name = "acmetraceforcelogs"
+     logs_resource_group_name  = "acme-logs-rg"
+     logs_container_name       = "logs"
+     logs_prefix               = "traceforce" # "" if TraceForce writes at the container root
+
+     # warehouse_size             = "SMALL"       # default XSMALL; bump if ad-hoc queries feel slow
+     # alarm_notification_email   = "jdoe@acme.com" # a verified Snowflake user's email, not a team address -- get notified when a scheduled Task fails
+     # reader_users               = ["JDOE"]       # existing Snowflake usernames granted read-only access
+     # credit_notification_users  = ["JDOE"]       # existing Snowflake usernames emailed as credit usage climbs (the monitor itself never suspends the warehouse)
+   }
+
+   output "azure_consent_url" { value = module.traceforce_lakehouse.azure_consent_url }
+   output "reader_role_name" { value = module.traceforce_lakehouse.reader_role_name }
+   ```
+
+2. `terraform init && terraform apply`. The very first time this module deploys against a given
+   Snowflake account + Azure tenant pair, expect this apply to get partway through and then stop
+   on an error naming a consent URL: Snowflake creates its own Azure AD service principal to
+   read/write your storage, and it can't be granted a role assignment until an Azure AD admin
+   has consented to it. That's expected, not a failure — a redeploy later (even a full
+   `destroy` + `apply`) won't hit it again, since consent is tied to the Snowflake
+   account/tenant pair, not to this particular deployment.
+
+3. Open the consent URL the error printed (or `terraform output -raw azure_consent_url`) and
+   grant admin consent, then run `terraform apply` again. It completes the rest of the module
+   this time — role assignments, the Iceberg tables, and the scheduled ingest/export Tasks.
+
+4. Grant query access. Use a dedicated read-only user for this, not the user you deployed
+   with (in practice `ACCOUNTADMIN`) — its key already exists and is the path of least
+   resistance, but handing a coding agent a key that broad is unnecessary exposure when the
+   reader role is the only access querying actually needs. Create one with key-pair auth, the
+   same way as step 1's own deploy user:
+
+   ```sql
+   CREATE USER traceforce_query TYPE = SERVICE RSA_PUBLIC_KEY = '<public key>';
+   GRANT ROLE "traceforce_lakehouse_reader" TO USER traceforce_query;
+   ```
+
+   Or list it in `reader_users` in step 1 (as `TRACEFORCE_QUERY`) and skip the `GRANT ROLE`
+   here. Either way, step 5's `SNOWFLAKE_USER`/`SNOWFLAKE_PRIVATE_KEY` should be this user's,
+   not the deploy user's.
+
+5. Install the skill in your coding agent. Claude Code:
+
+   ```
+   /plugin marketplace add traceforce/traceforce-lakehouse
+   /plugin install traceforce-lakehouse@traceforce
+   ```
+
+   Any other agent (Cursor, Copilot, Codex): see [`AGENTS.md`](AGENTS.md). Then ask questions.
+   Needs python3 with the `snowflake-connector-python` package installed
+   (`pip install snowflake-connector-python`) and either all five key-pair auth values as
+   environment variables -- `SNOWFLAKE_ORGANIZATION_NAME`/`SNOWFLAKE_ACCOUNT_NAME`/
+   `SNOWFLAKE_USER`/`SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT`/`SNOWFLAKE_PRIVATE_KEY` -- unlike
+   step 1's provider block, which only reads `SNOWFLAKE_PRIVATE_KEY` from the environment, or a
+   named connection in `connections.toml` (SSO, password or encrypted-key auth all work this
+   way too).
+
+The first load runs within the hour and covers the last few days.
+
 ## Ask questions
 
 - Show me everything around finding X: the prompts before it, the tool calls after it, and what the agent did with the result.
@@ -129,10 +295,16 @@ By hand:
   `skills/traceforce-lakehouse/scripts/athena_query.sh "SELECT ..."`.
 - **GCP:** the BigQuery console (dataset `traceforce_lakehouse`) or
   `skills/traceforce-lakehouse/scripts/bq_query.sh "SELECT ..."`.
+- **Azure:** Snowsight (database `traceforce_lakehouse`, schema `traceforce`, warehouse
+  `traceforce_lakehouse`) with the reader role from step 4 above active (`USE ROLE`) — the
+  reader only has `USAGE` on that specific warehouse, so a query fails without it selected.
 
 ```sql
 SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1;
 -- on GCP, qualify tables with the dataset: FROM traceforce_lakehouse.agent_events
+-- on Azure/Snowflake, quote every identifier -- table and column names are case-preserved
+-- lowercase, and this snippet's bare, unquoted names would otherwise fold to uppercase and
+-- not be found: SELECT "agent", count(*) AS events, max("ts") AS latest FROM "agent_events" GROUP BY 1;
 ```
 
 ## What is in the lake
@@ -159,6 +331,12 @@ SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1
   re-running it loads nothing twice. Until scout's first upload lands, the hourly ingest fails
   with "Cannot query hive partitioned data ... without any associated files"; that is expected on
   a new deployment and clears on its own once the first object arrives.
+- **Azure:** `SELECT * FROM TABLE("traceforce_lakehouse".INFORMATION_SCHEMA.TASK_HISTORY(ERROR_ONLY => TRUE))`
+  in Snowsight (with a warehouse active) shows any failed scheduled Task (the hourly ingest, or any
+  of the 18 daily export mirrors) with Snowflake's own real error message; set
+  `alarm_notification_email` to also get emailed. The metadata mirrors are each a MERGE, so
+  re-running one loads nothing twice, and one
+  table failing never blocks the other 17 (they're independent Tasks).
 
 ## More
 

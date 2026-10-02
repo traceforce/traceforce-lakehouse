@@ -1,0 +1,44 @@
+-- Upsert the newest daily snapshot of one TraceForce metadata table into its Iceberg mirror.
+-- "Newest" = the lexically greatest object path within the last 7 days of dt partitions
+-- (paths embed the date and the time of day, so a same-day retry wins over the earlier file).
+-- METADATA$FILENAME is this external table's equivalent of Trino's hidden "$path".
+-- Source columns all come through as strings (raw.tf's export_src external tables project
+-- every field via value:<field>::string), so every non-string column here needs a TRY_CAST
+-- (GCP's own mirror needs none, since its NDJSON external table types columns natively). A
+-- timestamp string can carry its own UTC offset -- casting straight to TIMESTAMP_NTZ would drop
+-- it instead of applying it, so timestamps go through TIMESTAMP_TZ and an explicit
+-- CONVERT_TIMEZONE('UTC', ...) first, same as ingested_at in the ingest query. Parsed via
+-- TRY_TO_TIMESTAMP_TZ(..., 'AUTO'), not TRY_CAST(... AS TIMESTAMP_TZ): a plain cast honors the
+-- account's TIMESTAMP_INPUT_FORMAT, so a customer who set a custom one there would silently turn
+-- every mirrored timestamp NULL.
+-- ${source} is a snowflake_external_table (columns stored uppercase, unquoted at creation);
+-- ${target} is a snowflake_iceberg_table (columns stored lowercase, quoted at creation) --
+-- reference each side accordingly below, not interchangeably.
+-- Every dt scope below is bounded on both ends: a lower-bound-only filter would let a future-
+-- dated or lexically-high malformed partition win MAX(METADATA$FILENAME) and get merged as if
+-- it were the real newest snapshot, outside the documented 7-day window.
+MERGE INTO ${target} t
+USING (
+  SELECT
+%{ for c in columns ~}
+    %{ if c.type == "timestamp" }CONVERT_TIMEZONE('UTC', TRY_TO_TIMESTAMP_TZ(${c.name}, 'AUTO'))::TIMESTAMP_NTZ%{ else }%{ if c.type == "string" }${c.name}%{ else }TRY_CAST(${c.name} AS ${c.type == "long" ? "BIGINT" : c.type == "int" ? "INT" : upper(c.type)})%{ endif }%{ endif } AS ${c.name}%{ if c.name != columns[length(columns) - 1].name },%{ endif }
+%{ endfor ~}
+  FROM ${source}
+  WHERE dt >= TO_VARCHAR(DATEADD(day, -7, CURRENT_DATE()), 'YYYY-MM-DD')
+    AND dt <= TO_VARCHAR(CURRENT_DATE(), 'YYYY-MM-DD')
+    AND METADATA$FILENAME = (
+      SELECT MAX(METADATA$FILENAME) FROM ${source}
+      WHERE dt >= TO_VARCHAR(DATEADD(day, -7, CURRENT_DATE()), 'YYYY-MM-DD')
+        AND dt <= TO_VARCHAR(CURRENT_DATE(), 'YYYY-MM-DD')
+    )
+    AND id IS NOT NULL
+) s
+ON t."id" = s.id
+WHEN MATCHED THEN UPDATE SET
+%{ for c in columns ~}
+%{ if c.name != "id" ~}
+  "${c.name}" = s.${c.name}%{ if c.name != columns[length(columns) - 1].name },%{ endif }
+%{ endif ~}
+%{ endfor ~}
+WHEN NOT MATCHED THEN INSERT (${join(", ", [for c in columns : "\"${c.name}\""])})
+  VALUES (${join(", ", [for c in columns : "s.${c.name}"])})

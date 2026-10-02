@@ -5,6 +5,7 @@ examples/**/.terraform.lock.hcl
 *.tfvars
 *.tfvars.json
 !*.tfvars.example
+examples/**/backend.hcl
 __pycache__/
 *.pyc
 .DS_Store
@@ -13,3 +14,5 @@ __pycache__/
 terraform/**/.terraform/
 terraform/**/.terraform.lock.hcl
 *.tfplan
+.venv-snowflake/
+.snowflake.env

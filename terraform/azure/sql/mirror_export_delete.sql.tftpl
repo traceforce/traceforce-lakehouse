@@ -1,0 +1,35 @@
+-- Rows that left the newest snapshot (hard-deleted at TraceForce) leave the mirror too.
+-- Guarded: the guard and the NOT IN set must be scoped to the exact same newest file, not just
+-- "any row somewhere in the 7-day window" -- otherwise a stale older snapshot with valid ids
+-- could satisfy the guard while today's newest snapshot is itself broken (every row's id null),
+-- and NOT IN (<empty set>) would delete every row in the mirror. Known consequence: a table
+-- that genuinely dropped to zero rows keeps its stale rows until one row exists again.
+-- ${source} is a snowflake_external_table (columns stored uppercase, unquoted at creation);
+-- ${target} is a snowflake_iceberg_table (columns stored lowercase, quoted at creation) --
+-- reference each side accordingly below, not interchangeably.
+-- Every dt scope below is bounded on both ends, not just a lower bound: an unbounded upper end
+-- would let a future-dated or malformed partition win MAX(METADATA$FILENAME) and get treated as
+-- the real newest snapshot, driving both the guard and the delete-set off the wrong file.
+DELETE FROM ${target}
+WHERE EXISTS (
+    SELECT 1 FROM ${source}
+    WHERE dt >= TO_VARCHAR(DATEADD(day, -7, CURRENT_DATE()), 'YYYY-MM-DD')
+      AND dt <= TO_VARCHAR(CURRENT_DATE(), 'YYYY-MM-DD')
+      AND METADATA$FILENAME = (
+        SELECT MAX(METADATA$FILENAME) FROM ${source}
+        WHERE dt >= TO_VARCHAR(DATEADD(day, -7, CURRENT_DATE()), 'YYYY-MM-DD')
+          AND dt <= TO_VARCHAR(CURRENT_DATE(), 'YYYY-MM-DD')
+      )
+      AND id IS NOT NULL
+  )
+  AND "id" NOT IN (
+    SELECT id FROM ${source}
+    WHERE dt >= TO_VARCHAR(DATEADD(day, -7, CURRENT_DATE()), 'YYYY-MM-DD')
+      AND dt <= TO_VARCHAR(CURRENT_DATE(), 'YYYY-MM-DD')
+      AND METADATA$FILENAME = (
+        SELECT MAX(METADATA$FILENAME) FROM ${source}
+        WHERE dt >= TO_VARCHAR(DATEADD(day, -7, CURRENT_DATE()), 'YYYY-MM-DD')
+          AND dt <= TO_VARCHAR(CURRENT_DATE(), 'YYYY-MM-DD')
+      )
+      AND id IS NOT NULL
+  )
