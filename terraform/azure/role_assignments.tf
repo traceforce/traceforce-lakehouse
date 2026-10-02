@@ -30,7 +30,7 @@ resource "azurerm_role_assignment" "raw_reader" {
   lifecycle {
     precondition {
       condition     = length(data.azuread_service_principals.raw_storage.service_principals) > 0
-      error_message = "Azure AD hasn't provisioned Snowflake's service principal yet. Grant admin consent, then re-run apply: ${snowflake_external_volume.lakehouse.describe_output[0].storage_locations[0].azure_storage_location[0].azure_consent_url}"
+      error_message = "Azure AD hasn't provisioned Snowflake's service principal yet. Grant admin consent, then re-run apply (if you already consented, Azure can take up to an hour to create it; wait and re-run): ${snowflake_external_volume.lakehouse.describe_output[0].storage_locations[0].azure_storage_location[0].azure_consent_url}"
     }
   }
 }
@@ -61,7 +61,7 @@ resource "azurerm_role_assignment" "iceberg_contributor" {
   lifecycle {
     precondition {
       condition     = length(data.azuread_service_principals.raw_storage.service_principals) > 0
-      error_message = "Azure AD hasn't provisioned Snowflake's service principal yet. Grant admin consent, then re-run apply: ${snowflake_external_volume.lakehouse.describe_output[0].storage_locations[0].azure_storage_location[0].azure_consent_url}"
+      error_message = "Azure AD hasn't provisioned Snowflake's service principal yet. Grant admin consent, then re-run apply (if you already consented, Azure can take up to an hour to create it; wait and re-run): ${snowflake_external_volume.lakehouse.describe_output[0].storage_locations[0].azure_storage_location[0].azure_consent_url}"
     }
   }
 }
@@ -82,7 +82,7 @@ resource "azurerm_role_assignment" "storage_delegator" {
   lifecycle {
     precondition {
       condition     = length(data.azuread_service_principals.raw_storage.service_principals) > 0
-      error_message = "Azure AD hasn't provisioned Snowflake's service principal yet. Grant admin consent, then re-run apply: ${snowflake_external_volume.lakehouse.describe_output[0].storage_locations[0].azure_storage_location[0].azure_consent_url}"
+      error_message = "Azure AD hasn't provisioned Snowflake's service principal yet. Grant admin consent, then re-run apply (if you already consented, Azure can take up to an hour to create it; wait and re-run): ${snowflake_external_volume.lakehouse.describe_output[0].storage_locations[0].azure_storage_location[0].azure_consent_url}"
     }
   }
 }

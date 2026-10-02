@@ -3,8 +3,11 @@
 -- (paths embed the date and the time of day, so a same-day retry wins over the earlier file).
 -- METADATA$FILENAME is this external table's equivalent of Trino's hidden "$path".
 -- Source columns all come through as strings (raw.tf's export_src external tables project
--- every field via value:<field>::string), so every non-string column here needs a TRY_CAST
--- (GCP's own mirror needs none, since its NDJSON external table types columns natively). A
+-- every field via value:<field>::string), so every non-string column here needs a cast (GCP's
+-- own mirror needs none, since its NDJSON external table types columns natively). int/long go
+-- through TRY_TO_NUMBER with a digit cap (9/18): Snowflake's INT and BIGINT are both NUMBER(38,0),
+-- so a plain TRY_CAST would pass a value wider than the NUMBER(10,0)/NUMBER(19,0) Iceberg column
+-- and fail the MERGE, where AWS's TRY_CAST and GCP's SAFE_CAST yield NULL; the cap yields NULL. A
 -- timestamp string can carry its own UTC offset -- casting straight to TIMESTAMP_NTZ would drop
 -- it instead of applying it, so timestamps go through TIMESTAMP_TZ and an explicit
 -- CONVERT_TIMEZONE('UTC', ...) first, same as ingested_at in the ingest query. Parsed via
@@ -22,7 +25,7 @@ MERGE INTO ${target} t
 USING (
   SELECT
 %{ for c in columns ~}
-    %{ if c.type == "timestamp" }CONVERT_TIMEZONE('UTC', TRY_TO_TIMESTAMP_TZ(${c.name}, 'AUTO'))::TIMESTAMP_NTZ%{ else }%{ if c.type == "string" }${c.name}%{ else }TRY_CAST(${c.name} AS ${c.type == "long" ? "BIGINT" : c.type == "int" ? "INT" : upper(c.type)})%{ endif }%{ endif } AS ${c.name}%{ if c.name != columns[length(columns) - 1].name },%{ endif }
+    %{ if c.type == "timestamp" }CONVERT_TIMEZONE('UTC', TRY_TO_TIMESTAMP_TZ(${c.name}, 'AUTO'))::TIMESTAMP_NTZ%{ else }%{ if c.type == "string" }${c.name}%{ else }${c.type == "long" ? "TRY_TO_NUMBER(${c.name}, 18, 0)" : c.type == "int" ? "TRY_TO_NUMBER(${c.name}, 9, 0)" : "TRY_CAST(${c.name} AS ${upper(c.type)})"}%{ endif }%{ endif } AS ${c.name}%{ if c.name != columns[length(columns) - 1].name },%{ endif }
 %{ endfor ~}
   FROM ${source}
   WHERE dt >= TO_VARCHAR(DATEADD(day, -7, CURRENT_DATE()), 'YYYY-MM-DD')

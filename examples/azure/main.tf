@@ -42,6 +42,7 @@ provider "snowflake" {
   organization_name = "acmeorg"        # Snowsight account selector, top-left
   account_name      = "acmeaccount"    # the account name, not the account locator
   user              = "acmedeployuser" # the Snowflake user Terraform authenticates as
+  role              = "ACCOUNTADMIN"   # the module creates a resource monitor, integrations and an external volume, which only this role can
   authenticator     = "SNOWFLAKE_JWT"  # key-pair auth; this module always uses it, not a choice
 
   # private_key is the one real secret here -- deliberately not set above like the rest:

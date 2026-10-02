@@ -13,5 +13,3 @@ __pycache__/
 terraform/**/.terraform/
 terraform/**/.terraform.lock.hcl
 *.tfplan
-.venv-snowflake/
-.snowflake.env

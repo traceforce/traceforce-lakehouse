@@ -13,14 +13,18 @@ Azure is the one exception to "serverless either way, no separate account needed
 Snowflake, so unlike Athena/BigQuery (native to the same AWS/GCP account as your logs) you need
 an existing Snowflake account and warehouse credits of your own.
 
-Two things to know about data flow. The daily metadata snapshots are written into your bucket
-by TraceForce's storage role under the grant you already gave it. Query results stay in a
-bucket this module owns, which TraceForce cannot read.
+Two things to know about data flow. On AWS and GCP, the daily metadata snapshots are written
+into your bucket by TraceForce's storage role under the grant you already gave it (not on Azure
+yet, so its 18 metadata tables stay empty). Query results never leave your cloud: a bucket this
+module owns on AWS, BigQuery- or Snowflake-managed result storage on GCP and Azure. TraceForce
+can read none of them.
 
 ## Before you start
 
 - TraceForce Settings has an S3, GCS, or Azure Blob Storage Provider configured: the
-  bucket/container and prefix that TraceForce writes to. You will need both values.
+  bucket/container and prefix that TraceForce writes to. You will need these values. On Azure
+  you also need the logs storage account's name and resource group (not shown in Settings), and
+  a globally unique 3-24 character lowercase name for the storage account the module creates.
 - Terraform 1.5 or later.
 - **AWS:** a principal that can create S3 Tables, Glue, Athena, Step Functions and IAM resources
   in that account; deploy in the bucket's region.
@@ -30,7 +34,8 @@ bucket this module owns, which TraceForce cannot read.
   in practice **project Owner**.
 - **Azure** *(early access)*: an existing Snowflake account on Azure, in the logs storage
   account's region (anywhere else pays cross-region egress on every load and query), with a
-  key-pair user that can create databases, warehouses and Tasks — in practice `ACCOUNTADMIN`.
+  key-pair user whose session runs as `ACCOUNTADMIN` (the snippet sets `role`; resource
+  monitors, integrations and external volumes need it).
   Deploying reads `SNOWFLAKE_PRIVATE_KEY` from the environment; the organization, account and
   user are plain provider arguments in the snippet. The Azure CLI signed in (`az login`) as an
   identity that can create a storage account and role assignments in the logs resource group —
@@ -180,6 +185,7 @@ The first load runs within the hour and covers the last few days.
      organization_name = "acmeorg"        # Snowsight account selector, top-left
      account_name      = "acmeaccount"    # the account name, not the account locator
      user              = "acmedeployuser" # the Snowflake user Terraform authenticates as
+     role              = "ACCOUNTADMIN"   # the module creates a resource monitor, integrations and an external volume, which only this role can
      authenticator     = "SNOWFLAKE_JWT"  # key-pair auth; this module always uses it, not a choice
 
      # private_key is the one real secret here -- deliberately not set above like the rest:
@@ -229,7 +235,9 @@ The first load runs within the hour and covers the last few days.
 
 3. Open the consent URL the error printed (or `terraform output -raw azure_consent_url`) and
    grant admin consent, then run `terraform apply` again. It completes the rest of the module
-   this time — role assignments, the Iceberg tables, and the scheduled ingest/export Tasks.
+   this time — role assignments, the Iceberg tables, and the scheduled ingest/export Tasks. If
+   it stops on the same consent error right after you consented, don't consent again: Azure can
+   take up to an hour to create Snowflake's service principal. Wait, then re-run `terraform apply`.
 
 4. Grant query access. Use a dedicated read-only user for this, not the user you deployed
    with (in practice `ACCOUNTADMIN`) — its key already exists and is the path of least
@@ -280,9 +288,10 @@ By hand:
   `skills/traceforce-lakehouse/scripts/athena_query.sh "SELECT ..."`.
 - **GCP:** the BigQuery console (dataset `traceforce_lakehouse`) or
   `skills/traceforce-lakehouse/scripts/bq_query.sh "SELECT ..."`.
-- **Azure:** Snowsight (database `traceforce_lakehouse`, schema `traceforce`, warehouse
-  `traceforce_lakehouse`) with the reader role from step 4 above active (`USE ROLE`) — the
-  reader only has `USAGE` on that specific warehouse, so a query fails without it selected.
+- **Azure:** Snowsight with the reader role from step 4 above active, every name quoted:
+  `USE ROLE "traceforce_lakehouse_reader"; USE WAREHOUSE "traceforce_lakehouse"; USE DATABASE
+  "traceforce_lakehouse"; USE SCHEMA "traceforce";` — the reader only has `USAGE` on that
+  specific warehouse, so a query fails without it selected.
 
 ```sql
 SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1;
@@ -305,7 +314,8 @@ SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1
 
 ## Is it working
 
-- Freshness: `SELECT max(ingested_at), max(upload_ts) FROM agent_events`. More than two hours
+- Freshness: `SELECT max(ingested_at), max(upload_ts) FROM agent_events` (on Azure, quoted:
+  `SELECT max("ingested_at"), max("upload_ts") FROM "agent_events"`). More than two hours
   behind the newest object in your bucket means a run is failing or the schedule is disabled;
   if neither, contact TraceForce.
 - **AWS:** the CloudWatch alarm `traceforce-lakehouse-runs-failed` raises on any failed
@@ -316,9 +326,9 @@ SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1
   re-running it loads nothing twice. Until scout's first upload lands, the hourly ingest fails
   with "Cannot query hive partitioned data ... without any associated files"; that is expected on
   a new deployment and clears on its own once the first object arrives.
-- **Azure:** `SELECT * FROM TABLE("traceforce_lakehouse".INFORMATION_SCHEMA.TASK_HISTORY(ERROR_ONLY => TRUE))`
-  in Snowsight (with a warehouse active) shows any failed scheduled Task (the hourly ingest, or any
-  of the 18 daily export mirrors) with Snowflake's own real error message; set
+- **Azure:** `SELECT * FROM TABLE("traceforce_lakehouse".INFORMATION_SCHEMA.TASK_HISTORY(DATABASE_NAME => '"traceforce_lakehouse"', SCHEMA_NAME => '"traceforce"', ERROR_ONLY => TRUE, RESULT_LIMIT => 10000))`
+  in Snowsight (with a warehouse active) shows every failed scheduled Task of the last 7 days (the
+  hourly ingest, or any of the 18 daily export mirrors) with Snowflake's own error message; set
   `alarm_notification_email` to also get emailed. The metadata mirrors are each a MERGE, so
   re-running one loads nothing twice, and one
   table failing never blocks the other 17 (they're independent Tasks).

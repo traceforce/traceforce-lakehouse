@@ -122,10 +122,14 @@ fi
 
 # Two checks on the statement's bare tokens -- everything outside string literals ('..', $$..$$),
 # quoted identifiers (".."), and comments (--, //, /* */), which the tokenizer below skips with
-# real character-level state. A line comment ends at any line boundary Python knows (including
-# U+0085/U+2028/U+2029, in case Snowflake's lexer does too): that can only surface more bare
-# tokens, never hide one. An unterminated literal or comment swallows the rest of the text, so
-# nothing after it can be a bare token, and Snowflake rejects the literal itself.
+# real character-level state. A line comment ends at a newline only, and any text containing
+# the other line/paragraph separators (U+000B, U+000C, U+001C-U+001E, U+0085, U+2028, U+2029)
+# is refused outright: if this scanner and Snowflake's lexer disagreed about where a comment
+# ends, a decoy read keyword after such a character could become the first token here while
+# Snowflake parsed a different statement. (A bare CR never reaches either side: both reads
+# are text-mode, which turns it into a newline.) Non-UTF-8 input is refused the same way. An
+# unterminated literal or comment swallows the rest of the text, so nothing after it can be a
+# bare token, and Snowflake rejects the literal itself.
 #   1. The first keyword must be a read. This IS part of the guarantee: it is what refuses
 #      Snowflake Scripting anonymous blocks (BEGIN/DECLARE) and EXECUTE IMMEDIATE, each ONE
 #      parsed statement that runs in the caller's session and could issue USE SECONDARY ROLES ALL.
@@ -136,8 +140,14 @@ fi
 #      call/procedure has to be double-quoted.
 SCAN="$(python3 -c '
 import re, sys
-sql = open(sys.argv[1]).read().lstrip("\ufeff")
-line_end = re.compile("[\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]")
+try:
+    sql = open(sys.argv[1], encoding="utf-8").read().lstrip("\ufeff")
+except UnicodeDecodeError:
+    print("|utf8")
+    sys.exit(0)
+if re.search("[\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]", sql):
+    print("|linesep")
+    sys.exit(0)
 i, n = 0, len(sql)
 words = []
 while i < n:
@@ -145,8 +155,8 @@ while i < n:
     if c.isspace():
         i += 1
     elif sql.startswith("--", i) or sql.startswith("//", i):
-        m = line_end.search(sql, i)
-        i = n if m is None else m.end()
+        j = sql.find("\n", i)
+        i = n if j == -1 else j + 1
     elif sql.startswith("/*", i):
         j = sql.find("*/", i + 2)
         i = n if j == -1 else j + 2
@@ -178,6 +188,10 @@ print((words[0] if words else "") + "|" + ("procedure" if "PROCEDURE" in words o
 ' "$SQL_FILE")"
 FIRST="${SCAN%%|*}"
 ESCAPE="${SCAN#*|}"
+case "$ESCAPE" in
+  utf8) echo "refusing to run: the query text is not valid UTF-8" >&2; exit 2 ;;
+  linesep) echo "refusing to run: the query contains a control or Unicode line-separator character (U+000B, U+000C, U+001C-U+001E, U+0085, U+2028 or U+2029); use plain newlines" >&2; exit 2 ;;
+esac
 case "$FIRST" in
   SELECT|WITH|SHOW|DESCRIBE|DESC|EXPLAIN) ;;
   *) echo "refusing to run a non-read statement (first keyword: ${FIRST:-none found})" >&2; exit 2 ;;
@@ -238,7 +252,7 @@ from cryptography.hazmat.primitives import serialization
 
 preamble, sql_file, max_rows = sys.argv[1], sys.argv[2], int(sys.argv[3])
 have_env_creds = sys.argv[4] == "1"
-with open(sql_file) as f:
+with open(sql_file, encoding="utf-8") as f:
     sql = f.read()
 # TRACEFORCE_LAKEHOUSE_MAX_ROWS is already validated as a non-negative integer in bash before
 # this script runs, so int() here can't raise and max_rows can't be negative (which would
