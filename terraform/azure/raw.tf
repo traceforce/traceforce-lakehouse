@@ -1,6 +1,5 @@
 locals {
-  # "name:type" -> { name, type }. All columns come through as strings here (cast happens
-  # later, in the mirror MERGE SQL).
+  # "name:type" -> { name, type }.
   export_columns = {
     for t, cols in module.schema.export_tables : t => [
       for c in cols : { name = split(":", c)[0], type = split(":", c)[1] }
@@ -8,11 +7,8 @@ locals {
   }
 }
 
-# A stage needs an actual STORAGE INTEGRATION object to authenticate against -- the external
-# volume (external_volume.tf) doesn't work for this, even though both end up sharing the same
-# underlying Azure AD service principal per Snowflake account/tenant.
-# Scoped to the raw landing container only -- never the Iceberg container -- so this integration
-# can't accidentally grant write-side access to the raw logs.
+# A stage authenticates through a STORAGE INTEGRATION; the external volume cannot serve it.
+# Scoped to the raw container only, so it grants nothing on the Iceberg side.
 resource "snowflake_storage_integration_azure" "raw" {
   name                      = "traceforce_lakehouse_raw"
   storage_allowed_locations = [local.container_root]
@@ -34,19 +30,10 @@ resource "snowflake_stage_external_azure" "raw" {
 
 # Ingest SOURCE: the raw gzipped OTLP-JSON objects scout writes under
 #   <container_root>/<prefix>/telemetry/agent=<AGENT_IDENTITY_*>/dt=<YYYYMMDD>/...
-# One compact JSON document per line, kept as VARIANT (value, not value::string): with
-# TYPE = JSON, Snowflake has already parsed each file by the time any column's `as` expression
-# runs, so casting back to a string just to PARSE_JSON it again downstream was a pointless round
-# trip, and capped every doc at VARCHAR's 16 MB default on a large upload. A malformed line ends
-# Snowflake's scan of that file: rows before it still come through and the rest are silently
-# dropped (see sql/mirror_export_delete.sql.tftpl), so VARCHAR bought no extra resilience here.
-# agent/dt come from the Hive key=value path segments via METADATA$FILENAME --
-# no crawler needed, but this needs an explicit REFRESH before new files are visible (ingest.tf's
-# hourly Task issues it).
+# doc stays VARIANT because TYPE = JSON has already parsed it. A malformed line ends the scan of
+# that file; rows before it still come through. auto_refresh is off, so the Task must REFRESH.
 resource "snowflake_external_table" "raw_telemetry" {
-  # Not otherwise implied by the resource graph: needs the Reader role assignment to have
-  # actually propagated (role_assignments.tf's time_sleep), or its first LIST against the raw
-  # container 403s with AuthorizationPermissionMismatch.
+  # The Reader role assignment must have propagated or the first LIST 403s.
   depends_on = [time_sleep.raw_reader_propagation]
 
   name         = "raw_telemetry"
@@ -62,10 +49,8 @@ resource "snowflake_external_table" "raw_telemetry" {
     type = "VARIANT"
     as   = "value"
   }
-  # Fixed path segments *after* logs_prefix (whatever its own depth): telemetry/agent=X/dt=Y/
-  # <serial>/<email>/<session>/<file> -- so agent/dt sit at fixed NEGATIVE offsets from the end
-  # regardless of prefix depth. Snowflake's partition-column expressions only accept a small
-  # whitelist (confirmed: SPLIT_PART works, REGEXP_SUBSTR does not -- 091065/42601).
+  # agent/dt sit at fixed negative offsets from the end of METADATA$FILENAME, so logs_prefix
+  # depth does not matter. Partition expressions accept SPLIT_PART but not REGEXP_SUBSTR.
   column {
     name = "agent"
     type = "VARCHAR"
@@ -78,14 +63,12 @@ resource "snowflake_external_table" "raw_telemetry" {
   }
 }
 
-# 18 snapshot external tables: typed-as-string NDJSON, one per TraceForce daily export under
+# 18 snapshot external tables, one per TraceForce daily export under
 #   <container_root>/<prefix>/_traceforce/lakehouse/exports/<table>/dt=YYYY-MM-DD/<HHMMSS>.jsonl.gz
-# Never queried directly -- the mirror MERGE (ingest.tf) reads these and casts into the typed
-# Iceberg tables (tables.tf).
+# Every column is a string; the mirror MERGE (ingest.tf) casts into the Iceberg tables.
 resource "snowflake_external_table" "export_src" {
   for_each = local.export_columns
 
-  # Same ordering requirement as raw_telemetry above.
   depends_on = [time_sleep.raw_reader_propagation]
 
   name         = "export_${each.key}"
@@ -105,8 +88,7 @@ resource "snowflake_external_table" "export_src" {
     }
   }
 
-  # <table>/dt=YYYY-MM-DD/<HHMMSS>.jsonl.gz -- dt is always 2nd-from-last regardless of prefix
-  # depth. Same SPLIT_PART-only restriction as raw_telemetry above.
+  # dt is the 2nd-from-last path segment regardless of prefix depth.
   column {
     name = "dt"
     type = "VARCHAR"

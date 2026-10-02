@@ -1,47 +1,31 @@
 -- Flatten raw OTLP-JSON activity objects into the Iceberg table agent_events.
 -- Rendered by Terraform (templatefile) and run by a Snowflake Task on a schedule.
 -- Idempotent: an object is loaded once, keyed by its full stage path (source_object).
--- Bounded: only the last N upload-day folders are considered (today and the N-1 days before
--- it, plus anything a fast device clock filed under tomorrow), N being lookback_days --
--- rendered as a literal here (not a runtime bind parameter, unlike AWS's Step Functions
--- version): Snowflake Tasks execute a fixed SQL string with no external parameter-binding
--- mechanism, so ingest.tf supplies the real value at `terraform apply` time instead.
--- No per-agent filter (unlike AWS/GCP): those need one because Athena/BigQuery's partition
--- projection requires a literal agent value per query. Snowflake's external table has no such
--- restriction, and this module's design is one Task / one INSERT across all agents per run.
---
+-- Bounded: only the last lookback_days upload-day folders are read, capped at tomorrow for fast
+-- device clocks. lookback_days is a rendered literal: a Task runs a fixed SQL string.
+-- No per-agent filter, unlike AWS/GCP: one INSERT covers all agents per run.
 -- One row per log record / span. Attribute values keep their OTLP encoding for arrays and
--- kvlists (as a JSON string); scalars are decoded to text. Snowflake has no built-in "first
--- value wins on duplicate map key" aggregate (OBJECT_AGG errors on a duplicate key), so every
--- attribute map below is built the same three-step way: flatten to rows, keep only the first
--- row per key (ROW_NUMBER() over FLATTEN's own INDEX), then OBJECT_AGG.
+-- kvlists; scalars are decoded to text. Every attribute map is built flatten -> first row per
+-- key -> OBJECT_AGG, because OBJECT_AGG errors on a duplicate key.
 INSERT INTO ${target} (${cols})
 WITH objects AS (
   -- METADATA$FILENAME is this external table's equivalent of Athena's hidden "$path".
   SELECT
     r.METADATA$FILENAME AS src_path,
-    -- snowflake_external_table (unlike snowflake_iceberg_table) doesn't quote column names
-    -- at creation, so these are stored uppercase -- unquoted references fold to match, and
-    -- quoting them lowercase (like the iceberg-side columns below) would break the lookup.
+    -- external table columns are stored uppercase, so references stay unquoted; the Iceberg
+    -- columns below are quoted lowercase.
     r.agent,
     r.doc
   FROM ${raw} r
-  -- Bounded on both ends: AWS's table caps the same window via Athena partition projection
-  -- (a catalog-level range Snowflake's external tables have no equivalent of), so the SQL
-  -- itself has to enforce the upper half here -- without it, a device with a badly-skewed
-  -- clock (or a stray malformed dt= folder) reporting a date far in the future would be
-  -- scanned and ingested immediately, unbounded, instead of waiting for its dt= folder to
-  -- actually fall inside the documented window. CURRENT_DATE() is the UTC day: ingest.tf sets
-  -- TIMEZONE = 'UTC' on the Task (the account default is America/Los_Angeles).
+  -- Upper bound too: no partition projection caps this window, so a far-future dt= folder
+  -- would otherwise be ingested at once. CURRENT_DATE() is UTC: ingest.tf sets TIMEZONE on the Task.
   WHERE r.dt >= TO_VARCHAR(DATEADD(day, 1 - ${lookback_days}, CURRENT_DATE()), 'YYYYMMDD')
     AND r.dt <= TO_VARCHAR(DATEADD(day, 1, CURRENT_DATE()), 'YYYYMMDD')
     AND NOT EXISTS (
       SELECT 1 FROM ${target} t
       WHERE t."source_object" = r.METADATA$FILENAME
-        -- upload_ts is minted on the same clock as the dt= folder, so no upper bound is needed
-        -- here: line 36 already caps r.dt at tomorrow, and a real row's upload_ts never lands
-        -- outside the range that bound on dt already allows through. NULL upload_ts rows are
-        -- always checked. Matches AWS/GCP, which use only the lower bound plus IS NULL.
+        -- upload_ts is minted on the same clock as the dt= folder, which the cap above already
+        -- bounds from above; NULL upload_ts rows are always checked. Same as AWS/GCP.
         AND (t."upload_ts" >= DATEADD(day, -${lookback_days}, CURRENT_DATE())::TIMESTAMP_NTZ(6)
              OR t."upload_ts" IS NULL)
     )
@@ -50,8 +34,7 @@ parsed AS (
   SELECT
     o.src_path,
     o.agent,
-    -- o.doc is already VARIANT (raw.tf): a malformed line ends Snowflake's scan of its file, so
-    -- the rows before it arrive here and the rest never do (no error is raised).
+    -- o.doc is already VARIANT (raw.tf); a malformed line silently ends the scan of its file
     o.doc AS doc_json,
     SPLIT(o.src_path, '/') AS seg
   FROM objects o
@@ -79,10 +62,8 @@ blk AS (
                          'YYYYMMDD_HH24MISS.FF3') AS upload_ts
   FROM parts pt, LATERAL FLATTEN(input => pt.blocks_arr) bf
 ),
--- Resource attributes -> map, first value wins on a duplicate key. Three passes: flatten to
--- (block, attr) rows (with a nested, OUTER flatten for the rare kvlist-valued attribute),
--- aggregate any kvlist entries back into one JSON string per attribute, then aggregate all
--- attributes for a block into one object.
+-- Resource attributes -> map, first value wins on a duplicate key: flatten (OUTER for kvlist
+-- values), aggregate kvlist entries back into one JSON string per attribute, then OBJECT_AGG.
 res_attr_kv AS (
   SELECT
     b.src_path, b.block_idx,
@@ -119,10 +100,7 @@ res_attr AS (
              -- an empty OTLP array is encoded as arrayValue:{} (no values); keep it as []
              CASE WHEN k.attr_val:arrayValue IS NOT NULL
                   THEN COALESCE(TO_JSON(k.attr_val:arrayValue:values), '[]') END,
-             -- same for an empty kvlistValue: the OUTER flatten upstream still finds no kv
-             -- rows, res_kv_agg has no group for it, and OBJECT_AGG silently drops a NULL-
-             -- valued key downstream -- without this COALESCE the attribute would vanish
-             -- entirely instead of surviving as {}
+             -- same for an empty kvlistValue: kv_obj is NULL and OBJECT_AGG would drop the key; keep {}
              CASE WHEN k.attr_val:kvlistValue IS NOT NULL THEN COALESCE(TO_JSON(kv.kv_obj), '{}') END
     ) AS attr_value
   FROM res_attr_kv k
@@ -230,14 +208,10 @@ SELECT
            CASE WHEN re.path_session_raw = 'unknown-session' THEN NULL ELSE re.path_session_raw END)
                                                                         AS session_id,
   re.res['session.id']::string                                          AS resource_session_id,
-  -- ts is required: record time, else observed time, else the upload time from the filename
-  -- (minted by our exporter, so always present). 0 means "unknown" in OTLP and is skipped.
-  -- NULLIF per field: OTLP writes 0 for "unknown", and a "0" must not win the COALESCE.
-  -- TRY_TO_NUMBER(.., 19, 0), not TRY_CAST(.. AS NUMBER): the cast is NUMBER(38,0) and would pass
-  -- any width through to TO_TIMESTAMP_NTZ -- a bogus far-future ts for 20-21 digits, an error
-  -- that fails the whole run beyond year 9999 -- where AWS's TRY_CAST AS BIGINT and GCP's
-  -- SAFE_CAST yield NULL. 19 digits caps the value at what TO_TIMESTAMP_NTZ accepts (year 2286);
-  -- anything wider becomes NULL.
+  -- ts is required: record time, else observed time, else the upload time from the filename.
+  -- NULLIF per field: OTLP writes 0 for "unknown". TRY_TO_NUMBER(.., 19, 0) rather than a NUMBER
+  -- cast: NUMBER(38,0) passes oversized values to TO_TIMESTAMP_NTZ, giving a bogus far-future ts or
+  -- an error that fails the whole run; AWS/GCP yield NULL, and 19 digits is the widest it accepts.
   COALESCE(
     TO_TIMESTAMP_NTZ(NULLIF(TRY_TO_NUMBER(re.rec:timeUnixNano::string, 19, 0), 0), 9),
     TO_TIMESTAMP_NTZ(NULLIF(TRY_TO_NUMBER(re.rec:startTimeUnixNano::string, 19, 0), 0), 9),
@@ -269,8 +243,7 @@ SELECT
   am.a['traceforce.containment_enforcement']::string                    AS containment_enforcement,
   COALESCE(am.a['error.type']::string, am.a['error_type']::string)       AS error_type,
   am.a['gen_ai.request.model']::string                                  AS model,
-  -- Bounded to 18 digits (inside int64) for the same reason as ts above: BIGINT is NUMBER(38,0)
-  -- in Snowflake, and a wider value would fail the INSERT into the NUMBER(19,0) columns.
+  -- 18 digits: BIGINT is NUMBER(38,0) here, and a wider value fails the INSERT into NUMBER(19,0)
   TRY_TO_NUMBER(am.a['gen_ai.usage.input_tokens']::string, 18, 0)      AS input_tokens,
   TRY_TO_NUMBER(am.a['gen_ai.usage.output_tokens']::string, 18, 0)     AS output_tokens,
   TRY_TO_NUMBER(COALESCE(am.a['cache_read_tokens']::string,
@@ -291,10 +264,7 @@ SELECT
 FROM rec_exp re
 LEFT JOIN rec_map am USING (src_path, block_idx, scope_idx, rec_idx)
 )
--- select_cols names flat's own columns (unquoted, matching flat's unquoted aliases), in the
--- same order as the INSERT's quoted ${cols} list -- not SELECT *, which maps onto the INSERT's
--- column list by position: columns.json is shared by all three clouds, and a column added
--- mid-list there with its alias placed differently in flat could otherwise shift values into
--- the wrong columns silently.
+-- select_cols names flat's columns in the INSERT's order rather than SELECT *: columns.json is
+-- shared by all three clouds, and a positional mapping could shift values silently.
 SELECT ${select_cols} FROM flat
 WHERE ts IS NOT NULL -- a record with no time and a filename without one is dropped, never given a fabricated time

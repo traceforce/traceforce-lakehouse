@@ -1,21 +1,11 @@
 -- Rows that left the newest snapshot (hard-deleted at TraceForce) leave the mirror too.
--- Guarded: the guard and the NOT IN set must be scoped to the exact same newest file, not just
--- "any row somewhere in the 7-day window" -- otherwise a stale older snapshot with valid ids
--- could satisfy the guard while today's newest snapshot is itself broken (every row's id null),
--- and NOT IN (<empty set>) would delete every row in the mirror. Known consequence: a table
--- that genuinely dropped to zero rows keeps its stale rows until one row exists again.
--- ${source} is a snowflake_external_table (columns stored uppercase, unquoted at creation);
--- ${target} is a snowflake_iceberg_table (columns stored lowercase, quoted at creation) --
--- reference each side accordingly below, not interchangeably.
--- Every dt scope below is bounded on both ends, not just a lower bound: an unbounded upper end
--- would let a future-dated or malformed partition win MAX(METADATA$FILENAME) and get treated as
--- the real newest snapshot, driving both the guard and the delete-set off the wrong file.
--- Snowflake difference, not yet closed: an external table skips a file it cannot read and
--- returns the rows scanned before an error, with no fail-loud option (AWS/GCP fail the run),
--- so a damaged newest snapshot can make this DELETE drop rows that are still live until the
--- next good snapshot restores them. Staging the newest file with COPY INTO ... ON_ERROR =
--- ABORT_STATEMENT would close this: a follow-up listed in PR #25, not in this change
--- (TraceForce's export does not write to Azure yet, so this path is dormant).
+-- The EXISTS guard and the NOT IN set scope to the same newest file: a stale snapshot with ids
+-- plus a broken newest file would otherwise delete every row. Known consequence: a table that
+-- genuinely dropped to zero rows keeps its stale rows until one row exists again.
+-- dt is bounded on both ends so a future-dated partition cannot win MAX(METADATA$FILENAME).
+-- Source columns are uppercase/unquoted; target columns are quoted lowercase.
+-- Snowflake skips unreadable files silently, so a damaged newest snapshot can over-delete until
+-- the next good one. Follow-up: stage via COPY INTO; path dormant until the Azure export exists.
 DELETE FROM ${target}
 WHERE EXISTS (
     SELECT 1 FROM ${source}

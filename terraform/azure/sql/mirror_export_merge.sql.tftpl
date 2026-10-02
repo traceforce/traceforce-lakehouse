@@ -1,26 +1,14 @@
 -- Upsert the newest daily snapshot of one TraceForce metadata table into its Iceberg mirror.
--- "Newest" = the lexically greatest object path within the last 7 days of dt partitions
--- (paths embed the date and the time of day, so a same-day retry wins over the earlier file).
--- METADATA$FILENAME is this external table's equivalent of Trino's hidden "$path".
--- Source columns all come through as strings (raw.tf's export_src external tables project
--- every field via value:<field>::string), so every non-string column here needs a cast (GCP's
--- own mirror needs none, since its NDJSON external table types columns natively). int/long go
--- through TRY_TO_NUMBER with a digit cap (9/18): Snowflake's INT and BIGINT are both NUMBER(38,0),
--- so a plain TRY_CAST would pass a value wider than the NUMBER(10,0)/NUMBER(19,0) Iceberg column
--- and fail the MERGE, where AWS's TRY_CAST and GCP's SAFE_CAST yield NULL; the cap yields NULL. A
--- timestamp string can carry its own UTC offset -- casting straight to TIMESTAMP_NTZ would drop
--- it instead of applying it, so timestamps go through TIMESTAMP_TZ and an explicit
--- CONVERT_TIMEZONE('UTC', ...) first, same as ingested_at in the ingest query. Parsed via
--- TRY_TO_TIMESTAMP_TZ(..., 'AUTO'), not TRY_CAST(... AS TIMESTAMP_TZ): a plain cast honors the
--- account's TIMESTAMP_INPUT_FORMAT, so a customer who set a custom one there would silently turn
--- every mirrored timestamp NULL. A string with no offset is read in the session TIMEZONE, which
--- ingest.tf pins to UTC on the mirror Task (as Athena's from_iso8601_timestamp does on AWS).
--- ${source} is a snowflake_external_table (columns stored uppercase, unquoted at creation);
--- ${target} is a snowflake_iceberg_table (columns stored lowercase, quoted at creation) --
--- reference each side accordingly below, not interchangeably.
--- Every dt scope below is bounded on both ends: a lower-bound-only filter would let a future-
--- dated or lexically-high malformed partition win MAX(METADATA$FILENAME) and get merged as if
--- it were the real newest snapshot, outside the documented 7-day window.
+-- "Newest" = the lexically greatest METADATA$FILENAME within the last 7 days of dt (paths embed
+-- the date and time of day, so a same-day retry wins). dt is bounded on both ends so a
+-- future-dated partition cannot win MAX.
+-- Source columns are all strings, so non-string columns are cast. int/long use TRY_TO_NUMBER with
+-- a digit cap (9/18): INT and BIGINT are both NUMBER(38,0), so a plain TRY_CAST would pass a value
+-- wider than the NUMBER(10,0)/NUMBER(19,0) Iceberg column and fail the MERGE where AWS/GCP yield
+-- NULL; the cap yields NULL. Timestamps go through TRY_TO_TIMESTAMP_TZ('AUTO') then
+-- CONVERT_TIMEZONE so their offset is applied (a direct TIMESTAMP_NTZ cast drops it) without
+-- depending on TIMESTAMP_INPUT_FORMAT; an offset-less string is read in the Task's UTC session.
+-- Source columns are uppercase/unquoted; target columns are quoted lowercase.
 MERGE INTO ${target} t
 USING (
   SELECT

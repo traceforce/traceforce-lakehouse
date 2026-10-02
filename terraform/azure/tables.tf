@@ -1,15 +1,6 @@
-# Snowflake's Iceberg tables take standard SQL column types, not raw Iceberg type tokens, so the
-# schema's six source types need translating here. A bare "STRING"/"TIMESTAMP_NTZ" both 42601:
-# STRING needs an explicit length (Iceberg requires the exact 134217728 max, not Snowflake's
-# classic VARCHAR default) and TIMESTAMP_NTZ needs an explicit scale (Iceberg only supports
-# microsecond precision, scale 6, not Snowflake's nanosecond default, scale 9).
-#
-# int/long/double MUST use Snowflake's own normalized form, not the plain SQL aliases
-# ("INT"/"BIGINT"/"DOUBLE") CREATE ICEBERG TABLE also accepts: DESCRIBE TABLE reports back the
-# narrower real width Iceberg actually stores (NUMBER(10, 0) for INT, NUMBER(19, 0) for BIGINT),
-# not the alias, and every `terraform plan` diffs refreshed state against this literal string.
-# column.type is force-new here, so an alias/normalized-form mismatch doesn't just nag as a
-# no-op diff -- it makes every plan a silent destroy-and-recreate of the whole table.
+# Snowflake's normalized forms, not the SQL aliases (INT, BIGINT): DESCRIBE reports these back and
+# column.type is force-new, so an alias would make every plan a destroy-and-recreate. Bare STRING
+# and TIMESTAMP_NTZ fail at create (42601): Iceberg needs the exact 134217728 length and scale 6.
 locals {
   snowflake_type = {
     string    = "VARCHAR(134217728)"
@@ -21,20 +12,12 @@ locals {
   }
 }
 
-# The only place data is durably written, and the only thing customers/Claude Code query --
-# everything else in this module exists to feed this table and its 18 siblings below.
-#
-# Unpartitioned: `partition_by { day = "ts" }` crashes the provider (v2.21.0) -- a nil type
-# assertion in parseIcebergTablePartitionTime, a genuine provider bug for any time-based
-# partition_by field, not a config error here. Revisit once a fixed provider version ships.
-#
-# catalog = "SNOWFLAKE" is the literal keyword for Snowflake managing its own catalog, not the
-# name of a CATALOG INTEGRATION object -- a real catalog integration (CATALOG_SOURCE =
-# OBJECT_STORE) is for reading tables another engine already wrote directly to object storage.
+# The table customers and Claude Code query; everything else feeds it and its 18 siblings.
+# Unpartitioned: partition_by on a time column crashes the provider (v2.21.0, nil assertion in
+# parseIcebergTablePartitionTime); revisit on a newer provider.
+# catalog = "SNOWFLAKE" is the keyword for Snowflake-managed, not a catalog integration name.
 resource "snowflake_iceberg_table" "agent_events" {
-  # Needs both the Contributor role (Iceberg container) and the Delegator role (storage
-  # account) to have actually propagated (role_assignments.tf's time_sleep), or create 42601s
-  # testing a user delegation key.
+  # The Contributor and Delegator role assignments must have propagated or create fails.
   depends_on = [time_sleep.iceberg_write_propagation]
 
   name            = "agent_events"
@@ -54,12 +37,11 @@ resource "snowflake_iceberg_table" "agent_events" {
   }
 }
 
-# 18 metadata mirror tables: managed Iceberg, typed, same names as in TraceForce (no export_
-# prefix -- that's the source side, raw.tf).
+# 18 metadata mirror tables: typed Iceberg, same names as in TraceForce (the export_ sources
+# are in raw.tf).
 resource "snowflake_iceberg_table" "export" {
   for_each = local.export_columns
 
-  # Same ordering requirement as agent_events above.
   depends_on = [time_sleep.iceberg_write_propagation]
 
   name            = each.key

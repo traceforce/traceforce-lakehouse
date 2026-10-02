@@ -1,22 +1,17 @@
 locals {
-  # Fixed names: the skill, docs and Snowflake examples all assume them. Snowflake's unquoted
-  # identifiers don't allow hyphens, so the database name uses an underscore even though the
-  # Iceberg container (storage.tf) is hyphenated like the AWS/GCP buckets.
+  # Fixed names: the skill, docs and Snowflake examples all assume them. The database name uses an
+  # underscore because Snowflake's unquoted identifiers reject hyphens.
   name          = "traceforce-lakehouse"
   database_name = "traceforce_lakehouse"
   schema_name   = "traceforce"
 
-  # The logs storage account's ARM id (role-assignment scope) and region (the Iceberg account is
-  # created alongside it). The id is composed from the inputs -- the same string the
-  # azurerm_storage_account data source used to build, so an existing deployment's role-assignment
-  # scope does not change; azurerm_resources only confirms the account exists (storage.tf's
-  # precondition says so in plain words) and supplies its region.
+  # Composed from the inputs rather than read from azurerm_resources, so an existing deployment's
+  # role-assignment scopes do not change.
   logs_account_id       = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/${var.logs_resource_group_name}/providers/Microsoft.Storage/storageAccounts/${var.logs_storage_account_name}"
   logs_account_location = try(data.azurerm_resources.logs.resources[0].location, "")
 
-  # The raw landing container's own root URL (not the new Iceberg container) -- the credentialed
-  # base a Snowflake stage authenticates against. Individual external tables append their own
-  # relative path (telemetry/ or _traceforce/lakehouse/exports/<table>/) below this.
+  # The raw landing container's root in the logs account (not the Iceberg container), which
+  # Snowflake stages authenticate against.
   container_root = "azure://${var.logs_storage_account_name}.blob.core.windows.net/${var.logs_container_name}/"
 
   # Where scout's OTel exporter writes activity objects -- Hive key=value for agent and upload day (UTC):

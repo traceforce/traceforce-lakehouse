@@ -1,62 +1,37 @@
 #!/usr/bin/env bash
 # Run one read-only SQL statement against the TraceForce lakehouse through Snowflake and print
-# the result as CSV. Needs python3 with the snowflake-connector-python package installed
-# (`pip install snowflake-connector-python`).
-#
-# Two ways to authenticate:
-#   1. All five key-pair env vars set: SNOWFLAKE_ORGANIZATION_NAME, SNOWFLAKE_ACCOUNT_NAME,
-#      SNOWFLAKE_USER, SNOWFLAKE_AUTHENTICATOR (= "SNOWFLAKE_JWT"), SNOWFLAKE_PRIVATE_KEY.
-#      The Terraform provider reads the same names for anything its block leaves unset, and of
-#      those five the README's block leaves only the key unset: SNOWFLAKE_PRIVATE_KEY must hold
-#      the deploy user's key whenever terraform apply runs, so keep the query user's credentials
-#      in a separate shell or in connections.toml (README "Grant query access").
-#   2. None of those five set: a named connection from connections.toml (SSO, password or
-#      encrypted-key auth all work this way, none of which the env vars above can express) --
-#      connect() with no arguments picks this up on its own: $SNOWFLAKE_DEFAULT_CONNECTION_NAME
-#      if set, else config.toml's default_connection_name, else connections.toml's [default]
-#      section. This script doesn't need to know which; the connector resolves it.
-# Not a user-facing choice to make up front -- whichever of the two this environment actually
-# has determines which path runs, with no separate flag. A partial set of the five env vars is
-# always an error (see below), never a silent fall-through to connections.toml.
+# the result as CSV. Needs python3 with snowflake-connector-python installed.
 #
 #   snowflake_query.sh "SELECT count(*) FROM \"agent_events\""
 #   snowflake_query.sh -f query.sql
 #
+# Authentication, by what the environment has:
+#   - all five of SNOWFLAKE_ORGANIZATION_NAME, SNOWFLAKE_ACCOUNT_NAME, SNOWFLAKE_USER,
+#     SNOWFLAKE_AUTHENTICATOR (= "SNOWFLAKE_JWT") and SNOWFLAKE_PRIVATE_KEY set: key-pair auth;
+#   - none of them set: the connection the connector resolves on its own
+#     ($SNOWFLAKE_DEFAULT_CONNECTION_NAME, else connections.toml's configured default; SSO,
+#     password or encrypted-key auth all work).
+# A partial set is an error, because the default connection could be another account. The
+# Terraform provider reads the same names, so SNOWFLAKE_PRIVATE_KEY must hold the deploy user's
+# key whenever terraform apply runs; keep the query user's credentials in a separate shell or in
+# connections.toml (README "Grant query access").
+#
 # Names are fixed by the module (warehouse/database traceforce_lakehouse, schema traceforce,
-# reader role traceforce_lakehouse_reader -- terraform/azure/query_role.tf). Optional:
-#   TRACEFORCE_LAKEHOUSE_MAX_ROWS          rows to print (default 200; 0 = all)
-#   TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT seconds before Snowflake cancels the query (default
-#                                          300; 0 means 7 days, Snowflake's own built-in maximum,
-#                                          not unlimited) -- the runaway-cost guard for ad-hoc
-#                                          queries, since the shared warehouse's own resource
-#                                          monitor (terraform/azure/compute.tf) is notify-only
-#                                          and never suspends it (that would also stop the
-#                                          scheduled ingest/export Tasks sharing the warehouse).
+# reader role traceforce_lakehouse_reader). Optional:
+#   TRACEFORCE_LAKEHOUSE_MAX_ROWS           rows to print (default 200; 0 = all)
+#   TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT  seconds before Snowflake cancels the query (default
+#                                           300; 0 = 7 days, Snowflake's maximum, not unlimited)
 #
 # Output: CSV on stdout, "-- 0 rows" or a truncation note on stderr; exit 1 with Snowflake's
 # failure reason on stderr when the query fails.
 #
-# Read-only is enforced by Snowflake itself, not just this script: every query runs as
-# traceforce_lakehouse_reader with SECONDARY ROLES NONE, so even a connecting user who also
-# holds a broader role (e.g. ACCOUNTADMIN, common for whoever deployed this module) is
-# genuinely restricted to that role's own grants -- SELECT on the tables plus MONITOR on the
-# Tasks, no write privilege anywhere -- rather than Snowflake's default SECONDARY ROLES ALL
-# session behavior silently letting that user's other privileges leak through despite an
-# explicit USE ROLE.
-# The connecting user's own grants are the other half of the guarantee: query as a user that
-# holds only the reader role (README "Grant query access"). A user that also holds a broader
-# role could re-enable it from inside one Snowflake-parsed statement; the forms that allow that
-# (multi-statement input, the ->> operator, Scripting blocks and EXECUTE IMMEDIATE,
-# stored-procedure calls) are refused below, but a
-# dedicated reader user removes the question entirely.
-#
-# The exactly-one-statement guarantee against a multi-statement escape (e.g.
-# "SELECT 1; USE SECONDARY ROLES ALL; DELETE ...") comes from Snowflake's own SQL parser, not a
-# scanner written here: the preamble and the caller's query are submitted together as ONE
-# request with the real expected statement count, and Snowflake rejects the whole request --
-# executing NONE of it, preamble included -- the moment the actual parsed count doesn't match,
-# including a payload that hides an extra ";"-separated statement inside a "--" comment (a real
-# bypass an earlier, hand-written quote-only scanner in this script missed).
+# Read-only model: every query runs as traceforce_lakehouse_reader with SECONDARY ROLES NONE, so
+# a connecting user's broader roles do not leak through. The preamble and the query are
+# submitted as one request with the exact statement count, so Snowflake's own parser rejects a
+# smuggled extra statement. The forms that could re-enable a broader role inside one parsed
+# statement are refused below: the ->> operator, a non-read first keyword (Scripting blocks,
+# EXECUTE IMMEDIATE) and a bare PROCEDURE/CALL token (anonymous caller's-rights procedure). A
+# query user that holds only the reader role is the other half of the guarantee.
 set -euo pipefail
 
 DB="traceforce_lakehouse"
@@ -73,14 +48,9 @@ if ! [[ "$STATEMENT_TIMEOUT" =~ ^[0-9]+$ ]]; then
   echo "invalid TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT: $STATEMENT_TIMEOUT -- must be a non-negative integer" >&2
   exit 2
 fi
-# 604800 (7 days) is Snowflake's own hard max for STATEMENT_TIMEOUT_IN_SECONDS -- confirmed live
-# (ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS accepts exactly 0..604800, rejecting 604801 with
-# "parameter value out of range"). Checked here so a bad value fails fast with a clear message
-# instead of making the preamble's ALTER SESSION fail later, after the query was already built.
-# 10# forces base-10: bash's arithmetic context otherwise reads a leading-zero value (e.g. "08")
-# as octal, and "08"/"09" aren't even valid octal digits, so plain -gt would error ("value too
-# great for base") -- an error state that bash's [[ ]] -- and the if guarding it -- just treats
-# as the comparison being false, silently skipping this whole check instead of catching it.
+# 604800 (7 days) is Snowflake's hard maximum for STATEMENT_TIMEOUT_IN_SECONDS. 10# forces base
+# 10: bash would otherwise read a leading-zero value as octal, and "08"/"09" make (( )) fail,
+# which the if treats as false -- silently skipping this check.
 if (( 10#$STATEMENT_TIMEOUT > 604800 )); then
   echo "invalid TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT: $STATEMENT_TIMEOUT -- must be <= 604800 (Snowflake's own max, 7 days)" >&2
   exit 2
@@ -100,44 +70,25 @@ if [[ -z "$SQL" ]]; then
   exit 2
 fi
 
-# $SQL is also written to this temp file so the two python3 invocations below can read it from
-# a path instead of receiving it as a literal argv string: a large $SQL passed directly as a
-# command-line argument hits the OS's real execve() argument-size limit ("Argument list too
-# long") well within what -f is meant to support (many UNION branches, a big literal list).
+# The python steps read $SQL from a file; a large query passed as argv hits the OS argument-size
+# limit.
 SQL_FILE="$(mktemp)"
 trap 'rm -f "$SQL_FILE"' EXIT
 printf '%s' "$SQL" > "$SQL_FILE"
 
-# This IS part of the read-only guarantee, not just a convenience check: Snowflake's flow
-# operator (->>) chains full statements -- including USE ROLE, USE SECONDARY ROLES, and DML --
-# together as ONE statement from the parser's own point of view, reopening the exact
-# privilege-escalation path the exactly-one-statement guarantee exists to close for a connecting
-# identity that also holds a broader role. There is no legitimate use of this operator for this
-# skill's own read-only queries, so it's rejected outright -- as a plain substring check,
-# deliberately not quote/comment-aware, so "->>" hiding inside either can't slip past instead.
+# ->> chains full statements (USE ROLE, DML) into one parsed statement. A plain substring check,
+# so it cannot hide inside a quote or comment.
 if [[ "$SQL" == *"->>"* ]]; then
   echo "refusing to run: the Snowflake pipe operator (->>) can chain a read into privileged statements as one Snowflake-parsed statement -- not allowed here" >&2
   exit 2
 fi
 
-# Two checks on the statement's bare tokens -- everything outside string literals ('..', $$..$$),
-# quoted identifiers (".."), and comments (--, //, /* */), which the tokenizer below skips with
-# real character-level state. A line comment ends at a newline only, and any text containing
-# the other line/paragraph separators (U+000B, U+000C, U+001C-U+001E, U+0085, U+2028, U+2029)
-# is refused outright: if this scanner and Snowflake's lexer disagreed about where a comment
-# ends, a decoy read keyword after such a character could become the first token here while
-# Snowflake parsed a different statement. (A bare CR never reaches either side: both reads
-# are text-mode, which turns it into a newline.) Non-UTF-8 input is refused the same way. An
-# unterminated literal or comment swallows the rest of the text, so nothing after it can be a
-# bare token, and Snowflake rejects the literal itself.
-#   1. The first keyword must be a read. This IS part of the guarantee: it is what refuses
-#      Snowflake Scripting anonymous blocks (BEGIN/DECLARE) and EXECUTE IMMEDIATE, each ONE
-#      parsed statement that runs in the caller's session and could issue USE SECONDARY ROLES ALL.
-#   2. No PROCEDURE or CALL token anywhere. "WITH p AS PROCEDURE ... CALL p()" is ONE
-#      Snowflake-parsed statement (the body is a $$ literal) that starts with WITH and runs with
-#      caller's rights, so its body could run USE SECONDARY ROLES ALL / USE ROLE and then write
-#      under a broader role the connecting user also holds. A column or JSON key literally named
-#      call/procedure has to be double-quoted.
+# Scan the bare tokens (outside string literals, quoted identifiers and comments): the first
+# keyword must be a read, and no PROCEDURE or CALL token may appear anywhere. Control/Unicode
+# line separators and non-UTF-8 input are refused so this scanner never has to agree with
+# Snowflake's lexer about where a comment ends (a bare CR never reaches either side: both file
+# reads are text-mode, which turns it into a newline). A column or JSON key named call/procedure
+# has to be double-quoted.
 SCAN="$(python3 -c '
 import re, sys
 try:
@@ -201,13 +152,7 @@ if [[ "$ESCAPE" == "procedure" ]]; then
   exit 2
 fi
 
-# Env-var key-pair auth only if ALL five are set; connections.toml only if NONE are set. A
-# partial set is always an error, never a silent fall-through to connections.toml: that fallback
-# would resolve to whatever default named connection happens to exist, which can easily be a
-# different Snowflake account than the one these env vars are trying to reach (e.g. a typo'd or
-# forgotten SNOWFLAKE_AUTHENTICATOR in an otherwise-complete key-pair setup). If that other
-# account happens to also have a same-named reader role/database, the query would silently
-# succeed against the wrong account with plausible-looking but wrong data -- worse than erroring.
+# Key-pair auth needs all five; none means connections.toml. A partial set is refused (see header).
 MISSING=()
 for v in SNOWFLAKE_ORGANIZATION_NAME SNOWFLAKE_ACCOUNT_NAME SNOWFLAKE_USER SNOWFLAKE_AUTHENTICATOR SNOWFLAKE_PRIVATE_KEY; do
   [[ -z "${!v:-}" ]] && MISSING+=("$v")
@@ -222,24 +167,10 @@ else
   exit 2
 fi
 
-# USE ROLE/SECONDARY ROLES/WAREHOUSE/DATABASE/SCHEMA are real statements prepended ahead of the
-# caller's query and submitted together with it as one multi-statement request below, not
-# connection-time parameters -- a plain connection-level role/warehouse/database/schema setting
-# isn't how this context gets applied, a real SQL USE statement in the same request is.
-# Submitting them together with $SQL, under one real statement count, is also what makes
-# Snowflake's own parser the enforcement point for both: it rejects the whole request --
-# preamble included -- if $SQL smuggles in any extra statement.
-# TIMEZONE is set to UTC here, not left at the session default (America/Los_Angeles): this
-# module's own ts/upload_ts/ingested_at columns are all UTC, but CURRENT_TIMESTAMP()/
-# CURRENT_DATE() resolve in the session time zone, so a query like
-# "ts > DATEADD('hour', -1, CURRENT_TIMESTAMP())" would otherwise silently return the last 8-9
-# hours (depending on DST), and CURRENT_DATE() would roll over at Pacific midnight instead of
-# UTC midnight -- no error, just a wrong answer with no reason to suspect one.
-#
-# STATEMENT_TIMEOUT_IN_SECONDS caps a runaway query here specifically, not on the shared
-# warehouse (terraform/azure/compute.tf's resource monitor is notify-only on purpose, so it
-# never stops the scheduled ingest/export Tasks that also share it). 0 means 7 days here,
-# Snowflake's own built-in maximum, not unlimited like TRACEFORCE_LAKEHOUSE_MAX_ROWS=0.
+# TIMEZONE is pinned to UTC because the account default is America/Los_Angeles and
+# CURRENT_TIMESTAMP()/CURRENT_DATE() resolve in the session zone; the ts columns are UTC.
+# STATEMENT_TIMEOUT_IN_SECONDS is the runaway-cost guard: the shared warehouse's resource
+# monitor is notify-only so it never suspends the ingest/export Tasks.
 PREAMBLE="USE ROLE \"$READER_ROLE\"; USE SECONDARY ROLES NONE; USE WAREHOUSE \"$WAREHOUSE\"; USE DATABASE \"$DB\"; USE SCHEMA \"$SCHEMA\"; ALTER SESSION SET TIMEZONE = 'UTC'; ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = $STATEMENT_TIMEOUT"
 
 python3 - "$PREAMBLE" "$SQL_FILE" "$MAX_ROWS" "$HAVE_ENV_CREDS" <<'PY'
@@ -254,18 +185,13 @@ preamble, sql_file, max_rows = sys.argv[1], sys.argv[2], int(sys.argv[3])
 have_env_creds = sys.argv[4] == "1"
 with open(sql_file, encoding="utf-8") as f:
     sql = f.read()
-# TRACEFORCE_LAKEHOUSE_MAX_ROWS is already validated as a non-negative integer in bash before
-# this script runs, so int() here can't raise and max_rows can't be negative (which would
-# otherwise slice from the end, e.g. rows[:-1], instead of erroring).
-# The preamble is fixed by this script, never user input, so a plain split on ";" to count its
-# own statements is safe here -- it's exactly the kind of naive count that would NOT be safe for
-# $SQL, which is why $SQL's count is left to Snowflake's real parser instead (see below).
+# max_rows was validated as a non-negative integer in bash.
+# The preamble is fixed text, so splitting on ";" counts its statements; $SQL's count is left to Snowflake.
 num_statements = sum(1 for s in preamble.split(";") if s.strip()) + 1
 
 
 def load_der_key() -> bytes:
-    # snowflake-connector-python's private_key parameter wants DER-encoded PKCS8 bytes, but the
-    # module's own env var (matching the Terraform provider) holds raw PEM text.
+    # The connector wants DER PKCS8 bytes; the env var (shared with the Terraform provider) holds PEM text.
     pem = os.environ["SNOWFLAKE_PRIVATE_KEY"].encode()
     key = serialization.load_pem_private_key(pem, password=None)
     return key.private_bytes(
@@ -284,29 +210,17 @@ try:
             authenticator=os.environ["SNOWFLAKE_AUTHENTICATOR"],
         )
     else:
-        # No arguments: the connector resolves a named connection from connections.toml itself
-        # (SNOWFLAKE_DEFAULT_CONNECTION_NAME, config.toml's default_connection_name, or
-        # connections.toml's own [default] section, in that order) -- SSO, password or
-        # encrypted-key auth all work here, none of which the env-var path above can express.
+        # No arguments: the connector resolves the default connections.toml connection itself.
         con = snowflake.connector.connect()
     cur = con.cursor()
     cur.execute(f"{preamble}; {sql}", num_statements=num_statements)
 
-    # A multi-statement execute() leaves the cursor positioned at the FIRST statement's result
-    # set, not the last, so the preamble's own results (each just a "Statement executed
-    # successfully" status row) have to be stepped past with nextset() to reach the caller's
-    # actual query at the end. Kept inside this same try: a connector/transport error surfacing
-    # here should get the same clean one-line handling as an error from execute() itself, not an
-    # uncaught traceback.
+    # The cursor starts at the first statement's result; nextset() steps past the preamble's.
     for _ in range(num_statements - 1):
         cur.nextset()
     columns = [c[0] for c in cur.description]
 
-    # Unbounded except for the explicit MAX_ROWS=0 case: fetchall() always downloads the whole
-    # result before anything is sliced, regardless of max_rows, so a small max_rows bounded
-    # nothing there. fetchmany(max_rows + 1) fetches only enough to render the limit plus one
-    # extra row to detect that more exist; cur.rowcount separately reports the query's true
-    # total row count from Snowflake's own result metadata, not derived by counting rows.
+    # fetchmany bounds the download (one extra row detects truncation); rowcount gives the true total.
     if max_rows == 0:
         rows = cur.fetchall()
         total = len(rows)
@@ -314,16 +228,8 @@ try:
         rows = cur.fetchmany(max_rows + 1)
         total = cur.rowcount
 except (snowflake.connector.errors.Error, ValueError, TypeError) as e:
-    # errno 8 is "Actual statement count N did not match the desired statement count M" --
-    # Snowflake rejects the whole request (preamble included, nothing executed) the moment $SQL
-    # smuggles in an extra statement, including one hiding behind a quote inside a "--" comment.
-    # Any other error -- a bad credential, a real syntax error in the caller's own query -- is
-    # surfaced as-is. Catching the connector's own base Error class (not just ProgrammingError)
-    # also covers a connect()-time failure, e.g. a bad account name raising DatabaseError
-    # instead, which ProgrammingError alone wouldn't catch, leaking a full Python traceback
-    # (local file paths included). ValueError/TypeError are caught for the same reason, in the
-    # env-creds path only: load_der_key() raises ValueError for malformed PEM text and TypeError
-    # for an encrypted key used with no password -- neither is a snowflake.connector error.
+    # errno 8 is the statement-count mismatch: Snowflake rejected the whole request, preamble included.
+    # The base Error class covers connect()-time failures; ValueError/TypeError come from load_der_key().
     if getattr(e, "errno", None) == 8:
         print(
             "refusing to run more than one statement -- run one query at a time",
@@ -341,10 +247,7 @@ if not rows:
     sys.exit(0)
 
 out_rows = rows if max_rows == 0 else rows[:max_rows]
-# Truncating this list and handing it straight to csv.writer means the cutoff always lands on a
-# real row boundary -- there's no re-parsing of CSV text (and so no way for a multi-line quoted
-# field, e.g. content_input/tool_args, to get split mid-value the way a line-count-based cutoff
-# could).
+# Slicing rows (not CSV lines) keeps the cutoff on a row boundary even with multi-line fields.
 w = csv.writer(sys.stdout, lineterminator="\n")
 w.writerow(columns)
 w.writerows(out_rows)

@@ -1,22 +1,13 @@
-# Read-only Snowflake role for engineers/Claude Code to query the lakehouse tables directly --
-# not wired to any Azure identity, unlike role_assignments.tf's roles (those are Azure RBAC,
-# granted to Snowflake's own service principal so IT can read/write storage; this is
-# Snowflake-side RBAC, for a human to query with). var.reader_users (AWS's
-# query_trusted_principals / GCP's query_members) is empty by default, so the role and its
-# grants exist either way, but nobody holds it until either that variable lists Snowflake
-# usernames or a human runs GRANT ROLE "traceforce_lakehouse_reader" TO USER <you> by hand --
-# quoted, since Terraform creates this role as a case-preserved lowercase identifier (the
-# unquoted form folds to TRACEFORCE_LAKEHOUSE_READER and fails to resolve).
+# Read-only Snowflake role for engineers/Claude Code to query the lakehouse. This is
+# Snowflake-side RBAC for humans, distinct from the Azure RBAC in role_assignments.tf. Nobody
+# holds it until reader_users lists usernames or someone runs GRANT ROLE
+# "traceforce_lakehouse_reader" TO USER <name> -- quoted, since the role is a lowercase identifier.
+# To test what this role alone permits, run USE SECONDARY ROLES NONE first: sessions default to
+# SECONDARY ROLES ALL, so a user who also holds a broader role can still write while using this one.
 resource "snowflake_account_role" "reader" {
   name    = "traceforce_lakehouse_reader"
   comment = "Read-only access to the TraceForce lakehouse -- USAGE + SELECT + MONITOR only, no write privileges anywhere."
 }
-
-# A note for testing this role's read-only-ness: Snowflake sessions default to SECONDARY ROLES
-# ALL, so a user who also independently holds a broader role (e.g. ACCOUNTADMIN) could still
-# write even while USE ROLE'd to this one. A real test of what this role alone permits needs
-# USE SECONDARY ROLES NONE first, or an actual low-privileged user who doesn't separately hold
-# a broader role.
 
 resource "snowflake_grant_privileges_to_account_role" "reader_warehouse" {
   account_role_name = snowflake_account_role.reader.name
@@ -44,20 +35,10 @@ resource "snowflake_grant_privileges_to_account_role" "reader_schema" {
   }
 }
 
-# ICEBERG TABLES, not TABLES -- every table this module creates (agent_events + the 18 export
-# mirrors, tables.tf) is a snowflake_iceberg_table, and Snowflake's own GRANT syntax treats
-# ICEBERG TABLE as its own object type distinct from a plain TABLE.
-#
-# Both ALL and FUTURE, not just ALL: ALL only covers tables that exist at apply time, so a
-# reader granted before a new export table is added would need this file re-applied to see it.
-# FUTURE covers that automatically -- both scoped to SELECT only, so neither can grant anything
-# beyond read access no matter what's added later.
-#
-# reader_tables (ALL) depends_on reader_future_tables (FUTURE), not the other way around: with
-# no explicit order, the one unsafe interleaving is ALL created, then a table created, then
-# FUTURE created -- that table predates both grants' own object lists, so it's covered by
-# neither. Forcing FUTURE to exist first closes this regardless of where the table's creation
-# falls.
+# ICEBERG TABLES, not TABLES: Snowflake's GRANT treats ICEBERG TABLE as its own object type,
+# and every table this module creates is one. ALL covers existing tables, FUTURE covers ones
+# added later; FUTURE is created first so a table created between the two grants is still
+# covered.
 resource "snowflake_grant_privileges_to_account_role" "reader_future_tables" {
   account_role_name = snowflake_account_role.reader.name
   privileges        = ["SELECT"]
@@ -81,13 +62,8 @@ resource "snowflake_grant_privileges_to_account_role" "reader_tables" {
   depends_on = [snowflake_grant_privileges_to_account_role.reader_future_tables]
 }
 
-# MONITOR, not SELECT -- Tasks aren't queried directly, but MONITOR is what lets a role see a
-# Task's run history: without it INFORMATION_SCHEMA.TASK_HISTORY silently returns zero rows
-# instead of an error. It also allows SHOW TASKS / DESCRIBE TASK, but grants no EXECUTE TASK or
-# any ability to change a Task.
-#
-# reader_tasks (ALL) depends_on reader_future_tasks (FUTURE): same creation-gap reasoning as
-# reader_future_tables/reader_tables above, applied to Tasks instead of tables.
+# MONITOR is what makes INFORMATION_SCHEMA.TASK_HISTORY return rows (without it: zero rows, no
+# error). It also allows SHOW/DESCRIBE TASK, never EXECUTE. FUTURE first, as with the tables.
 resource "snowflake_grant_privileges_to_account_role" "reader_future_tasks" {
   account_role_name = snowflake_account_role.reader.name
   privileges        = ["MONITOR"]
@@ -111,9 +87,8 @@ resource "snowflake_grant_privileges_to_account_role" "reader_tasks" {
   depends_on = [snowflake_grant_privileges_to_account_role.reader_future_tasks]
 }
 
-# The provider writes user_name as a quoted identifier, so var.reader_users must hold each
-# user's exact stored name: uppercase for a user created the usual unquoted way (CREATE USER
-# jdoe is stored as JDOE), exact case for one created with a quoted name.
+# user_name is written as a quoted identifier, so reader_users must hold each user's exact
+# stored name (uppercase unless the user was created with a quoted name).
 resource "snowflake_grant_account_role" "reader" {
   for_each  = toset(var.reader_users)
   role_name = snowflake_account_role.reader.fully_qualified_name

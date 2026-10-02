@@ -1,8 +1,4 @@
 # --- Values from your TraceForce Storage Provider setup (Settings renders this block) ---
-# Assumes you've already configured the Azure Blob Storage Provider integration per
-# https://traceforce.readme.io/docs/storage-provider-integration#azure-blob-storage --
-# this module reads the account/container TraceForce is already writing to, it doesn't set
-# that integration up.
 
 variable "logs_storage_account_name" {
   description = "Azure Storage account TraceForce writes agent activity logs to (the Storage Provider you configured in TraceForce Settings)."
@@ -34,10 +30,7 @@ variable "iceberg_storage_account_name" {
   description = "Name of the storage account this module creates for Iceberg table data. Globally unique across Azure. Pick it once: changing it later destroys and recreates the account, deleting the Iceberg table files."
   type        = string
   validation {
-    # Azure's own naming rules for a storage account: 3-24 characters, lowercase letters and
-    # digits only, no hyphens -- checked here so a bad name fails at `terraform plan`, not only
-    # once Azure itself rejects the CREATE.
-    condition     = can(regex("^[a-z0-9]{3,24}$", var.iceberg_storage_account_name))
+    condition     = can(regex("^[a-z0-9]{3,24}$", var.iceberg_storage_account_name)) # Azure's storage account naming rules
     error_message = "iceberg_storage_account_name must be 3-24 lowercase letters/digits only (Azure's own storage account naming rules)."
   }
 }
@@ -55,9 +48,7 @@ variable "alarm_notification_email" {
   type        = string
   default     = null
   validation {
-    # Rejects quote characters specifically: this value is embedded directly in a generated
-    # SQL string literal (compute.tf's alert action), so a stray ' or " could break or alter
-    # that statement. A real email address never legitimately contains either.
+    # No quote characters: the value is embedded in a generated SQL string literal (compute.tf).
     condition     = var.alarm_notification_email == null || can(regex("^[^'\"[:space:]]+@[^'\"[:space:]]+\\.[^'\"[:space:]]+$", var.alarm_notification_email))
     error_message = "alarm_notification_email must look like a plain email address with no quote characters or whitespace."
   }
@@ -90,10 +81,7 @@ variable "credit_notification_users" {
   type        = list(string)
   default     = []
   validation {
-    # Snowflake's own CREATE/ALTER RESOURCE MONITOR caps NOTIFY_USERS at 5 non-admin users --
-    # checked here so a too-long list fails at `terraform plan`, not only once the resource
-    # monitor itself is created/updated and Snowflake rejects it.
-    condition     = length(var.credit_notification_users) <= 5
+    condition     = length(var.credit_notification_users) <= 5 # Snowflake caps NOTIFY_USERS at 5
     error_message = "credit_notification_users can list at most 5 users -- Snowflake's own NOTIFY_USERS limit for a resource monitor."
   }
 }
