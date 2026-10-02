@@ -20,7 +20,7 @@ Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glu
 - Permissions: the job runs under the TraceForce role the customer's Storage Provider grant
   already trusts and only ever calls PutObject on a new key; it never overwrites or deletes.
 - One file per table per run (gzip, JSON Lines, UTF-8). An empty table still writes a
-  zero-line file, but Athena reads no rows from it, so the newest non-empty file stays the
+  zero-line file, but no engine reads rows from it, so the newest non-empty file stays the
   effective snapshot: a table that genuinely drops to zero rows keeps its stale mirror rows
   until it has a row again (see `terraform/aws/sql/mirror_export_delete.sql.tftpl`; GCP folds the
   same delete into `terraform/gcp/sql/mirror_export.sql.tftpl`; Azure keeps it separate too, in
