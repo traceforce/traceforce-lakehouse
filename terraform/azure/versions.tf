@@ -6,7 +6,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 4.0"
+      version = ">= 4.9.0, < 5.0.0" # storage_account_id on azurerm_storage_container (storage.tf)
     }
     azuread = {
       source  = "hashicorp/azuread"
@@ -14,7 +14,7 @@ terraform {
     }
     snowflake = {
       source  = "snowflakedb/snowflake"
-      version = "~> 2.0"
+      version = ">= 2.19.0, < 3.0.0" # first release with snowflake_iceberg_table; the Azure stage/integration resources left preview in 2.18.0
     }
     time = {
       source  = "hashicorp/time"

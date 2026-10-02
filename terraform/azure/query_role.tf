@@ -111,11 +111,9 @@ resource "snowflake_grant_privileges_to_account_role" "reader_tasks" {
   depends_on = [snowflake_grant_privileges_to_account_role.reader_future_tasks]
 }
 
-# Unquoted user_name, deliberately -- these are pre-existing Snowflake users this module
-# doesn't create, so var.reader_users is expected to hold plain names the way a customer would
-# type them into `GRANT ROLE x TO USER <name>` themselves in Snowsight (typically unquoted,
-# case-folded to uppercase), not the quoted-lowercase convention this module's own Terraform-
-# created objects use.
+# The provider writes user_name as a quoted identifier, so var.reader_users must hold each
+# user's exact stored name: uppercase for a user created the usual unquoted way (CREATE USER
+# jdoe is stored as JDOE), exact case for one created with a quoted name.
 resource "snowflake_grant_account_role" "reader" {
   for_each  = toset(var.reader_users)
   role_name = snowflake_account_role.reader.fully_qualified_name

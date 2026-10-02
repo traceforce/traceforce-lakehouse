@@ -37,9 +37,10 @@ resource "snowflake_stage_external_azure" "raw" {
 # One compact JSON document per line, kept as VARIANT (value, not value::string): with
 # TYPE = JSON, Snowflake has already parsed each file by the time any column's `as` expression
 # runs, so casting back to a string just to PARSE_JSON it again downstream was a pointless round
-# trip, and capped every doc at VARCHAR's 16 MB default on a large upload. A malformed/non-JSON
-# file produces zero rows at the file-format layer itself either way, so VARCHAR bought no extra
-# resilience here. agent/dt come from the Hive key=value path segments via METADATA$FILENAME --
+# trip, and capped every doc at VARCHAR's 16 MB default on a large upload. A malformed line ends
+# Snowflake's scan of that file: rows before it still come through and the rest are silently
+# dropped (see sql/mirror_export_delete.sql.tftpl), so VARCHAR bought no extra resilience here.
+# agent/dt come from the Hive key=value path segments via METADATA$FILENAME --
 # no crawler needed, but this needs an explicit REFRESH before new files are visible (ingest.tf's
 # hourly Task issues it).
 resource "snowflake_external_table" "raw_telemetry" {

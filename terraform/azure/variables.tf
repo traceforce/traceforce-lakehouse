@@ -45,7 +45,7 @@ variable "iceberg_storage_account_name" {
 # --- Only when your account differs from the default ---
 
 variable "warehouse_size" {
-  description = "Snowflake warehouse size for ad-hoc queries from engineers or Claude Code."
+  description = "Snowflake warehouse size, shared by ad-hoc queries (engineers, Claude Code) and the scheduled ingest/export Tasks (compute.tf). Raise it temporarily for a long lookback_days catch-up."
   type        = string
   default     = "XSMALL"
 }
@@ -66,7 +66,7 @@ variable "alarm_notification_email" {
 # --- Only for a manual catch-up after an outage or a schema replacement ---
 
 variable "lookback_days" {
-  description = "How many upload-day folders the hourly ingest reads (today plus the days before). 3 is plenty on the schedule; raise it, apply, then set it back for a manual catch-up after an outage or a schema replacement."
+  description = "How many upload-day folders the hourly ingest reads (today plus the days before). 3 is plenty on the schedule. For a manual catch-up after an outage or a schema replacement, raise it, apply, then set it back: each run is one atomic INSERT over every selected day under the Task's 4-hour timeout (ingest.tf), so for a long catch-up raise lookback_days in increments (apply, let one hourly run finish per TASK_HISTORY, then raise again) or raise warehouse_size for it."
   type        = number
   default     = 3
   validation {
@@ -78,7 +78,7 @@ variable "lookback_days" {
 # --- Only when someone should get read access without a manual GRANT ROLE afterward ---
 
 variable "reader_users" {
-  description = "Existing Snowflake usernames granted the read-only reader role (query_role.tf), e.g. [\"JDOE\"]. Like AWS's query_trusted_principals / GCP's query_members. Empty = no grant; run GRANT ROLE \"traceforce_lakehouse_reader\" TO USER <name> by hand instead."
+  description = "Existing Snowflake usernames granted the read-only reader role (query_role.tf), e.g. [\"JDOE\"]. Written as quoted identifiers, so use each user's exact stored name: uppercase unless the user was created with a quoted name. Like AWS's query_trusted_principals / GCP's query_members. Empty = no grant; run GRANT ROLE \"traceforce_lakehouse_reader\" TO USER <name> by hand instead."
   type        = list(string)
   default     = []
 }
@@ -86,7 +86,7 @@ variable "reader_users" {
 # --- Only when someone should be emailed as the shared warehouse's credit usage climbs ---
 
 variable "credit_notification_users" {
-  description = "Existing non-admin Snowflake usernames (max 5) emailed as the warehouse's monthly credit usage crosses 50/80/100% of the resource monitor's quota (compute.tf), e.g. [\"JDOE\"]. The monitor never suspends the warehouse. Empty = no recipients."
+  description = "Existing non-admin Snowflake usernames (max 5) emailed as the warehouse's monthly credit usage crosses 50/80/100% of the resource monitor's quota (compute.tf), e.g. [\"JDOE\"]: exact stored names (uppercase unless created quoted), each with a verified email in Snowflake, or the monitor's create/update fails. The monitor never suspends the warehouse. Empty = no recipients."
   type        = list(string)
   default     = []
   validation {

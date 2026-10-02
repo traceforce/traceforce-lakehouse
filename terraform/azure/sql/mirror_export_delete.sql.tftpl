@@ -10,6 +10,12 @@
 -- Every dt scope below is bounded on both ends, not just a lower bound: an unbounded upper end
 -- would let a future-dated or malformed partition win MAX(METADATA$FILENAME) and get treated as
 -- the real newest snapshot, driving both the guard and the delete-set off the wrong file.
+-- Snowflake difference, not yet closed: an external table skips a file it cannot read and
+-- returns the rows scanned before an error, with no fail-loud option (AWS/GCP fail the run),
+-- so a damaged newest snapshot can make this DELETE drop rows that are still live until the
+-- next good snapshot restores them. Staging the newest file with COPY INTO ... ON_ERROR =
+-- ABORT_STATEMENT would close this: a follow-up listed in PR #25, not in this change
+-- (TraceForce's export does not write to Azure yet, so this path is dormant).
 DELETE FROM ${target}
 WHERE EXISTS (
     SELECT 1 FROM ${source}

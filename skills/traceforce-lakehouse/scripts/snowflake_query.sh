@@ -5,10 +5,11 @@
 #
 # Two ways to authenticate:
 #   1. All five key-pair env vars set: SNOWFLAKE_ORGANIZATION_NAME, SNOWFLAKE_ACCOUNT_NAME,
-#      SNOWFLAKE_USER, SNOWFLAKE_AUTHENTICATOR (= "SNOWFLAKE_JWT"), SNOWFLAKE_PRIVATE_KEY --
-#      unlike the Terraform module's own provider, which only reads SNOWFLAKE_PRIVATE_KEY from
-#      the environment (the organization name, account name, and user are non-secret provider
-#      arguments there, not env vars).
+#      SNOWFLAKE_USER, SNOWFLAKE_AUTHENTICATOR (= "SNOWFLAKE_JWT"), SNOWFLAKE_PRIVATE_KEY.
+#      The Terraform provider reads the same names for anything its block leaves unset, and of
+#      those five the README's block leaves only the key unset: SNOWFLAKE_PRIVATE_KEY must hold
+#      the deploy user's key whenever terraform apply runs, so keep the query user's credentials
+#      in a separate shell or in connections.toml (README "Grant query access").
 #   2. None of those five set: a named connection from connections.toml (SSO, password or
 #      encrypted-key auth all work this way, none of which the env vars above can express) --
 #      connect() with no arguments picks this up on its own: $SNOWFLAKE_DEFAULT_CONNECTION_NAME
@@ -42,6 +43,12 @@
 # Tasks, no write privilege anywhere -- rather than Snowflake's default SECONDARY ROLES ALL
 # session behavior silently letting that user's other privileges leak through despite an
 # explicit USE ROLE.
+# The connecting user's own grants are the other half of the guarantee: query as a user that
+# holds only the reader role (README "Grant query access"). A user that also holds a broader
+# role could re-enable it from inside one Snowflake-parsed statement; the forms that allow that
+# (multi-statement input, the ->> operator, Scripting blocks and EXECUTE IMMEDIATE,
+# stored-procedure calls) are refused below, but a
+# dedicated reader user removes the question entirely.
 #
 # The exactly-one-statement guarantee against a multi-statement escape (e.g.
 # "SELECT 1; USE SECONDARY ROLES ALL; DELETE ...") comes from Snowflake's own SQL parser, not a
@@ -113,40 +120,72 @@ if [[ "$SQL" == *"->>"* ]]; then
   exit 2
 fi
 
-# Fail-fast convenience, not the read-only guarantee -- see the note above. In python3 (already
-# a hard dependency below), not awk/grep: a line-oriented tool handles a leading "--" comment
-# fine but not a multi-line "/* ... */" block comment, which needs real character-level state
-# tracking. This scanner skips leading whitespace and both comment styles (repeating, so several
-# in a row are all skipped; an unterminated one fails safe by leaving FIRST empty, which the
-# case block below turns into a refusal) before taking the leading identifier token, stopping at
-# any non-alphanumeric/underscore character rather than just whitespace -- Snowflake accepts a
-# keyword with no space before what follows (e.g. "SELECT* FROM t"), and stopping only at
-# whitespace would swallow the trailing "*"/"/*" into FIRST, false-rejecting a valid query.
-FIRST="$(python3 -c '
-import sys
-sql = open(sys.argv[1]).read()
+# Two checks on the statement's bare tokens -- everything outside string literals ('..', $$..$$),
+# quoted identifiers (".."), and comments (--, //, /* */), which the tokenizer below skips with
+# real character-level state. A line comment ends at any line boundary Python knows (including
+# U+0085/U+2028/U+2029, in case Snowflake's lexer does too): that can only surface more bare
+# tokens, never hide one. An unterminated literal or comment swallows the rest of the text, so
+# nothing after it can be a bare token, and Snowflake rejects the literal itself.
+#   1. The first keyword must be a read. This IS part of the guarantee: it is what refuses
+#      Snowflake Scripting anonymous blocks (BEGIN/DECLARE) and EXECUTE IMMEDIATE, each ONE
+#      parsed statement that runs in the caller's session and could issue USE SECONDARY ROLES ALL.
+#   2. No PROCEDURE or CALL token anywhere. "WITH p AS PROCEDURE ... CALL p()" is ONE
+#      Snowflake-parsed statement (the body is a $$ literal) that starts with WITH and runs with
+#      caller's rights, so its body could run USE SECONDARY ROLES ALL / USE ROLE and then write
+#      under a broader role the connecting user also holds. A column or JSON key literally named
+#      call/procedure has to be double-quoted.
+SCAN="$(python3 -c '
+import re, sys
+sql = open(sys.argv[1]).read().lstrip("\ufeff")
+line_end = re.compile("[\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]")
 i, n = 0, len(sql)
+words = []
 while i < n:
     c = sql[i]
     if c.isspace():
         i += 1
-    elif c == "-" and i + 1 < n and sql[i + 1] == "-":
-        j = sql.find("\n", i)
-        i = n if j == -1 else j + 1
-    elif c == "/" and i + 1 < n and sql[i + 1] == "*":
+    elif sql.startswith("--", i) or sql.startswith("//", i):
+        m = line_end.search(sql, i)
+        i = n if m is None else m.end()
+    elif sql.startswith("/*", i):
         j = sql.find("*/", i + 2)
         i = n if j == -1 else j + 2
+    elif sql.startswith("$$", i):
+        j = sql.find("$$", i + 2)
+        i = n if j == -1 else j + 2
+    elif c == "\x27" or c == "\"":
+        j = i + 1
+        while j < n:
+            if c == "\x27" and sql[j] == "\\":
+                j += 2
+            elif sql[j] == c:
+                if j + 1 < n and sql[j + 1] == c:
+                    j += 2
+                else:
+                    break
+            else:
+                j += 1
+        i = j + 1
+    elif c.isalnum() or c in "_$":
+        j = i
+        while j < n and (sql[j].isalnum() or sql[j] in "_$"):
+            j += 1
+        words.append(sql[i:j].upper())
+        i = j
     else:
-        break
-j = i
-while j < n and (sql[j].isalnum() or sql[j] == "_"):
-    j += 1
-print(sql[i:j].upper())
+        i += 1
+print((words[0] if words else "") + "|" + ("procedure" if "PROCEDURE" in words or "CALL" in words else ""))
 ' "$SQL_FILE")"
+FIRST="${SCAN%%|*}"
+ESCAPE="${SCAN#*|}"
 case "$FIRST" in
   SELECT|WITH|SHOW|DESCRIBE|DESC|EXPLAIN) ;;
-  *) echo "refusing to run a non-read statement (first keyword: $FIRST)" >&2; exit 2 ;;
+  *) echo "refusing to run a non-read statement (first keyword: ${FIRST:-none found})" >&2; exit 2 ;;
 esac
+if [[ "$ESCAPE" == "procedure" ]]; then
+  echo "refusing to run: the statement contains a bare CALL or PROCEDURE token; an anonymous WITH ... AS PROCEDURE ... CALL block runs with the caller's full rights as one Snowflake-parsed statement, so neither keyword is allowed here (double-quote a column or JSON key named call/procedure)" >&2
+  exit 2
+fi
 
 # Env-var key-pair auth only if ALL five are set; connections.toml only if NONE are set. A
 # partial set is always an error, never a silent fall-through to connections.toml: that fallback
@@ -165,7 +204,7 @@ elif [[ ${#MISSING[@]} -eq 5 ]]; then
   HAVE_ENV_CREDS=0
 else
   echo "partial key-pair env var set -- missing: ${MISSING[*]}" >&2
-  echo "set all five (see README.md 'Before you start') or none to use connections.toml instead" >&2
+  echo "set all five (listed in this script's header) or none to use connections.toml instead" >&2
   exit 2
 fi
 

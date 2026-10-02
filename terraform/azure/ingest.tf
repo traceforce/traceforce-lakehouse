@@ -16,6 +16,15 @@ locals {
   # here either: it wraps a client-request batching parameter unrelated to how many statements
   # a Task's stored sql_statement body may contain. The fix is the same mechanism already used
   # below for each export mirror Task: one statement whose text is itself a Scripting block.
+  #
+  # The REFRESH is unscoped: it re-lists every object under telemetry/ each hour, so its cost
+  # grows with the history kept there (only the customer's own retention on <prefix>/telemetry/
+  # bounds it, at the cost of the re-ingest horizon lookback_days relies on; this module sets
+  # none). A scoped REFRESH '<path>' would need one statement per agent per lookback day, since
+  # dt= sits under agent=. Known limitation carried over from the upstream repo; the fix is Event
+  # Grid auto-refresh (a QUEUE notification integration named in the external table's
+  # INTEGRATION parameter, which snowflake_external_table does not expose), a follow-up listed in
+  # PR #25.
   hourly_ingest_sql = <<-SQL
     EXECUTE IMMEDIATE $$
       BEGIN
@@ -71,6 +80,16 @@ resource "snowflake_task" "ingest" {
 
   started = true
 
+  # UTC, not the account default (America/Los_Angeles): the templates' CURRENT_DATE() must be
+  # the UTC day the dt= folders and upload_ts use, as on AWS/GCP.
+  timezone = "UTC"
+
+  # Four hours, not Snowflake's one-hour default: a lookback_days catch-up is one atomic INSERT
+  # over every selected day, the unscoped REFRESH above grows with telemetry/ history, and a run
+  # the timeout cancels rolls back and repeats identically an hour later (see variables.tf's
+  # lookback_days).
+  user_task_timeout_ms = 14400000
+
   # No overlapping runs. Snowflake's actual parameter name is allow_overlapping_execution,
   # already false by default, set explicitly for documentation.
   allow_overlapping_execution = "false"
@@ -94,6 +113,7 @@ resource "snowflake_task" "export_mirror" {
   sql_statement = local.export_mirror_sql[each.key]
 
   started                     = true
+  timezone                    = "UTC" # same reason as the ingest Task: the templates' CURRENT_DATE() is the UTC day
   allow_overlapping_execution = "false"
   # See the ingest Task above for why this is disabled.
   suspend_task_after_num_failures = 0

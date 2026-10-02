@@ -31,7 +31,8 @@ WITH objects AS (
   -- itself has to enforce the upper half here -- without it, a device with a badly-skewed
   -- clock (or a stray malformed dt= folder) reporting a date far in the future would be
   -- scanned and ingested immediately, unbounded, instead of waiting for its dt= folder to
-  -- actually fall inside the documented window.
+  -- actually fall inside the documented window. CURRENT_DATE() is the UTC day: ingest.tf sets
+  -- TIMEZONE = 'UTC' on the Task (the account default is America/Los_Angeles).
   WHERE r.dt >= TO_VARCHAR(DATEADD(day, 1 - ${lookback_days}, CURRENT_DATE()), 'YYYYMMDD')
     AND r.dt <= TO_VARCHAR(DATEADD(day, 1, CURRENT_DATE()), 'YYYYMMDD')
     AND NOT EXISTS (
@@ -49,8 +50,8 @@ parsed AS (
   SELECT
     o.src_path,
     o.agent,
-    -- o.doc is already VARIANT (raw.tf): a malformed/non-JSON upload never reaches this row,
-    -- since the external table itself yields zero rows for one.
+    -- o.doc is already VARIANT (raw.tf): a malformed line ends Snowflake's scan of its file, so
+    -- the rows before it arrive here and the rest never do (no error is raised).
     o.doc AS doc_json,
     SPLIT(o.src_path, '/') AS seg
   FROM objects o
@@ -232,12 +233,17 @@ SELECT
   -- ts is required: record time, else observed time, else the upload time from the filename
   -- (minted by our exporter, so always present). 0 means "unknown" in OTLP and is skipped.
   -- NULLIF per field: OTLP writes 0 for "unknown", and a "0" must not win the COALESCE.
+  -- TRY_TO_NUMBER(.., 19, 0), not TRY_CAST(.. AS NUMBER): the cast is NUMBER(38,0) and would pass
+  -- any width through to TO_TIMESTAMP_NTZ -- a bogus far-future ts for 20-21 digits, an error
+  -- that fails the whole run beyond year 9999 -- where AWS's TRY_CAST AS BIGINT and GCP's
+  -- SAFE_CAST yield NULL. 19 digits caps the value at what TO_TIMESTAMP_NTZ accepts (year 2286);
+  -- anything wider becomes NULL.
   COALESCE(
-    TO_TIMESTAMP_NTZ(NULLIF(TRY_CAST(re.rec:timeUnixNano::string AS NUMBER), 0), 9),
-    TO_TIMESTAMP_NTZ(NULLIF(TRY_CAST(re.rec:startTimeUnixNano::string AS NUMBER), 0), 9),
-    TO_TIMESTAMP_NTZ(NULLIF(TRY_CAST(re.rec:observedTimeUnixNano::string AS NUMBER), 0), 9),
+    TO_TIMESTAMP_NTZ(NULLIF(TRY_TO_NUMBER(re.rec:timeUnixNano::string, 19, 0), 0), 9),
+    TO_TIMESTAMP_NTZ(NULLIF(TRY_TO_NUMBER(re.rec:startTimeUnixNano::string, 19, 0), 0), 9),
+    TO_TIMESTAMP_NTZ(NULLIF(TRY_TO_NUMBER(re.rec:observedTimeUnixNano::string, 19, 0), 0), 9),
     re.upload_ts)                                                      AS ts,
-  TO_TIMESTAMP_NTZ(NULLIF(TRY_CAST(re.rec:endTimeUnixNano::string AS NUMBER), 0), 9)
+  TO_TIMESTAMP_NTZ(NULLIF(TRY_TO_NUMBER(re.rec:endTimeUnixNano::string, 19, 0), 0), 9)
                                                                         AS end_ts,
   am.a['event.name']::string                                            AS event_name,
   CASE WHEN re.signal = 'span' THEN re.rec:name::string END            AS span_name,
@@ -263,10 +269,12 @@ SELECT
   am.a['traceforce.containment_enforcement']::string                    AS containment_enforcement,
   COALESCE(am.a['error.type']::string, am.a['error_type']::string)       AS error_type,
   am.a['gen_ai.request.model']::string                                  AS model,
-  TRY_CAST(am.a['gen_ai.usage.input_tokens']::string AS BIGINT)         AS input_tokens,
-  TRY_CAST(am.a['gen_ai.usage.output_tokens']::string AS BIGINT)        AS output_tokens,
-  TRY_CAST(COALESCE(am.a['cache_read_tokens']::string,
-                    am.a['gen_ai.usage.cache_read.input_tokens']::string) AS BIGINT)
+  -- Bounded to 18 digits (inside int64) for the same reason as ts above: BIGINT is NUMBER(38,0)
+  -- in Snowflake, and a wider value would fail the INSERT into the NUMBER(19,0) columns.
+  TRY_TO_NUMBER(am.a['gen_ai.usage.input_tokens']::string, 18, 0)      AS input_tokens,
+  TRY_TO_NUMBER(am.a['gen_ai.usage.output_tokens']::string, 18, 0)     AS output_tokens,
+  TRY_TO_NUMBER(COALESCE(am.a['cache_read_tokens']::string,
+                         am.a['gen_ai.usage.cache_read.input_tokens']::string), 18, 0)
                                                                         AS cache_read_tokens,
   TRY_CAST(am.a['cost_usd']::string AS DOUBLE)                          AS cost_usd,
   am.a['gen_ai.input.messages']::string                                 AS content_input,

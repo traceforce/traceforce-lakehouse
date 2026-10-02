@@ -83,8 +83,9 @@ uppercase, so an unquoted `agent_events` is not found. Snowflake's own names (`T
 `INFORMATION_SCHEMA` columns, `FLATTEN`'s `VALUE`) are uppercase and stay unquoted.
 
 Read-only here is enforced by Snowflake RBAC together with the script: every query runs as the
-module's `traceforce_lakehouse_reader` role with secondary roles off, and the script rejects
-multi-statement input and the `->>` operator. Do not work around it by connecting as another role.
+module's `traceforce_lakehouse_reader` role with secondary roles off, and the script runs only a
+single `SELECT`/`WITH`/`SHOW`/`DESCRIBE`/`EXPLAIN` statement, refusing stored-procedure calls and
+the `->>` operator. Do not work around it by connecting as another role.
 
 TraceForce's metadata export does not write to Azure yet, so the 18 mirror tables are empty
 there: answer from `agent_events`, and say so when a question needs a mirror.
@@ -96,8 +97,9 @@ there: answer from `agent_events`, and say so when a question needs a mirror.
 Needs python3 with `snowflake-connector-python`, and either all five `SNOWFLAKE_*` environment
 variables (`SNOWFLAKE_ORGANIZATION_NAME`, `SNOWFLAKE_ACCOUNT_NAME`, `SNOWFLAKE_USER`,
 `SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT`, `SNOWFLAKE_PRIVATE_KEY`) or none of them and a
-`connections.toml` connection. The connecting user must hold the reader role (README, "Grant
-query access"). An auth or role error is an environment problem, not empty data.
+`connections.toml` connection (preferred: `SNOWFLAKE_PRIVATE_KEY` is also the Terraform deploy
+key's variable). The connecting user must hold the reader role (README, "Grant query access").
+An auth or role error is an environment problem, not empty data.
 
 The reference/* schema (columns, joins, identity, redaction, enforcement) is identical, but its
 example SQL is Athena/Trino. Translate to Snowflake SQL, quoting this module's names as above:

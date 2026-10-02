@@ -4,8 +4,8 @@
 # ignore_missing lets that come back as an empty list instead of a hard provider error, checked
 # below via a precondition on each role assignment rather than a postcondition here: a data
 # source's postcondition runs on every plan that reads it, destroy included, which would block
-# tearing down an unconsented deployment; a resource precondition is skipped on destroy, so
-# gating on the role assignments instead only blocks create/update.
+# tearing down an unconsented deployment; a resource precondition is only a warning on destroy
+# (the pre-destroy refresh), so gating on the role assignments instead only blocks create/update.
 #
 # Matched by client id, not display name: neither snowflake_external_volume nor
 # snowflake_storage_integration_azure exposes a raw client_id attribute, only the consent URL
@@ -17,9 +17,12 @@ data "azuread_service_principals" "raw_storage" {
 }
 
 resource "azurerm_role_assignment" "raw_reader" {
-  scope                = "${data.azurerm_storage_account.logs.id}/blobServices/default/containers/${var.logs_container_name}"
+  scope                = "${local.logs_account_id}/blobServices/default/containers/${var.logs_container_name}"
   role_definition_name = "Storage Blob Data Reader"
-  principal_id         = data.azuread_service_principals.raw_storage.service_principals[0].object_id
+  # try(): before admin consent the lookup is an empty list, and the precondition below is what
+  # stops create/update with the consent URL. Destroy evaluates this expression too, with
+  # preconditions downgraded to warnings, so an unguarded [0] would fail it with "Invalid index".
+  principal_id = try(data.azuread_service_principals.raw_storage.service_principals[0].object_id, "00000000-0000-0000-0000-000000000000")
   # Defensive: a brief propagation delay right after consent is plausible even though this
   # isn't the same kind of genuine authorization gap the underlying resource itself has.
   skip_service_principal_aad_check = true
@@ -52,7 +55,7 @@ resource "time_sleep" "raw_reader_propagation" {
 resource "azurerm_role_assignment" "iceberg_contributor" {
   scope                            = azurerm_storage_container.iceberg.id
   role_definition_name             = "Storage Blob Data Contributor"
-  principal_id                     = data.azuread_service_principals.raw_storage.service_principals[0].object_id
+  principal_id                     = try(data.azuread_service_principals.raw_storage.service_principals[0].object_id, "00000000-0000-0000-0000-000000000000")
   skip_service_principal_aad_check = true
 
   lifecycle {
@@ -73,7 +76,7 @@ resource "azurerm_role_assignment" "iceberg_contributor" {
 resource "azurerm_role_assignment" "storage_delegator" {
   scope                            = azurerm_storage_account.iceberg.id
   role_definition_name             = "Storage Blob Delegator"
-  principal_id                     = data.azuread_service_principals.raw_storage.service_principals[0].object_id
+  principal_id                     = try(data.azuread_service_principals.raw_storage.service_principals[0].object_id, "00000000-0000-0000-0000-000000000000")
   skip_service_principal_aad_check = true
 
   lifecycle {

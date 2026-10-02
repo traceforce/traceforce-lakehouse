@@ -151,7 +151,7 @@ The first load runs within the hour and covers the last few days.
      required_providers {
        azurerm = {
          source  = "hashicorp/azurerm"
-         version = "~> 4.0"
+         version = ">= 4.9.0, < 5.0.0"
        }
        azuread = {
          source  = "hashicorp/azuread"
@@ -159,7 +159,7 @@ The first load runs within the hour and covers the last few days.
        }
        snowflake = {
          source  = "snowflakedb/snowflake"
-         version = "~> 2.0"
+         version = ">= 2.19.0, < 3.0.0"
        }
      }
    }
@@ -209,10 +209,10 @@ The first load runs within the hour and covers the last few days.
      logs_container_name       = "logs"
      logs_prefix               = "traceforce" # "" if TraceForce writes at the container root
 
-     # warehouse_size             = "SMALL"       # default XSMALL; bump if ad-hoc queries feel slow
+     # warehouse_size             = "SMALL"       # default XSMALL; bump if ad-hoc queries feel slow or for a lookback_days catch-up
      # alarm_notification_email   = "jdoe@acme.com" # a verified Snowflake user's email, not a team address -- get notified when a scheduled Task fails
-     # reader_users               = ["JDOE"]       # existing Snowflake usernames granted read-only access
-     # credit_notification_users  = ["JDOE"]       # existing Snowflake usernames emailed as credit usage climbs (the monitor itself never suspends the warehouse)
+     # reader_users               = ["JDOE"]       # exact stored Snowflake usernames (uppercase unless created quoted) granted read-only access
+     # credit_notification_users  = ["JDOE"]       # exact stored usernames with verified emails, emailed as credit usage climbs (the monitor never suspends the warehouse)
    }
 
    output "azure_consent_url" { value = module.traceforce_lakehouse.azure_consent_url }
@@ -242,9 +242,13 @@ The first load runs within the hour and covers the last few days.
    GRANT ROLE "traceforce_lakehouse_reader" TO USER traceforce_query;
    ```
 
-   Or list it in `reader_users` in step 1 (as `TRACEFORCE_QUERY`) and skip the `GRANT ROLE`
-   here. Either way, step 5's `SNOWFLAKE_USER`/`SNOWFLAKE_PRIVATE_KEY` should be this user's,
-   not the deploy user's.
+   Or, once the user exists, add it to `reader_users` in step 1 (as `TRACEFORCE_QUERY`, the exact
+   stored name) and re-apply instead of running the `GRANT ROLE` here. Either way, step 5's
+   credentials should be this user's, not the deploy user's. Keep them apart from the deploy key:
+   step 1's provider reads `SNOWFLAKE_PRIVATE_KEY` too, so a later `terraform apply` in a shell
+   holding the query user's key fails with an invalid JWT. Give the query user a
+   `connections.toml` connection (the script uses it only when none of the five `SNOWFLAKE_*`
+   variables is set), or export the deploy key again before applying.
 
 5. Install the skill in your coding agent. Claude Code:
 

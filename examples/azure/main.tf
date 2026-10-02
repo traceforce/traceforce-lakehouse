@@ -13,7 +13,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 4.0"
+      version = ">= 4.9.0, < 5.0.0"
     }
     azuread = {
       source  = "hashicorp/azuread"
@@ -21,7 +21,7 @@ terraform {
     }
     snowflake = {
       source  = "snowflakedb/snowflake"
-      version = "~> 2.0"
+      version = ">= 2.19.0, < 3.0.0"
     }
   }
 }
@@ -71,10 +71,10 @@ module "traceforce_lakehouse" {
   logs_container_name       = "logs"
   logs_prefix               = "traceforce" # "" if TraceForce writes at the container root
 
-  # warehouse_size             = "SMALL"       # default XSMALL; bump if ad-hoc queries feel slow
+  # warehouse_size             = "SMALL"       # default XSMALL; bump if ad-hoc queries feel slow or for a lookback_days catch-up
   # alarm_notification_email   = "jdoe@acme.com" # a verified Snowflake user's email, not a team address -- get notified when a scheduled Task fails
-  # reader_users               = ["JDOE"]       # existing Snowflake usernames granted read-only access
-  # credit_notification_users  = ["JDOE"]       # existing Snowflake usernames emailed as credit usage climbs (the monitor itself never suspends the warehouse)
+  # reader_users               = ["JDOE"]       # exact stored Snowflake usernames (uppercase unless created quoted) granted read-only access
+  # credit_notification_users  = ["JDOE"]       # exact stored usernames with verified emails, emailed as credit usage climbs (the monitor never suspends the warehouse)
 }
 
 output "azure_consent_url" { value = module.traceforce_lakehouse.azure_consent_url }

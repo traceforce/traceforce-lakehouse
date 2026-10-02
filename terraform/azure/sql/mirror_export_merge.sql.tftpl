@@ -10,7 +10,8 @@
 -- CONVERT_TIMEZONE('UTC', ...) first, same as ingested_at in the ingest query. Parsed via
 -- TRY_TO_TIMESTAMP_TZ(..., 'AUTO'), not TRY_CAST(... AS TIMESTAMP_TZ): a plain cast honors the
 -- account's TIMESTAMP_INPUT_FORMAT, so a customer who set a custom one there would silently turn
--- every mirrored timestamp NULL.
+-- every mirrored timestamp NULL. A string with no offset is read in the session TIMEZONE, which
+-- ingest.tf pins to UTC on the mirror Task (as Athena's from_iso8601_timestamp does on AWS).
 -- ${source} is a snowflake_external_table (columns stored uppercase, unquoted at creation);
 -- ${target} is a snowflake_iceberg_table (columns stored lowercase, quoted at creation) --
 -- reference each side accordingly below, not interchangeably.

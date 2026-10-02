@@ -80,7 +80,9 @@ resource "snowflake_execute" "alert_viewer" {
 
 # Task-failure email alert -- checks for any FAILED task run in this module's own database/
 # schema, not specific task names, so it doesn't need to know about each of the 19 Tasks
-# (ingest.tf) individually. Interval matches the hourly ingest cadence.
+# (ingest.tf) individually. Runs at :58 UTC, a minute after the hourly ingest Task is scheduled,
+# so the check normally finds the warehouse already running (auto_suspend is 60 s) instead of
+# waking it just to poll (the provider requires a warehouse).
 resource "snowflake_alert" "task_failures" {
   count     = var.alarm_notification_email == null ? 0 : 1
   name      = "traceforce_lakehouse_task_failures"
@@ -92,7 +94,10 @@ resource "snowflake_alert" "task_failures" {
   depends_on = [snowflake_execute.alert_viewer]
 
   alert_schedule {
-    interval = 60
+    cron {
+      expression = "58 * * * *"
+      time_zone  = "UTC"
+    }
   }
 
   # DATABASE_NAME/SCHEMA_NAME scope this to the module's own 19 Tasks -- TASK_HISTORY is
@@ -106,7 +111,10 @@ resource "snowflake_alert" "task_failures" {
   # failure past 100 runs in the 7-day window -- now that this is scoped to just this module's own
   # Tasks, 19 Tasks x hourly x 7 days is at most ~3200 runs, so this cap is never actually reached.
   #
-  # SCHEDULED_TIME_RANGE_START is always the full 7-day retained window, based on
+  # SCHEDULED_TIME_RANGE_START is the retained 7-day window less an hour of margin: TASK_HISTORY
+  # errors on a start more than 7 days back, and whether it compares against this statement's
+  # CURRENT_TIMESTAMP() or a slightly later clock read is undocumented, so sitting exactly on the
+  # boundary could fail the condition. It is based on
   # CURRENT_TIMESTAMP() rather than SNOWFLAKE.ALERT.SCHEDULED_TIME() -- confirmed live,
   # TASK_HISTORY's 7-day limit is checked against actual wall-clock time regardless of what
   # SCHEDULED_TIME_RANGE_END is given, so basing START on the alert's own (possibly delayed)
@@ -126,7 +134,7 @@ resource "snowflake_alert" "task_failures" {
   # to its own nominal slot, trading at most one extra cycle of delay for never duplicating.
   condition = <<-SQL
     SELECT 1 FROM TABLE(INFORMATION_SCHEMA.TASK_HISTORY(
-      SCHEDULED_TIME_RANGE_START => DATEADD('day', -7, CURRENT_TIMESTAMP()),
+      SCHEDULED_TIME_RANGE_START => DATEADD('hour', -167, CURRENT_TIMESTAMP()),
       DATABASE_NAME => '"${snowflake_database.lakehouse.name}"',
       SCHEMA_NAME => '"${snowflake_schema.lakehouse.name}"',
       ERROR_ONLY => TRUE,

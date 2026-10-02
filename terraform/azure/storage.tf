@@ -1,10 +1,15 @@
 # The existing landing-zone storage account TraceForce already writes agent activity logs to
 # (see the Storage Provider integration assumption in variables.tf). Looked up (not created)
-# so this module never touches the customer's own storage account.
-data "azurerm_storage_account" "logs" {
+# so this module never touches the customer's own storage account. azurerm_resources rather
+# than azurerm_storage_account: that data source also calls ListKeys and writes the account's
+# access keys into Terraform state, and this module only needs the resource id and the region.
+data "azurerm_resources" "logs" {
   name                = var.logs_storage_account_name
   resource_group_name = var.logs_resource_group_name
+  type                = "Microsoft.Storage/storageAccounts"
 }
+
+data "azurerm_client_config" "current" {}
 
 # Module-owned storage account for Iceberg table data -- deliberately never the customer's
 # existing logs account. A lifecycle rule there ("delete blobs after 90 days" is common for
@@ -19,7 +24,7 @@ resource "azurerm_storage_account" "iceberg" {
   resource_group_name = var.logs_resource_group_name
   # Same region as the logs account: avoids cross-region egress on every write, and keeps this
   # data in the same residency as the logs it's derived from (see README's "Before you start").
-  location = data.azurerm_storage_account.logs.location
+  location = local.logs_account_location
   # Conservative defaults for a lightweight early-access workload, not measured figures --
   # revisit once real usage data exists (same posture as compute.tf's credit_quota).
   account_tier             = "Standard"
@@ -31,6 +36,13 @@ resource "azurerm_storage_account" "iceberg" {
   # Every request still goes through the RBAC role assignments below (role_assignments.tf).
   public_network_access_enabled   = true
   allow_nested_items_to_be_public = false
+
+  lifecycle {
+    precondition {
+      condition     = length(data.azurerm_resources.logs.resources) == 1
+      error_message = "Storage account ${var.logs_storage_account_name} was not found in resource group ${var.logs_resource_group_name}, or the deploying identity cannot read it."
+    }
+  }
 }
 
 # storage_account_id (Resource Manager API) rather than the deprecated storage_account_name
