@@ -23,8 +23,8 @@ can read none of them.
 
 - TraceForce Settings has an S3, GCS, or Azure Blob Storage Provider configured: the
   bucket/container and prefix that TraceForce writes to. You will need these values. On Azure
-  you also need the logs storage account's name and resource group (not shown in Settings), and
-  a globally unique 3-24 character lowercase name for the storage account the module creates.
+  you also need the logs storage account's resource group (not shown in Settings), and a globally
+  unique 3-24 character lowercase name for the storage account the module creates.
 - Terraform 1.5 or later.
 - **AWS:** a principal that can create S3 Tables, Glue, Athena, Step Functions and IAM resources
   in that account; deploy in the bucket's region.
@@ -34,7 +34,8 @@ can read none of them.
   in practice **project Owner**.
 - **Azure** *(early access)*: an existing Snowflake account on Azure, in the logs storage
   account's region (anywhere else pays cross-region egress on every load and query), with a
-  key-pair user whose session runs as `ACCOUNTADMIN` (the snippet sets `role`; resource
+  key-pair user whose session runs as `ACCOUNTADMIN`: either its default role, or `role =
+  "ACCOUNTADMIN"` in the `snowflake` provider block as the snippet below does (resource
   monitors, integrations and external volumes need it).
   Deploying reads `SNOWFLAKE_PRIVATE_KEY` from the environment; the organization, account and
   user are plain provider arguments in the snippet. The Azure CLI signed in (`az login`) as an
@@ -237,7 +238,8 @@ The first load runs within the hour and covers the last few days.
    grant admin consent, then run `terraform apply` again. It completes the rest of the module
    this time — role assignments, the Iceberg tables, and the scheduled ingest/export Tasks. If
    it stops on the same consent error right after you consented, don't consent again: Azure can
-   take up to an hour to create Snowflake's service principal. Wait, then re-run `terraform apply`.
+   take an hour or longer to create Snowflake's service principal. Wait an hour or two, then
+   re-run `terraform apply`.
 
 4. Grant query access. Use a dedicated read-only user for this, not the user you deployed
    with (in practice `ACCOUNTADMIN`) — its key already exists and is the path of least
