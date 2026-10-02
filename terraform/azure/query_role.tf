@@ -94,3 +94,26 @@ resource "snowflake_grant_account_role" "reader" {
   role_name = snowflake_account_role.reader.fully_qualified_name
   user_name = each.value
 }
+
+# Optional module-created query user: a SERVICE user (key-pair only) that holds nothing but the
+# reader role, with secondary roles off, so the identity is read-only on its own whatever client
+# connects -- the Azure counterpart of AWS's query role. The script's own checks still apply.
+resource "snowflake_service_user" "query" {
+  count = var.query_user_public_key == null ? 0 : 1
+
+  name              = "traceforce_lakehouse_query"
+  comment           = "TraceForce lakehouse read-only query user (key-pair auth, reader role only)."
+  rsa_public_key    = var.query_user_public_key
+  default_role      = snowflake_account_role.reader.name
+  default_warehouse = snowflake_warehouse.lakehouse.name
+
+  default_secondary_roles_option = "NONE"
+  statement_timeout_in_seconds   = 300
+  timezone                       = "UTC"
+}
+
+resource "snowflake_grant_account_role" "query_user" {
+  count     = var.query_user_public_key == null ? 0 : 1
+  role_name = snowflake_account_role.reader.fully_qualified_name
+  user_name = snowflake_service_user.query[0].name
+}

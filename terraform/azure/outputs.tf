@@ -17,3 +17,8 @@ output "exports_root" {
   description = "Where TraceForce's export job writes <table>/dt=YYYY-MM-DD/<HHMMSS>.jsonl.gz"
   value       = local.exports_root
 }
+
+output "query_user_name" {
+  description = "Login name of the module-created read-only query user (query_role.tf). Null unless query_user_public_key is set."
+  value       = var.query_user_public_key == null ? null : snowflake_service_user.query[0].name
+}

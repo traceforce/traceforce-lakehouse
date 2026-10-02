@@ -85,3 +85,15 @@ variable "credit_notification_users" {
     error_message = "credit_notification_users can list at most 5 users -- Snowflake's own NOTIFY_USERS limit for a resource monitor."
   }
 }
+
+# --- Only when the module should create the read-only query user itself ---
+
+variable "query_user_public_key" {
+  description = "RSA public key for a dedicated read-only query user the module creates, traceforce_lakehouse_query (one line, without the BEGIN/END PUBLIC KEY lines). A SERVICE user that holds only the reader role, with secondary roles off, UTC and a 300 s statement timeout, so the identity itself is read-only whatever client connects -- the Azure counterpart of AWS's query role. Null = create no user; grant the reader role to existing users with reader_users or by hand."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.query_user_public_key == null || can(regex("^[A-Za-z0-9+/=]+$", var.query_user_public_key))
+    error_message = "query_user_public_key must be the base64 body of the public key on one line, without the BEGIN/END PUBLIC KEY lines."
+  }
+}

@@ -5,7 +5,8 @@
 -- dt is bounded on both ends so a future-dated partition cannot win MAX(METADATA$FILENAME).
 -- Source columns are uppercase/unquoted; target columns are quoted lowercase.
 -- Snowflake skips unreadable files silently, so a damaged newest snapshot can over-delete until
--- the next good one. Follow-up: stage via COPY INTO; path dormant until the Azure export exists.
+-- the next good one repairs the mirror (AWS/GCP fail the run instead). Accepted: the export does
+-- not write to Azure yet, and this path is validated live together with its producer.
 DELETE FROM ${target}
 WHERE EXISTS (
     SELECT 1 FROM ${source}

@@ -74,6 +74,7 @@ module "traceforce_lakehouse" {
 
   # warehouse_size             = "SMALL"       # default XSMALL; bump if ad-hoc queries feel slow or for a lookback_days catch-up
   # alarm_notification_email   = "jdoe@acme.com" # a verified Snowflake user's email, not a team address -- get notified when a scheduled Task fails
+  # query_user_public_key      = "MIIBIjAN..."  # one-line public key body: creates traceforce_lakehouse_query, a reader-only service user for step 5
   # reader_users               = ["JDOE"]       # exact stored Snowflake usernames (uppercase unless created quoted) granted read-only access
   # credit_notification_users  = ["JDOE"]       # exact stored usernames with verified emails, emailed as credit usage climbs (the monitor never suspends the warehouse)
 }

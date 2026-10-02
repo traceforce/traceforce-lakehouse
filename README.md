@@ -218,6 +218,7 @@ The first load runs within the hour and covers the last few days.
 
      # warehouse_size             = "SMALL"       # default XSMALL; bump if ad-hoc queries feel slow or for a lookback_days catch-up
      # alarm_notification_email   = "jdoe@acme.com" # a verified Snowflake user's email, not a team address -- get notified when a scheduled Task fails
+     # query_user_public_key      = "MIIBIjAN..."  # one-line public key body: creates traceforce_lakehouse_query, a reader-only service user for step 5
      # reader_users               = ["JDOE"]       # exact stored Snowflake usernames (uppercase unless created quoted) granted read-only access
      # credit_notification_users  = ["JDOE"]       # exact stored usernames with verified emails, emailed as credit usage climbs (the monitor never suspends the warehouse)
    }
@@ -241,24 +242,25 @@ The first load runs within the hour and covers the last few days.
    take an hour or longer to create Snowflake's service principal. Wait an hour or two, then
    re-run `terraform apply`.
 
-4. Grant query access. Use a dedicated read-only user for this, not the user you deployed
-   with (in practice `ACCOUNTADMIN`) — its key already exists and is the path of least
-   resistance, but handing a coding agent a key that broad is unnecessary exposure when the
-   reader role is the only access querying actually needs. Create one with key-pair auth, the
-   same way as step 1's own deploy user:
+4. Grant query access. Querying should use a dedicated read-only user, not the user you
+   deployed with (in practice `ACCOUNTADMIN`): handing a coding agent a key that broad is
+   unnecessary exposure when the reader role is the only access querying needs. Generate a key
+   pair for it and set `query_user_public_key` in step 1 to the public key's one-line body; the
+   module creates `traceforce_lakehouse_query`, a service user that holds only the reader role,
+   with secondary roles off, UTC and a 300 s statement timeout, so the identity itself is
+   read-only whatever client connects. Or create the user yourself and grant the role:
 
    ```sql
    CREATE USER traceforce_query TYPE = SERVICE RSA_PUBLIC_KEY = '<public key>';
    GRANT ROLE "traceforce_lakehouse_reader" TO USER traceforce_query;
    ```
 
-   Or, once the user exists, add it to `reader_users` in step 1 (as `TRACEFORCE_QUERY`, the exact
-   stored name) and re-apply instead of running the `GRANT ROLE` here. Either way, step 5's
-   credentials should be this user's, not the deploy user's. Keep them apart from the deploy key:
-   step 1's provider reads `SNOWFLAKE_PRIVATE_KEY` too, so a later `terraform apply` in a shell
-   holding the query user's key fails with an invalid JWT. Give the query user a
-   `connections.toml` connection (the script uses it only when none of the five `SNOWFLAKE_*`
-   variables is set), or export the deploy key again before applying.
+   (or, once it exists, list it in `reader_users` in step 1 and re-apply). Either way, step 5's
+   credentials are this user's, not the deploy user's. Keep them apart from the deploy key: step
+   1's provider reads `SNOWFLAKE_PRIVATE_KEY` too, so a later `terraform apply` in a shell holding
+   the query user's key fails with an invalid JWT. Give the query user a `connections.toml`
+   connection (the script uses it only when none of the five `SNOWFLAKE_*` variables is set), or
+   export the deploy key again before applying.
 
 5. Install the skill in your coding agent. Claude Code:
 

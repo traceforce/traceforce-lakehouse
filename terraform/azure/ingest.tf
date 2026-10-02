@@ -7,7 +7,9 @@ locals {
   # The REFRESH is unscoped and re-lists all of telemetry/ each hour, so its cost grows with the
   # history kept there (this module sets no retention): a scoped REFRESH would need one statement
   # per agent per day, and Event Grid auto-refresh needs INTEGRATION at CREATE, which
-  # snowflake_external_table does not expose. Known limitation; follow-up planned.
+  # snowflake_external_table does not expose. Accepted: auto-refresh would mean Event Grid
+  # resources in the customer's logs account and a second admin consent, while the listing is
+  # one metadata call per hour whose cost grows only with the object count.
   hourly_ingest_sql = <<-SQL
     EXECUTE IMMEDIATE $$
       BEGIN

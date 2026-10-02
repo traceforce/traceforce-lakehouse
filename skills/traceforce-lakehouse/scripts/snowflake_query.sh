@@ -50,8 +50,9 @@ if ! [[ "$STATEMENT_TIMEOUT" =~ ^[0-9]+$ ]]; then
 fi
 # 604800 (7 days) is Snowflake's hard maximum for STATEMENT_TIMEOUT_IN_SECONDS. 10# forces base
 # 10: bash would otherwise read a leading-zero value as octal, and "08"/"09" make (( )) fail,
-# which the if treats as false -- silently skipping this check.
-if (( 10#$STATEMENT_TIMEOUT > 604800 )); then
+# which the if treats as false -- silently skipping this check. The length cap keeps the
+# arithmetic inside 64 bits, so an absurdly long digit string cannot wrap past the comparison.
+if (( ${#STATEMENT_TIMEOUT} > 18 || 10#$STATEMENT_TIMEOUT > 604800 )); then
   echo "invalid TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT: $STATEMENT_TIMEOUT -- must be <= 604800 (Snowflake's own max, 7 days)" >&2
   exit 2
 fi
@@ -79,9 +80,11 @@ printf '%s' "$SQL" > "$SQL_FILE"
 # ->> chains full statements (USE ROLE, DML) into one parsed statement. A plain substring check,
 # so it cannot hide inside a quote or comment.
 if [[ "$SQL" == *"->>"* ]]; then
-  echo "refusing to run: the Snowflake pipe operator (->>) can chain a read into privileged statements as one Snowflake-parsed statement -- not allowed here" >&2
+  echo "refusing to run: the Snowflake pipe operator (->>) can chain a read into privileged statements as one Snowflake-parsed statement -- not allowed here (to search stored text for those characters, split the literal: LIKE '%-' || '>>%')" >&2
   exit 2
 fi
+
+command -v python3 >/dev/null 2>&1 || { echo "python3 is required (see the header)" >&2; exit 2; }
 
 # Scan the bare tokens (outside string literals, quoted identifiers and comments): the first
 # keyword must be a read, and no PROCEDURE or CALL token may appear anywhere. Control/Unicode
@@ -159,6 +162,12 @@ for v in SNOWFLAKE_ORGANIZATION_NAME SNOWFLAKE_ACCOUNT_NAME SNOWFLAKE_USER SNOWF
 done
 if [[ ${#MISSING[@]} -eq 0 ]]; then
   HAVE_ENV_CREDS=1
+  # The connector forces key-pair auth whenever a private key is given, so any other value here
+  # would be silently ignored; refuse it instead.
+  if [[ "$(printf '%s' "$SNOWFLAKE_AUTHENTICATOR" | tr '[:lower:]' '[:upper:]')" != "SNOWFLAKE_JWT" ]]; then
+    echo "SNOWFLAKE_AUTHENTICATOR must be SNOWFLAKE_JWT for key-pair auth (got: $SNOWFLAKE_AUTHENTICATOR); unset all five SNOWFLAKE_* variables to use connections.toml instead" >&2
+    exit 2
+  fi
 elif [[ ${#MISSING[@]} -eq 5 ]]; then
   HAVE_ENV_CREDS=0
 else
@@ -173,6 +182,9 @@ fi
 # monitor is notify-only so it never suspends the ingest/export Tasks.
 PREAMBLE="USE ROLE \"$READER_ROLE\"; USE SECONDARY ROLES NONE; USE WAREHOUSE \"$WAREHOUSE\"; USE DATABASE \"$DB\"; USE SCHEMA \"$SCHEMA\"; ALTER SESSION SET TIMEZONE = 'UTC'; ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = $STATEMENT_TIMEOUT"
 
+python3 -c 'import snowflake.connector' 2>/dev/null \
+  || { echo "snowflake-connector-python is not installed: pip install snowflake-connector-python" >&2; exit 2; }
+
 python3 - "$PREAMBLE" "$SQL_FILE" "$MAX_ROWS" "$HAVE_ENV_CREDS" <<'PY'
 import csv
 import os
@@ -184,7 +196,7 @@ from cryptography.hazmat.primitives import serialization
 preamble, sql_file, max_rows = sys.argv[1], sys.argv[2], int(sys.argv[3])
 have_env_creds = sys.argv[4] == "1"
 with open(sql_file, encoding="utf-8") as f:
-    sql = f.read()
+    sql = f.read().lstrip("\ufeff")
 # max_rows was validated as a non-negative integer in bash.
 # The preamble is fixed text, so splitting on ";" counts its statements; $SQL's count is left to Snowflake.
 num_statements = sum(1 for s in preamble.split(";") if s.strip()) + 1
@@ -193,7 +205,19 @@ num_statements = sum(1 for s in preamble.split(";") if s.strip()) + 1
 def load_der_key() -> bytes:
     # The connector wants DER PKCS8 bytes; the env var (shared with the Terraform provider) holds PEM text.
     pem = os.environ["SNOWFLAKE_PRIVATE_KEY"].encode()
-    key = serialization.load_pem_private_key(pem, password=None)
+    try:
+        key = serialization.load_pem_private_key(pem, password=None)
+    except TypeError:
+        # cryptography raises TypeError for an encrypted key when no password is given.
+        print(
+            "SNOWFLAKE_PRIVATE_KEY is an encrypted key; this script takes an unencrypted PEM in the environment."
+            " For an encrypted key use a connections.toml connection (private_key_file + private_key_file_pwd).",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    except ValueError as e:
+        print(f"invalid SNOWFLAKE_PRIVATE_KEY: {e}", file=sys.stderr)
+        sys.exit(2)
     return key.private_bytes(
         encoding=serialization.Encoding.DER,
         format=serialization.PrivateFormat.PKCS8,
@@ -229,28 +253,34 @@ try:
         total = cur.rowcount
 except (snowflake.connector.errors.Error, ValueError, TypeError) as e:
     # errno 8 is the statement-count mismatch: Snowflake rejected the whole request, preamble included.
-    # The base Error class covers connect()-time failures; ValueError/TypeError come from load_der_key().
+    # The base Error class covers connect()-time failures as well as query errors.
     if getattr(e, "errno", None) == 8:
         print(
             "refusing to run more than one statement -- run one query at a time",
             file=sys.stderr,
         )
         sys.exit(2)
-    prefix = ""
-    if have_env_creds and isinstance(e, (ValueError, TypeError)):
-        prefix = "invalid SNOWFLAKE_PRIVATE_KEY: "
-    print(f"{prefix}{e}", file=sys.stderr)
+    print(e, file=sys.stderr)
     sys.exit(1)
 
 if not rows:
     print("-- 0 rows", file=sys.stderr)
     sys.exit(0)
 
+# rowcount is None for result types that carry no total; the fetched rows are the total then.
+if total is None:
+    total = len(rows)
 out_rows = rows if max_rows == 0 else rows[:max_rows]
 # Slicing rows (not CSV lines) keeps the cutoff on a row boundary even with multi-line fields.
-w = csv.writer(sys.stdout, lineterminator="\n")
-w.writerow(columns)
-w.writerows(out_rows)
+try:
+    w = csv.writer(sys.stdout, lineterminator="\n")
+    w.writerow(columns)
+    w.writerows(out_rows)
+    sys.stdout.flush()
+except BrokenPipeError:
+    # The reader (e.g. head) closed stdout: stop quietly instead of printing a traceback.
+    os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+    sys.exit(0)
 if max_rows != 0 and total > max_rows:
     print(
         f"-- showing {max_rows} of {total} rows; set TRACEFORCE_LAKEHOUSE_MAX_ROWS=0 for all",
