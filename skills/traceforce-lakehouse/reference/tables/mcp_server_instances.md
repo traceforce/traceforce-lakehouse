@@ -23,7 +23,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `mcp_server_type` | int | Integer product code; LEFT JOIN the catalogs for the name (0 = unknown, no catalog row). |
 | `mcp_server_location` | string | Where it was found: the config file path (e.g. mcp.json) for filesystem MCPs, the agent's web domain (e.g. .claude.ai) for browser connectors. |
 | `mcp_native_id` | string | The server's key in the host config (mcp.json). Equals agent_events.mcp_server_name (case-insensitive). |
-| `transport_type` | string | Transport protocol as text ('stdio' / 'http' / 'sse' / 'unknown'); never NULL, 'unknown' = unclassified. |
+| `transport_type` | string | Transport protocol as text ('stdio' / 'http' / 'sse' / 'websocket' / 'unknown'); never NULL, 'unknown' = unclassified. |
 | `deployment_model` | string | Where the server runs, as text ('local_process' / 'local_container' / 'local_service' / 'remote' / 'unknown'); never NULL, 'unknown' = unclassified. |
 | `auth_type` | string | Authentication method as text ('oauth' / 'token' / 'basic_auth' / 'no_auth' / 'unknown'); never NULL, 'unknown' = no method detected. |
 | `transport_security_type` | string | Transport encryption as text ('none' / 'tls' / 'unknown'); never NULL, 'unknown' = unclassified. |
