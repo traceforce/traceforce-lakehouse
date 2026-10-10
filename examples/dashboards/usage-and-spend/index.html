@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Agent Usage &amp; Spend</title>
+<link rel="stylesheet" href="../shared/dashboard.css">
+</head>
+<body>
+<main>
+  <header>
+    <a class="home" href="../">Dashboards</a>
+    <h1>AI agent usage &amp; spend</h1>
+    <span class="meta" id="freshness"></span>
+    <span class="badge" id="sample" hidden>Sample data. Run node serve.mjs in examples/dashboards and open http://localhost:8765 to load your lake</span>
+  </header>
+
+  <div class="filters" role="toolbar" aria-label="Filters">
+    <div class="seg" id="range" role="group" aria-label="Date range">
+      <button data-days="7">Last 7 days</button>
+      <button data-days="30">Last 30 days</button>
+      <button data-days="90">Last 90 days</button>
+    </div>
+    <div class="chips" id="agents" role="group" aria-label="Agents"></div>
+    <label class="meta">Person
+      <select id="person"><option value="">Everyone</option></select>
+    </label>
+  </div>
+
+  <section class="kpis" id="kpis" aria-label="Totals"></section>
+
+  <section class="grid" id="detail" aria-label="Person detail" hidden>
+    <div class="card span-8">
+      <div class="card-head">
+        <h2 id="detail-title">Sessions</h2>
+        <span class="sub"><span id="detail-sub"></span> · <button class="link" id="detail-clear" type="button">Show everyone</button></span>
+      </div>
+      <div class="tbl-wrap" id="detail-sessions"></div>
+      <button class="link" id="detail-more" type="button" hidden></button>
+    </div>
+    <div class="card span-4">
+      <div class="card-head"><h2>Top tools</h2><span class="sub" id="tools-sub">Tool calls, selected period</span></div>
+      <div class="chart" id="detail-tools"></div>
+      <details><summary>Table</summary><div class="tbl-wrap" id="detail-tools-table"></div></details>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card span-8">
+      <div class="card-head">
+        <h2>Daily cost by agent</h2><span class="sub" id="cost-sub"></span>
+      </div>
+      <div class="legend" id="cost-legend"></div>
+      <div class="chart" id="cost-chart"></div>
+      <details><summary>Table</summary><div class="tbl-wrap" id="cost-table"></div></details>
+    </div>
+
+    <div class="card span-4">
+      <div class="card-head"><h2>Top people by cost</h2><span class="sub">Click a person for their sessions and prompts</span></div>
+      <div class="chart" id="people-chart"></div>
+      <details><summary>Table</summary><div class="tbl-wrap" id="people-table"></div></details>
+    </div>
+
+    <div class="card span-8">
+      <div class="card-head"><h2>Daily sessions by agent</h2><span class="sub">Counted on the UTC day a session started</span></div>
+      <div class="legend" id="sessions-legend"></div>
+      <div class="chart" id="sessions-chart"></div>
+      <details><summary>Table</summary><div class="tbl-wrap" id="sessions-table"></div></details>
+    </div>
+
+    <div class="card span-4">
+      <div class="card-head"><h2>Cost by model</h2><span class="sub">Model requested for the turn</span></div>
+      <div class="chart" id="models-chart"></div>
+      <details><summary>Table</summary><div class="tbl-wrap" id="models-table"></div></details>
+    </div>
+
+    <div class="card span-12" id="unattr-card" hidden>
+      <div class="card-head">
+        <h2>Unattributed activity by device</h2>
+        <span class="sub">No email on the event and no MDM owner for the device · click a device for its sessions</span>
+      </div>
+      <div class="tbl-wrap" id="unattr-table"></div>
+      <p class="hint">Signed-in accounts hint at who owns a device; they are not proof. Assign an owner in your MDM to attribute this activity.</p>
+    </div>
+
+    <div class="card span-12">
+      <div class="card-head"><h2>By agent</h2><span class="sub">— means the agent doesn't report this measure</span></div>
+      <div class="tbl-wrap" id="agent-table"></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Source: <code>agent_events</code> in the TraceForce lakehouse, with <code>device_owner_mappings</code> to attribute events with no email to the device's owner. Days are UTC. The date range ends today (UTC).</p>
+    <p>Cost is what each agent reports: Cursor reports no tokens or cost, and GitHub Copilot and ChatGPT Codex report tokens but no cost, so their spend is not in the totals. Prompts are per-turn ids, which some agents don't emit.</p>
+  </footer>
+</main>
+<script src="../shared/dashboard.js"></script>
+<script>
+(() => {
+  "use strict";
+
+  const { DAY, isSample, agentColor, agentName, agentOrderFor, compact, usd, num, numExact, share, parseDay,
+    isoDay, nsum, tsParse, fmtTs, fmtDuration, $, el, swatch, stackedColumns, lineChart, hBars, table, legend,
+    nameCell, api, fetchOnce, pending } = Dash;
+
+  // ---------- data ----------
+  // Served by serve.mjs, every panel is queried from the lake when the page needs it. Opened as a
+  // file, there is no server, so the page shows generated sample data instead.
+  let DATA;
+  let agentOrder = [];
+
+  const UNATTRIBUTED = "Unattributed";
+  const personOf = r => r.person || UNATTRIBUTED;
+
+  // ---------- state ----------
+  const state = { days: 30, agents: new Set(), person: "", device: "",
+                  sessSort: { key: "started_at", dir: -1 }, sessAll: false, openSession: "", turnsAll: false };
+  let UNATTR = [], UNATTR_DEVICES = new Map();
+  // Drill-down results fetched so far, kept in memory until the page is reloaded.
+  const PEOPLE = new Map(), PROMPTS = new Map();
+
+  function setData(d) {
+    DATA = d;
+    agentOrder = agentOrderFor(DATA.activity.map(r => r.agent));
+    state.agents = new Set(agentOrder);
+    UNATTR = DATA.unattributed || [];
+    UNATTR_DEVICES = new Map((DATA.unattributed_devices || []).map(x => [x.device_native_id, x]));
+  }
+
+  // ---------- filtering ----------
+  function windowDays() {
+    const endDay = parseDay(DATA.generated_at.slice(0, 10));
+    const out = [];
+    for (let t = endDay - (state.days - 1) * DAY; t <= endDay; t += DAY) out.push(isoDay(t));
+    return out;
+  }
+  function inScope(r, days) {
+    return days.has(r.day) && state.agents.has(r.agent) && (!state.person || personOf(r) === state.person);
+  }
+
+  // ---------- render ----------
+  function render() {
+    const dayList = windowDays();
+    const days = new Set(dayList);
+    const rows = DATA.activity.filter(r => inScope(r, days));
+    const models = DATA.models.filter(r => days.has(r.day) && state.agents.has(r.agent));
+    const shownAgents = agentOrder.filter(a => state.agents.has(a));
+
+    // KPIs
+    const cost = nsum(rows, "cost_usd");
+    const people = new Set(rows.map(personOf)).size;
+    const inTok = nsum(rows, "input_tokens"), outTok = nsum(rows, "output_tokens"), cache = nsum(rows, "cache_read_tokens");
+    const noCost = shownAgents.filter(a => rows.some(r => r.agent === a) && !rows.some(r => r.agent === a && r.cost_usd != null));
+    const kpis = [
+      { hero: true, label: "Reported cost", value: usd(cost),
+        note: noCost.length ? "Excludes " + noCost.map(agentName).join(", ") + " (no cost reported)" : `Last ${state.days} days` },
+      { label: "Active people", value: num(people), note: rows.some(r => !r.person) ? "Includes unattributed" : "" },
+      { label: "Sessions", value: num(nsum(rows, "sessions") || 0) },
+      { label: "Prompts", value: num(nsum(rows, "prompts") || 0) },
+      { label: "Tool calls", value: num(nsum(rows, "tool_calls") || 0) },
+      { label: "Tokens in + out", value: inTok == null && outTok == null ? "—" : num((inTok || 0) + (outTok || 0)),
+        note: cache != null && inTok != null ? share(cache / (cache + inTok)) + " of input served from cache" : "" },
+    ];
+    $("kpis").replaceChildren(...kpis.map(k => {
+      const c = el("div", { class: "card kpi" + (k.hero ? " hero" : "") });
+      c.append(el("div", { class: "label" }, k.label), el("div", { class: "value" }, k.value));
+      if (k.note) c.append(el("div", { class: "note" }, k.note));
+      return c;
+    }));
+
+    // Daily cost (only agents that report cost get a series)
+    const idx = new Map(dayList.map((d, i) => [d, i]));
+    const costAgents = shownAgents.filter(a => rows.some(r => r.agent === a && r.cost_usd != null));
+    const costSeries = costAgents.map(a => {
+      const values = dayList.map(() => 0);
+      for (const r of rows) if (r.agent === a && r.cost_usd != null) values[idx.get(r.day)] += r.cost_usd;
+      return { key: a, label: agentName(a), color: agentColor(a), values };
+    });
+    $("cost-sub").textContent = costAgents.length ? "USD per UTC day" : "";
+    legend($("cost-legend"), costSeries.length > 1 ? costAgents : []);
+    stackedColumns($("cost-chart"), dayList, costSeries, v => "$" + compact(v), v => usd(v, true), "No reported cost in this selection");
+    table($("cost-table"), ["Day"].concat(costSeries.map(s => s.label), ["Total"]),
+      dayList.slice().reverse().map(d => {
+        const i = idx.get(d);
+        return [d].concat(costSeries.map(s => usd(s.values[i], true)), [usd(costSeries.reduce((t, s) => t + s.values[i], 0), true)]);
+      }));
+
+    // Daily sessions
+    const sessSeries = shownAgents.filter(a => rows.some(r => r.agent === a)).map(a => {
+      const values = dayList.map(() => 0);
+      for (const r of rows) if (r.agent === a) values[idx.get(r.day)] += r.sessions || 0;
+      return { key: a, label: agentName(a), color: agentColor(a), values };
+    });
+    legend($("sessions-legend"), sessSeries.length > 1 ? sessSeries.map(s => s.key) : []);
+    lineChart($("sessions-chart"), dayList, sessSeries, compact, "No sessions in this selection", "Daily sessions");
+    table($("sessions-table"), ["Day"].concat(sessSeries.map(s => s.label)),
+      dayList.slice().reverse().map(d => [d].concat(sessSeries.map(s => numExact(s.values[idx.get(d)])))));
+
+    // People
+    const byPerson = new Map();
+    for (const r of rows) {
+      const p = personOf(r);
+      const o = byPerson.get(p) || { cost: null, sessions: 0, tools: 0, agents: new Set() };
+      if (r.cost_usd != null) o.cost = (o.cost || 0) + r.cost_usd;
+      o.sessions += r.sessions || 0; o.tools += r.tool_calls || 0; o.agents.add(r.agent);
+      byPerson.set(p, o);
+    }
+    const peopleRows = [...byPerson].sort((a, b) => (b[1].cost || 0) - (a[1].cost || 0) || b[1].sessions - a[1].sessions);
+    hBars($("people-chart"), peopleRows.filter(p => p[1].cost > 0).slice(0, 8).map(([p, o]) => ({
+      label: p, value: o.cost, display: usd(o.cost), onClick: () => selectPerson(p),
+      tip: [{ value: usd(o.cost, true), label: "cost" }, { value: numExact(o.sessions), label: "sessions" },
+            { value: [...o.agents].map(agentName).join(", "), label: "" }],
+    })), "No reported cost in this selection");
+    table($("people-table"), ["Person", "Cost", "Sessions", "Tool calls", "Agents"],
+      peopleRows.map(([p, o]) => ({ onClick: () => selectPerson(p),
+        cells: [p, usd(o.cost, true), numExact(o.sessions), numExact(o.tools), [...o.agents].map(agentName).join(", ")] })), [4]);
+
+    renderDetail(days);
+    renderUnattributed(days);
+
+    // Models (the person filter can't apply: model rows aren't per person)
+    const byModel = new Map();
+    for (const r of models) {
+      const o = byModel.get(r.model) || { cost: null, requests: 0, tokens: null, agents: new Set() };
+      if (r.cost_usd != null) o.cost = (o.cost || 0) + r.cost_usd;
+      o.requests += r.requests || 0;
+      if (r.input_tokens != null || r.output_tokens != null) o.tokens = (o.tokens || 0) + (r.input_tokens || 0) + (r.output_tokens || 0);
+      o.agents.add(r.agent);
+      byModel.set(r.model, o);
+    }
+    const modelRows = [...byModel].sort((a, b) => (b[1].cost || 0) - (a[1].cost || 0) || b[1].requests - a[1].requests);
+    hBars($("models-chart"), modelRows.filter(m => m[1].cost > 0).slice(0, 8).map(([m, o]) => ({
+      label: m, value: o.cost, display: usd(o.cost),
+      tip: [{ value: usd(o.cost, true), label: "cost" }, { value: numExact(o.requests), label: "requests" },
+            { value: num(o.tokens), label: "tokens in + out" }],
+    })), "No reported cost in this selection");
+    const modelsHost = $("models-chart");
+    if (state.person) modelsHost.prepend(el("div", { class: "sub" }, "All people: model rows aren't broken down per person"));
+    table($("models-table"), ["Model", "Cost", "Requests", "Tokens in + out", "Agents"],
+      modelRows.map(([m, o]) => [m, usd(o.cost, true), numExact(o.requests), num(o.tokens), [...o.agents].map(agentName).join(", ")]), [4]);
+
+    // By-agent table
+    table($("agent-table"), ["Agent", "People", "Sessions", "Prompts", "Tool calls", "Input tokens", "Output tokens", "Cache-read tokens", "Cost"],
+      shownAgents.filter(a => rows.some(r => r.agent === a)).map(a => {
+        const ar = rows.filter(r => r.agent === a);
+        const prompts = nsum(ar, "prompts");
+        return [nameCell(a), numExact(new Set(ar.map(personOf)).size), numExact(nsum(ar, "sessions")),
+          prompts ? numExact(prompts) : "—", numExact(nsum(ar, "tool_calls")),
+          num(nsum(ar, "input_tokens")), num(nsum(ar, "output_tokens")), num(nsum(ar, "cache_read_tokens")), usd(nsum(ar, "cost_usd"), true)];
+      }));
+  }
+
+  // ---------- person drill-down (sessions + top tools) ----------
+  const deviceLabel = serial => {
+    const d = UNATTR_DEVICES.get(serial);
+    return d && d.device_names ? d.device_names : serial;
+  };
+
+  function selectPerson(p, device) {
+    state.person = p; state.device = device || ""; state.sessAll = false; state.openSession = "";
+    $("person").value = p;
+    render();
+    $("detail").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function renderDetail(days) {
+    const host = $("detail");
+    host.hidden = !state.person;
+    if (!state.person) return;
+    const unattr = state.person === UNATTRIBUTED;
+    const devCol = unattr && !state.device;
+
+    $("detail-title").textContent = unattr
+      ? (state.device ? `Unattributed sessions on ${deviceLabel(state.device)}` : "Unattributed sessions")
+      : `Sessions · ${state.person}`;
+    const p = state.person;
+    const pd = fetchOnce(PEOPLE, p, () => ({ sessions: DATA.sessions.filter(x => personOf(x) === p), tools: DATA.tools.filter(r => personOf(r) === p) }),
+      "api/person", { person: unattr ? "" : p });
+    if (pd.status !== "ready") {
+      $("detail-sub").textContent = `Last ${state.days} days`;
+      $("detail-sessions").replaceChildren(pending(pd, "sessions", PEOPLE, p));
+      $("detail-more").hidden = true;
+      $("detail-tools").replaceChildren(pending(pd, "tools", PEOPLE, p));
+      $("detail-tools-table").replaceChildren();
+      return;
+    }
+    const sess = pd.sessions.filter(x => days.has(x.started_at.slice(0, 10)) && state.agents.has(x.agent)
+      && (!state.device || x.device_native_id === state.device));
+    const totalCost = nsum(sess, "cost_usd");
+    $("detail-sub").textContent = `${numExact(sess.length)} sessions started in the last ${state.days} days`
+      + (totalCost != null ? ` · ${usd(totalCost, true)}` : "") + " · click a session for its prompts";
+
+    const { key, dir } = state.sessSort;
+    const val = x => key === "duration" ? tsParse(x.ended_at) - tsParse(x.started_at)
+      : key === "tokens" ? (x.input_tokens || 0) + (x.output_tokens || 0)
+      : key === "started_at" ? tsParse(x.started_at) : (x[key] == null ? -1 : x[key]);
+    sess.sort((a, b) => dir * (val(a) - val(b)));
+    const LIMIT = 25;
+    const shown = state.sessAll ? sess : sess.slice(0, LIMIT);
+
+    const col = (label, k) => ({ label, sort: { active: key === k, dir, onSort: () => {
+      state.sessSort = { key: k, dir: key === k ? -dir : -1 }; render();
+    } } });
+    const head = [col("Started (UTC)", "started_at"), "Agent"]
+      .concat(devCol ? ["Device"] : [], [col("Duration", "duration"), "Models", col("Prompts", "prompts"),
+        col("Tool calls", "tool_calls"), col("Tokens", "tokens"), col("Cost", "cost_usd")]);
+    const sessKey = x => `${x.agent}|${x.person || ""}|${x.session_id}`;
+    const trs = table($("detail-sessions"), head, shown.map(x => {
+      const open = state.openSession === sessKey(x);
+      const started = el("span");
+      started.append(el("span", { class: "chev", "aria-hidden": "true" }, open ? "▾" : "▸"), fmtTs(x.started_at));
+      // First model plus a count keeps the column narrow; the full list is in the tooltip and the prompts.
+      const ms = x.models ? x.models.split(", ") : [];
+      const models = el("span", ms.length ? { title: x.models } : { class: "na" }, ms.length ? null : "—");
+      if (ms.length) models.append(el("span", { class: "model" }, ms[0]), ms.length > 1 ? `+${ms.length - 1}` : "");
+      return { onClick: () => toggleSession(sessKey(x)), cells: [{ node: started }, nameCell(x.agent)]
+        .concat(devCol ? [deviceLabel(x.device_native_id)] : [], [
+          fmtDuration(tsParse(x.ended_at) - tsParse(x.started_at)), { node: models, wrap: true },
+          x.prompts ? numExact(x.prompts) : "—", numExact(x.tool_calls),
+          x.input_tokens == null && x.output_tokens == null ? "—" : num((x.input_tokens || 0) + (x.output_tokens || 0)),
+          usd(x.cost_usd, true)]) };
+    }), devCol ? [1, 2, 4] : [1, 3]);
+    shown.forEach((x, i) => {
+      const tr = trs[i];
+      tr.setAttribute("aria-expanded", String(state.openSession === sessKey(x)));
+      if (state.openSession !== sessKey(x)) return;
+      tr.classList.add("open");
+      const cell = el("td", { class: "turns-cell", colspan: head.length });
+      const view = turnsView(x, sessKey(x));
+      // When the table scrolls sideways (narrow screens), keep the prompts pinned to the visible width.
+      view.style.position = "sticky"; view.style.left = "8px";
+      view.style.maxWidth = Math.max(240, $("detail-sessions").clientWidth - 16) + "px";
+      cell.append(view);
+      const row = el("tr");
+      row.append(cell);
+      tr.after(row);
+    });
+    if (!sess.length) $("detail-sessions").replaceChildren(el("div", { class: "empty" }, "No sessions started in this selection"));
+    const more = $("detail-more");
+    more.hidden = sess.length <= LIMIT;
+    more.textContent = state.sessAll ? "Show fewer" : `Show all ${numExact(sess.length)} sessions`;
+
+    // Top tools. Tool rows carry no device, so a device-scoped view still shows all unattributed tools.
+    const byTool = new Map();
+    for (const r of pd.tools) {
+      if (!days.has(r.day) || !state.agents.has(r.agent)) continue;
+      const o = byTool.get(r.tool) || { calls: 0, agents: new Set() };
+      o.calls += r.calls; o.agents.add(r.agent);
+      byTool.set(r.tool, o);
+    }
+    const tools = [...byTool].sort((a, b) => b[1].calls - a[1].calls);
+    $("tools-sub").textContent = unattr && state.device ? "All unattributed devices, selected period" : "Tool calls, selected period";
+    hBars($("detail-tools"), tools.slice(0, 10).map(([t, o]) => ({
+      label: t, value: o.calls, display: compact(o.calls),
+      tip: [{ value: numExact(o.calls), label: "calls" }, { value: [...o.agents].map(agentName).join(", "), label: "" }],
+    })), "No tool calls in this selection");
+    table($("detail-tools-table"), ["Tool", "Calls", "Agents"],
+      tools.map(([t, o]) => [t, numExact(o.calls), [...o.agents].map(agentName).join(", ")]), [2]);
+  }
+
+  // ---------- prompts within a session (fetched when the session is opened) ----------
+  function toggleSession(key) {
+    state.openSession = state.openSession === key ? "" : key;
+    state.turnsAll = false;
+    render();
+  }
+
+  // Prompt and response text is data from the lake: always textContent, never parsed as HTML.
+  function turnsView(sess, key) {
+    const box = el("div", { class: "turns" });
+    const pr = fetchOnce(PROMPTS, key, () => ({ prompts: sampleTurns(sess) }), "api/prompts",
+      { agent: sess.agent, person: sess.person || "", session_id: sess.session_id, since: sess.started_at });
+    if (pr.status !== "ready") {
+      const n = pending(pr, "prompts", PROMPTS, key);
+      n.className = "turns-head";
+      box.append(n);
+      return box;
+    }
+    const turns = pr.prompts;
+    if (!turns.length) {
+      box.append(el("div", { class: "turns-head" }, "No prompt text was recorded for this session."));
+      return box;
+    }
+    box.append(el("div", { class: "turns-head" },
+      `${numExact(turns.length)} prompts · text as stored by TraceForce: values your redaction policy matched appear as ****; long text is truncated`));
+    const LIMIT = 20;
+    for (const t of state.turnsAll ? turns : turns.slice(0, LIMIT)) {
+      const card = el("div", { class: "turn" });
+      const meta = el("div", { class: "turn-meta" });
+      meta.append(el("b", null, fmtTs(t.ts)));
+      const dur = tsParse(t.ended_at) - tsParse(t.ts);
+      if (dur >= 60000) meta.append(el("span", null, fmtDuration(dur)));
+      if (t.models) meta.append(el("span", null, t.models));
+      if (t.tool_calls) meta.append(el("span", null, `${numExact(t.tool_calls)} tool call${t.tool_calls === 1 ? "" : "s"}`));
+      if (t.input_tokens != null || t.output_tokens != null) meta.append(el("span", null, `${num((t.input_tokens || 0) + (t.output_tokens || 0))} tokens`));
+      if (t.cost_usd != null) meta.append(el("span", null, usd(t.cost_usd, true)));
+      card.append(meta);
+      const prompt = el("div", { class: "turn-text clamp" }, t.prompt || "(no prompt text)");
+      card.append(prompt);
+      if (t.response) card.append(el("div", { class: "turn-resp turn-text clamp" }, t.response));
+      const long = (t.prompt || "").length > 320 || (t.response || "").length > 240
+        || /(\n.*){3}/.test(t.prompt || "") || /(\n.*){2}/.test(t.response || "");
+      if (long) {
+        const more = el("button", { class: "link", type: "button" }, "Show full text");
+        more.addEventListener("click", e => {
+          e.stopPropagation();
+          const full = card.classList.toggle("full");
+          more.textContent = full ? "Show less" : "Show full text";
+        });
+        card.append(more);
+      }
+      box.append(card);
+    }
+    if (turns.length > LIMIT) {
+      const all = el("button", { class: "link", type: "button" }, state.turnsAll ? "Show fewer prompts" : `Show all ${numExact(turns.length)} prompts`);
+      all.addEventListener("click", () => { state.turnsAll = !state.turnsAll; render(); });
+      box.append(all);
+    }
+    return box;
+  }
+
+  function sampleTurns(sess) {
+    const asks = ["Fix the failing test in billing/invoice_test.go and explain the root cause.",
+      "Summarize what changed in the last three commits.", "Add retry with backoff to the S3 upload helper.",
+      "Why is the build slow? Look at the CI logs.", "Write a migration that adds an index on events(ts).",
+      "Review this diff for security issues.", "Rename the config flag and update the docs."];
+    const n = Math.max(1, Math.min(sess.prompts || 1, 12)), t0 = tsParse(sess.started_at), t1 = tsParse(sess.ended_at);
+    const iso = t => new Date(t).toISOString().replace("T", " ").slice(0, 19);
+    return Array.from({ length: n }, (_, i) => ({
+      ts: iso(t0 + ((t1 - t0) * i) / n), ended_at: iso(t0 + ((t1 - t0) * (i + 0.8)) / n),
+      prompt: asks[(i + sess.session_id.length) % asks.length],
+      response: "Done. I traced it to a stale fixture, updated it, and the suite passes. Details:\n- fixture regenerated\n- added a regression test\n- no API changes",
+      models: sess.models, tool_calls: Math.round((sess.tool_calls || 0) / n),
+      input_tokens: sess.input_tokens == null ? null : Math.round(sess.input_tokens / n),
+      output_tokens: sess.output_tokens == null ? null : Math.round(sess.output_tokens / n),
+      cost_usd: sess.cost_usd == null ? null : sess.cost_usd / n,
+    }));
+  }
+
+  // ---------- unattributed activity by device ----------
+  function renderUnattributed(days) {
+    const card = $("unattr-card");
+    const rows = UNATTR.filter(r => days.has(r.day) && state.agents.has(r.agent));
+    card.hidden = !rows.length || (state.person && state.person !== UNATTRIBUTED);
+    if (card.hidden) return;
+    const byDev = new Map();
+    for (const r of rows) {
+      const o = byDev.get(r.device_native_id) || { sessions: 0, tools: 0, cost: null, agents: new Set() };
+      o.sessions += r.sessions; o.tools += r.tool_calls; o.agents.add(r.agent);
+      if (r.cost_usd != null) o.cost = (o.cost || 0) + r.cost_usd;
+      byDev.set(r.device_native_id, o);
+    }
+    const devs = [...byDev].sort((a, b) => (b[1].cost || 0) - (a[1].cost || 0) || b[1].sessions - a[1].sessions);
+    table($("unattr-table"), ["Device", "MDM", "Signed-in accounts", "Agents", "Sessions", "Tool calls", "Cost", "Last seen (UTC)"],
+      devs.map(([serial, o]) => {
+        const d = UNATTR_DEVICES.get(serial) || {};
+        const name = el("span");
+        name.append(document.createTextNode(d.device_names || serial));
+        if (d.device_names) name.append(el("span", { class: "dim" }, serial));
+        if (d.live_devices > 1) name.append(el("span", { class: "dim" }, `· serial shared by ${d.live_devices} devices`));
+        const accts = (d.accounts || "").split(", ").filter(Boolean);
+        const acc = el("span", null, accts.length === 1 ? `${accts[0]} (only account: likely owner)` : accts.join(", ") || "None seen");
+        if (!accts.length) acc.className = "na";
+        return { onClick: () => selectPerson(UNATTRIBUTED, serial),
+          cells: [{ node: name }, d.mdm_status || "No MDM record", { node: acc, wrap: true }, [...o.agents].map(agentName).join(", "),
+            numExact(o.sessions), numExact(o.tools), usd(o.cost, true), d.last_seen_at ? fmtTs(d.last_seen_at) : "—"] };
+      }), [1, 2, 3]);
+  }
+
+  // ---------- controls ----------
+  function initControls() {
+    const fresh = DATA.ingested_through ? `Loaded through ${DATA.ingested_through.slice(0, 16)} UTC · ` : "";
+    $("freshness").textContent = isSample ? `generated ${DATA.generated_at}` : `${fresh}queried ${DATA.generated_at}`;
+    $("sample").hidden = !isSample;
+
+    const range = $("range");
+    const syncRange = () => range.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.days === state.days)));
+    range.addEventListener("click", e => {
+      const b = e.target.closest("button"); if (!b) return;
+      state.days = +b.dataset.days; syncRange(); render();
+    });
+    syncRange();
+
+    const chips = $("agents");
+    for (const a of agentOrder) {
+      const b = el("button", { class: "chip", "aria-pressed": "true", type: "button" });
+      b.append(swatch(agentColor(a)), document.createTextNode(agentName(a)));
+      b.addEventListener("click", () => {
+        if (state.agents.has(a)) { if (state.agents.size > 1) state.agents.delete(a); } else state.agents.add(a);
+        chips.querySelectorAll(".chip").forEach((c, i) => c.setAttribute("aria-pressed", String(state.agents.has(agentOrder[i]))));
+        render();
+      });
+      chips.append(b);
+    }
+
+    const sel = $("person");
+    const people = [...new Set(DATA.activity.map(personOf))].sort((a, b) => (a === UNATTRIBUTED) - (b === UNATTRIBUTED) || a.localeCompare(b));
+    for (const p of people) sel.append(el("option", { value: p }, p));
+    sel.addEventListener("change", () => { state.person = sel.value; state.device = ""; state.sessAll = false; state.openSession = ""; render(); });
+    $("detail-clear").addEventListener("click", () => { state.person = ""; state.device = ""; sel.value = ""; render(); });
+    $("detail-more").addEventListener("click", () => { state.sessAll = !state.sessAll; render(); });
+
+    // Re-render on width changes only; height changes come from render itself.
+    let raf, lastW = 0;
+    new ResizeObserver(([e]) => {
+      const w = Math.round(e.contentRect.width);
+      if (w === lastW) return;
+      lastW = w; cancelAnimationFrame(raf); raf = requestAnimationFrame(render);
+    }).observe(document.querySelector("main"));
+  }
+
+  // ---------- sample data (used only when the page is opened as a file) ----------
+  function sampleData() {
+    // Hoisted above the helpers it would otherwise use, so it carries its own.
+    const iso = t => new Date(t).toISOString().slice(0, 10);
+    let seed = 7;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const people = ["ana", "ben", "chen", "dara", "eli", "fatima", "gus", "hana", "ivan", "jo", "kai"].map(p => p + "@example.com");
+    const agents = [
+      { a: "claude_code", users: 9, cost: 6, tok: true, models: [["claude-opus-5-5", .7], ["claude-sonnet-5-5", .2], ["claude-haiku-5-5", .1]] },
+      { a: "cursor", users: 5, cost: 0, tok: false },
+      { a: "claude", users: 6, cost: 1.2, tok: true, models: [["claude-opus-5-5", 1]] },
+      { a: "github_copilot", users: 4, cost: 0, tok: true },
+      { a: "chatgpt_codex", users: 2, cost: 0, tok: true },
+    ];
+    const today = new Date(); const end = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+    const activity = [], models = [];
+    for (let d = 89; d >= 0; d--) {
+      const t = end - d * DAY, day = iso(t), wd = new Date(t).getUTCDay();
+      const busy = (wd === 0 || wd === 6 ? 0.25 : 1) * (0.6 + 0.4 * (1 - d / 90));
+      for (const g of agents) {
+        for (let u = 0; u < g.users; u++) {
+          if (rnd() > busy * 0.8) continue;
+          const sessions = 1 + Math.floor(rnd() * 5), prompts = g.a === "github_copilot" || g.a === "chatgpt_codex" ? 0 : sessions * (2 + Math.floor(rnd() * 8));
+          const inT = g.tok ? Math.round(sessions * (20000 + rnd() * 90000)) : null;
+          const cost = g.cost ? +(sessions * g.cost * (0.4 + rnd() * 1.2)).toFixed(4) : null;
+          activity.push({ day, agent: g.a, person: u === g.users - 1 && g.a === "github_copilot" ? null : people[(u * 3 + agents.indexOf(g)) % people.length],
+            sessions, prompts, tool_calls: sessions * Math.floor(5 + rnd() * 40),
+            input_tokens: inT, output_tokens: g.tok ? Math.round(inT * 0.6) : null,
+            cache_read_tokens: g.tok ? Math.round(inT * (20 + rnd() * 30)) : null, cost_usd: cost });
+          for (const [m, share] of g.models || [[g.a === "github_copilot" ? "gpt-6-luna" : g.a === "chatgpt_codex" ? "codex-auto-review" : "auto", 1]])
+            if (g.tok) models.push({ day, agent: g.a, model: m, requests: Math.round(sessions * 12 * share),
+              input_tokens: Math.round(inT * share), output_tokens: Math.round(inT * 0.6 * share), cache_read_tokens: null,
+              cost_usd: cost == null ? null : +(cost * share).toFixed(4) });
+        }
+      }
+    }
+    // Sessions, tools and unattributed rows derived from the activity rows so the drill-downs agree with the totals.
+    const TOOLNAMES = ["Bash", "Read", "Edit", "Grep", "WebSearch", "github/create_pull_request", "linear/search_issues"];
+    const sessions = [], tools = [], unattributed = [];
+    let sid = 0;
+    for (const r of activity) {
+      const t0 = Date.parse(r.day + "T08:00:00Z");
+      for (let k = 0; k < r.sessions; k++) {
+        const start = t0 + Math.floor(rnd() * 10 * 3600000), share = 1 / r.sessions;
+        const ts = t => new Date(t).toISOString().replace("T", " ").slice(0, 19);
+        sessions.push({ agent: r.agent, person: r.person, session_id: "s" + sid++, device_native_id: r.person ? "C02DEMO" + (sid % 9) : "C02NOOWNER",
+          started_at: ts(start), ended_at: ts(start + Math.floor(rnd() * 3 * 3600000)),
+          models: r.cost_usd != null ? (rnd() < 0.8 ? "claude-opus-5-5" : "claude-opus-5-5, claude-haiku-5-5") : "",
+          prompts: Math.round(r.prompts * share), tool_calls: Math.round(r.tool_calls * share),
+          input_tokens: r.input_tokens == null ? null : Math.round(r.input_tokens * share),
+          output_tokens: r.output_tokens == null ? null : Math.round(r.output_tokens * share),
+          cost_usd: r.cost_usd == null ? null : r.cost_usd * share });
+      }
+      let left = r.tool_calls;
+      TOOLNAMES.forEach((tool, i) => {
+        const calls = i === TOOLNAMES.length - 1 ? left : Math.floor(left * (0.45 + rnd() * 0.1));
+        left -= calls;
+        if (calls > 0) tools.push({ day: r.day, agent: r.agent, person: r.person, tool, calls });
+      });
+      if (!r.person) unattributed.push({ day: r.day, agent: r.agent, device_native_id: "C02NOOWNER",
+        sessions: r.sessions, tool_calls: r.tool_calls, tokens: (r.input_tokens || 0) + (r.output_tokens || 0), cost_usd: r.cost_usd });
+    }
+    const unattributed_devices = [{ device_native_id: "C02NOOWNER", live_devices: 1, device_names: "Shared-Build-Mac.local",
+      platforms: "darwin", last_seen_at: iso(end) + " 09:00:00", mdm_status: "No MDM record", accounts: "jo@example.com" }];
+    return { generated_at: iso(end) + " 00:00 UTC", activity, models, sessions, tools, unattributed, unattributed_devices };
+  }
+
+  async function boot() {
+    if (isSample) setData(sampleData());
+    else {
+      document.body.classList.add("loading");
+      const status = el("div", { class: "status" }, "Querying the lake… this takes a few seconds.");
+      $("kpis").replaceChildren(status);
+      try {
+        setData(await api("api/overview"));
+      } catch (err) {
+        status.textContent = `Couldn't load from the lake: ${err.message}. See the terminal running serve.mjs. `;
+        const b = el("button", { class: "link", type: "button" }, "Retry");
+        b.addEventListener("click", () => location.reload());
+        status.append(b);
+        return;
+      }
+      document.body.classList.remove("loading");
+    }
+    initControls();
+    render();
+  }
+  Dash.onUpdate(render);
+  boot();
+})();
+</script>
+</body>
+</html>
