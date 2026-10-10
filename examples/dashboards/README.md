@@ -10,17 +10,40 @@ on disk.
 
 ## Run it (AWS / Athena)
 
+In Claude Code with the `traceforce-lakehouse` plugin installed, type `/dashboards` (or ask Claude to
+open the dashboards). It checks your AWS access, starts the server in the background and opens your
+browser, or tells you exactly what to fix. The server stops when the Claude Code session ends.
+
+From a terminal:
+
 ```bash
-node serve.mjs      # then open http://localhost:8765
+node serve.mjs --open     # check AWS access, start the server, open http://localhost:8765
 ```
 
-The home page links to every dashboard. Use `--port` to pick another port, and Ctrl-C to stop.
+| flag | does |
+|---|---|
+| `--open` | open the home page in your browser once the server is up |
+| `--check` | only check AWS access, then exit (0 = ready, 2 = something to fix) |
+| `--no-check` | skip the AWS check |
+| `--port N` | serve on another port (default 8765) |
+
+Before serving, `serve.mjs` checks, in order: the AWS CLI is installed, `AWS_PROFILE` (if set) exists,
+a region is set, you're signed in, and your identity can use the `traceforce-lakehouse` Athena
+workgroup. The first check that fails stops it with what's wrong and the fix, for example:
+
+```
+✗ You're not signed in to AWS, or your session has expired
+  Sign in: aws sso login --profile lakehouse
+```
+
+If the port already has a dashboards server, it reuses that one (opening it with `--open`) instead of
+failing. Stop the server with Ctrl-C.
 
 `serve.mjs` needs Node 18 or later and nothing else. It runs each dashboard's queries through the
 skill's `athena_query.sh`, so it needs the same AWS credentials and region (the module's read-only
-`query_policy_json` is enough), for example `AWS_PROFILE=... AWS_REGION=... node serve.mjs`. When a
-page says it couldn't load from the lake, the terminal running the server shows Athena's error;
-expired credentials are the usual cause.
+`query_policy_json` is enough), for example `AWS_PROFILE=... AWS_REGION=... node serve.mjs --open`.
+If a page later says it couldn't load from the lake, the terminal running the server shows Athena's
+error.
 
 Each page fetches what it shows when it needs it, and keeps it in memory until you reload. A reload
 queries the lake again. Athena itself keeps each query's result in the workgroup's S3 result location,

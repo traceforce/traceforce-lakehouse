@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 // Serve the TraceForce lakehouse dashboards, querying the lakehouse (AWS / Athena) live.
 //
-//   node serve.mjs              # then open http://localhost:8765
-//   node serve.mjs --port 9000
+//   node serve.mjs              # check AWS access, then serve http://localhost:8765
+//   node serve.mjs --open       # ...and open it in the browser
+//   node serve.mjs --check      # only check AWS access: exit 0, or exit 2 with what to fix
+//   node serve.mjs --port 9000  # another port; --no-check skips the AWS check
+//
+// Before serving, it checks that the AWS CLI is installed, a region is set, you're signed in, and your
+// identity can use the lakehouse's Athena workgroup, and stops with the fix if not. If the port already
+// has a dashboards server, it reuses that one (and opens it with --open) instead of failing.
 //
 // Every folder here with an api.mjs is a dashboard, served at /<folder>/ and listed on the home page.
 // An api.mjs exports:
@@ -16,7 +22,7 @@
 // to disk here: results go straight to the page. (Athena itself keeps each result in the workgroup's S3
 // result location, as it does for every query.) The server listens on 127.0.0.1 only and runs only the
 // SQL files in each dashboard's queries/. The pages send values, never SQL.
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -123,10 +129,85 @@ function send(res, status, type, body, extra = {}) {
   res.end(body);
 }
 
-const portFlag = process.argv.indexOf("--port");
-const PORT = portFlag > 0 ? Number(process.argv[portFlag + 1]) : 8765;
+const argv = process.argv.slice(2);
+const flag = name => argv.includes(name);
+const portFlag = argv.indexOf("--port");
+const PORT = portFlag >= 0 ? Number(argv[portFlag + 1]) : 8765;
+const URL_HOME = `http://localhost:${PORT}/`;
+const WORKGROUP = "traceforce-lakehouse";
 
-createServer(async (req, res) => {
+// ---------- AWS access check ----------
+// Each step that fails says what to do. Exits 2 so a caller (such as the /dashboards command) can tell
+// "fix your setup" from a crash.
+function aws(args) {
+  return new Promise(resolve => execFile("aws", args, { timeout: 30_000 }, (err, stdout, stderr) =>
+    resolve({ ok: !err, missing: err && err.code === "ENOENT", stdout: stdout.trim(), stderr: (stderr || (err && err.message) || "").trim() })));
+}
+function fail(what, fix) {
+  console.error(`✗ ${what}\n  ${fix.split("\n").join("\n  ")}`);
+  process.exit(2);
+}
+async function checkAws() {
+  const profile = process.env.AWS_PROFILE;
+  const p = profile ? ` --profile ${profile}` : "";
+  if (Number(process.versions.node.split(".")[0]) < 18) fail(`Node ${process.versions.node} is too old`, "Install Node 18 or later.");
+
+  if ((await aws(["--version"])).missing)
+    fail("The AWS CLI isn't installed", "Install AWS CLI v2: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html");
+  if (profile && !(await aws(["configure", "list-profiles"])).stdout.split("\n").includes(profile))
+    fail(`AWS profile "${profile}" doesn't exist`, "Set AWS_PROFILE to one of the profiles in ~/.aws/config (aws configure list-profiles).");
+  const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || (await aws(["configure", "get", "region"])).stdout;
+  if (!region) fail("No AWS region is set", `Set the lakehouse's region, for example: AWS_REGION=us-east-1${profile ? ` AWS_PROFILE=${profile}` : ""}\nor save it in your profile: aws configure set region us-east-1${p}`);
+
+  const id = await aws(["sts", "get-caller-identity", "--output", "json"]);
+  if (!id.ok) {
+    const e = id.stderr;
+    if (/InvalidClientTokenId|SignatureDoesNotMatch/i.test(e))
+      fail("The AWS access keys in your environment are invalid", "Replace AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY, or unset them to use your profile.");
+    if (/expired|ExpiredToken|Token has expired|refresh failed|SSO session|SSO Token/i.test(e))
+      fail("You're not signed in to AWS, or your session has expired", `Sign in: aws sso login${p}`);
+    if (/Unable to locate credentials|NoCredentialProviders|no credentials/i.test(e))
+      fail("No AWS credentials found", `Sign in (aws sso login${p || " --profile <name>"}, or aws configure), or set AWS_PROFILE to a profile that has access to the lakehouse.`);
+    fail("AWS rejected your credentials", e.split("\n").pop());
+  }
+  const who = JSON.parse(id.stdout);
+  console.error(`✓ Signed in to AWS as ${who.Arn} (account ${who.Account}, region ${region})`);
+
+  const wg = await aws(["athena", "get-work-group", "--work-group", WORKGROUP, "--region", region, "--output", "json"]);
+  if (!wg.ok) {
+    const e = wg.stderr;
+    if (/AccessDenied|not authorized/i.test(e))
+      fail(`${who.Arn} can't use the lakehouse's Athena workgroup`, `Attach the lakehouse module's read-only query_policy_json to this identity, or switch AWS_PROFILE to one that has it.`);
+    if (/not found|InvalidRequestException/i.test(e))
+      fail(`No "${WORKGROUP}" Athena workgroup in account ${who.Account}, region ${region}`, "Point AWS_PROFILE and AWS_REGION at the account and region where the lakehouse is deployed.");
+    fail("Couldn't reach Athena", e.split("\n").pop());
+  }
+  console.error(`✓ Lakehouse workgroup "${WORKGROUP}" is reachable`);
+}
+
+// ---------- browser ----------
+function openBrowser(url) {
+  const [cmd, args] = process.platform === "darwin" ? ["open", [url]]
+    : process.platform === "win32" ? ["cmd", ["/c", "start", "", url]] : ["xdg-open", [url]];
+  const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
+  child.on("error", () => console.error(`Open ${url} in your browser.`));
+  child.unref();
+}
+
+// An earlier server on this port: reuse it if it's ours, otherwise say what's in the way.
+async function portInUse() {
+  let ours = false;
+  try { ours = (await (await fetch(URL_HOME)).text()).includes("<title>TraceForce Dashboards</title>"); } catch (_) { /* not HTTP */ }
+  if (!ours) fail(`Port ${PORT} is used by another program`, `Pick another port: node serve.mjs --port ${PORT + 1}${flag("--open") ? " --open" : ""}`);
+  console.error(`Dashboards are already running at ${URL_HOME}`);
+  if (flag("--open")) openBrowser(URL_HOME);
+  process.exit(0);
+}
+
+if (!flag("--no-check")) await checkAws();
+if (flag("--check")) process.exit(0);
+
+const server = createServer(async (req, res) => {
   // A page on another site can't reach this server through a DNS name that points at 127.0.0.1.
   if (![`localhost:${PORT}`, `127.0.0.1:${PORT}`].includes(req.headers.host)) return send(res, 403, "text/plain", "forbidden host");
   if (req.method !== "GET") return send(res, 405, "text/plain", "method not allowed");
@@ -153,7 +234,10 @@ createServer(async (req, res) => {
     console.error(`  -> ${status} ${body.error}`);
   }
   send(res, status, "application/json", JSON.stringify(body));
-}).listen(PORT, "127.0.0.1", () => {
-  console.error(`Serving on http://localhost:${PORT} (Ctrl-C to stop)`);
-  for (const name of DASHBOARDS.keys()) console.error(`  http://localhost:${PORT}/${name}/`);
+});
+server.on("error", e => (e.code === "EADDRINUSE" ? portInUse() : fail("The server couldn't start", e.message)));
+server.listen(PORT, "127.0.0.1", () => {
+  console.error(`Serving on ${URL_HOME} (Ctrl-C to stop)`);
+  for (const name of DASHBOARDS.keys()) console.error(`  ${URL_HOME}${name}/`);
+  if (flag("--open")) openBrowser(URL_HOME);
 });
