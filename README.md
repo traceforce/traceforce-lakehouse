@@ -1,23 +1,30 @@
 # TraceForce lakehouse
 
-Query your AI-agent activity logs with SQL, or in plain English from Claude Code — on AWS and
-GCP, also query TraceForce metadata (findings, catalogs, and more) the same way. Everything
-runs in your own cloud — the tables, the hourly load and the queries: **Athena over Iceberg in
-AWS (S3)**, **BigQuery over Iceberg in GCP (GCS)**, or **Snowflake over Iceberg in Azure (Blob
-Storage)** *(early access — activity logs only for now; TraceForce's metadata export doesn't
-support Azure yet)*. Your lakehouse is set up on one of them; compute is serverless either way,
-so there are no servers to run and nothing to upgrade. The easiest way to get the exact
-`main.tf` for your cloud is the Lakehouse tile in TraceForce Settings.
+Query your AI-agent activity (Claude Code, Claude, Cursor, GitHub Copilot) and TraceForce
+findings in plain English, with SQL, or on ready-made dashboards. Everything runs in your own
+cloud: one Terraform module sets up Iceberg tables, loaded hourly, on **AWS (Athena)**, **GCP
+(BigQuery)** or **Azure (Snowflake)** *(early access)*.
 
-Azure is the one exception to "serverless either way, no separate account needed": it runs on
-Snowflake, so unlike Athena/BigQuery (native to the same AWS/GCP account as your logs) you need
-an existing Snowflake account and warehouse credits of your own.
+## Commands
 
-Two things to know about data flow. On AWS and GCP, the daily metadata snapshots are written
-into your bucket by TraceForce's storage role under the grant you already gave it (not on Azure
-yet, so its 18 metadata tables stay empty). Query results never leave your cloud: a bucket this
-module owns on AWS, BigQuery- or Snowflake-managed result storage on GCP and Azure. TraceForce
-can read none of them.
+In Claude Code:
+
+| command | what it does |
+|---|---|
+| `/traceforce-lakehouse:traceforce-lakehouse` | Answers questions about agent activity in plain English, read-only, and drills down into specific prompts and tool calls. |
+| `/traceforce-lakehouse:dashboards` | Opens the usage-and-spend and incident-triage dashboards in your browser. AWS only. |
+
+## Install
+
+Install the plugin in Claude Code (other agents: see [`AGENTS.md`](AGENTS.md)):
+
+```
+/plugin marketplace add traceforce/traceforce-lakehouse
+/plugin install traceforce-lakehouse@traceforce
+```
+
+Then deploy the module for your cloud below. The easiest way to get the exact `main.tf` is the
+Lakehouse tile in TraceForce Settings.
 
 ## Before you start
 
@@ -305,6 +312,14 @@ SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1
 -- not be found: SELECT "agent", count(*) AS events, max("ts") AS latest FROM "agent_events" GROUP BY 1;
 ```
 
+## Dashboards (AWS)
+
+Two local pages that query the lake live: AI agent usage and spend, and incident triage. In
+Claude Code with the plugin installed, type `/traceforce-lakehouse:dashboards`; it checks your
+AWS access, starts the server and opens your browser. From a terminal, `node
+examples/dashboards/serve.mjs --open` (Node 18+). See
+[`examples/dashboards/README.md`](examples/dashboards/README.md).
+
 ## What is in the lake
 
 - `agent_events`: one row per log record or span from every agent scout writes telemetry for
@@ -315,6 +330,24 @@ SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1
 - Logs are stored exactly as TraceForce writes them, with sensitive values redacted according
   to your policy. Finding evidence (the matched value itself) is never loaded; review it in
   the TraceForce console.
+
+## How it works
+
+Everything runs in your own cloud: the tables, the hourly load and the queries. **Athena over
+Iceberg in AWS (S3)**, **BigQuery over Iceberg in GCP (GCS)**, or **Snowflake over Iceberg in
+Azure (Blob Storage)**. Your lakehouse is set up on one of them. On AWS and GCP, compute is
+serverless and native to the same account as your logs, so there are no servers to run and
+nothing to upgrade. Azure is the exception: it runs on Snowflake, so you need an existing
+Snowflake account and warehouse credits of your own.
+
+Azure is early access and holds activity logs only for now, because TraceForce's metadata
+export doesn't support Azure yet. On AWS and GCP, the daily metadata snapshots (findings,
+catalogs, and more) are written into your bucket by TraceForce's storage role, under the grant
+you already gave it. On Azure the 18 metadata tables stay empty.
+
+Query results never leave your cloud. They go to a bucket this module owns on AWS, and to
+BigQuery- or Snowflake-managed result storage on GCP and Azure. TraceForce can read none of
+them.
 
 ## Is it working
 

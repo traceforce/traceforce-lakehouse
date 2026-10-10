@@ -10,7 +10,7 @@ on disk.
 
 ## Run it (AWS / Athena)
 
-In Claude Code with the `traceforce-lakehouse` plugin installed, type `/dashboards` (or ask Claude to
+In Claude Code with the `traceforce-lakehouse` plugin installed, type `/traceforce-lakehouse:dashboards` (or ask Claude to
 open the dashboards). It checks your AWS access, starts the server in the background and opens your
 browser, or tells you exactly what to fix. The server stops when the Claude Code session ends.
 
