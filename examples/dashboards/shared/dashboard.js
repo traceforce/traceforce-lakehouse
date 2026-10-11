@@ -350,11 +350,36 @@ window.Dash = (() => {
     return n;
   }
 
+  // A search box over a fixed list of users (an <input list=...> with a <datalist>). Picking or typing a
+  // full name applies it, an empty box means everyone; Enter or leaving the box takes the one user that
+  // contains the text, else puts back the current filter.
+  function userSearch(input, users, get, set) {
+    const find = text => {
+      const q = text.trim().toLowerCase();
+      if (!q) return "";
+      const exact = users.find(u => u.toLowerCase() === q);
+      if (exact !== undefined) return exact;
+      const hits = users.filter(u => u.toLowerCase().includes(q));
+      return hits.length === 1 ? hits[0] : null;
+    };
+    const apply = p => { if (p !== get()) set(p); };
+    input.addEventListener("input", () => {
+      const q = input.value.trim().toLowerCase();
+      if (!q) apply("");
+      else { const exact = users.find(u => u.toLowerCase() === q); if (exact !== undefined) apply(exact); }
+    });
+    input.addEventListener("change", () => {
+      const p = find(input.value);
+      if (p === null) { input.value = get(); return; }
+      input.value = p; apply(p);
+    });
+  }
+
   return {
     DAY, isSample, onUpdate: f => { rerender = f; },
     AGENTS, agentColor, agentName, agentOrderFor,
     nf, compact, usd, num, numExact, share, parseDay, fmtDay, isoDay, nsum, tsParse, fmtTs, fmtDuration,
     $, el, sv, swatch, showTip, hideTip, stackedColumns, lineChart, hBars, table, legend, nameCell,
-    api, fetchOnce, pending,
+    api, fetchOnce, pending, userSearch,
   };
 })();

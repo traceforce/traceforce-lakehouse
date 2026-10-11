@@ -41,18 +41,24 @@
   </header>
 
   <div class="filters" role="toolbar" aria-label="Filters">
-    <div class="seg" id="range" role="group" aria-label="Date range">
-      <button data-days="7">Last 7 days</button>
-      <button data-days="30">Last 30 days</button>
-      <button data-days="90">Last 90 days</button>
-    </div>
-    <div class="seg" id="status" role="group" aria-label="Review status">
-      <button data-status="open">Open</button>
-      <button data-status="all">All</button>
-    </div>
-    <div class="chips" id="kinds" role="group" aria-label="Finding kinds"></div>
-    <label class="meta">Person
-      <select id="person"><option value="">Everyone</option></select>
+    <label>Date range
+      <select id="range">
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+    </label>
+    <label>Finding type
+      <select id="kinds"><option value="">All types</option></select>
+    </label>
+    <label>Status
+      <select id="status">
+        <option value="open">Open</option>
+        <option value="resolved">Resolved</option>
+      </select>
+    </label>
+    <label>User
+      <input id="person" type="search" list="people" placeholder="All users" autocomplete="off" spellcheck="false"><datalist id="people"></datalist>
     </label>
   </div>
 
@@ -82,7 +88,7 @@
     </div>
 
     <div class="card span-6">
-      <div class="card-head"><h2>People</h2><span class="sub">Incidents per person · click to filter</span></div>
+      <div class="card-head"><h2>Users</h2><span class="sub">Incidents per user · click to filter</span></div>
       <div class="chart" id="people-chart"></div>
       <details><summary>Table</summary><div class="tbl-wrap" id="people-table"></div></details>
     </div>
@@ -96,8 +102,8 @@
 
   <footer>
     <p>Source: <code>sensitive_data_findings</code>, <code>connector_containment_findings</code> and <code>prompt_injection_findings</code> (daily snapshots of TraceForce's findings), and <code>agent_events</code> for blocks and each incident's activity. An incident is one session's findings. Days are UTC.</p>
-    <p>Severity, from the finding: <b>critical</b> for credentials and identity or financial data (SSN, card numbers), and for destroying company data or infrastructure or disabling device defenses when it ran; <b>high</b> for prompt injections and changes to company systems that ran; <b>medium</b> for changes to the device or dev environment that ran; a risky action that failed drops one step; <b>low</b> for contact details such as email addresses and anything unclassified. An incident takes its most severe finding.</p>
-    <p>Open means awaiting or under review. The matched sensitive value is never in the lake: open the finding in the TraceForce console for evidence.</p>
+    <p>Severity, from the finding: <b>critical</b> for credentials and identity or financial data (SSN, card numbers), prompt injections, and destroying company data or infrastructure or disabling device defenses when it ran; <b>high</b> for changes to company systems that ran; <b>medium</b> for changes to the device or dev environment that ran; a risky action that failed drops one step; <b>low</b> for contact details such as email addresses and anything unclassified. An incident takes its most severe finding.</p>
+    <p>Open means awaiting or under review; resolved is any other status (false positive, acknowledged, won't fix, revoked, used in tests). The matched sensitive value is never in the lake: open the finding in the TraceForce console for evidence.</p>
   </footer>
 </main>
 
@@ -107,7 +113,7 @@
   "use strict";
 
   const { DAY, isSample, agentName, numExact, compact, parseDay, isoDay, tsParse, fmtTs,
-    $, el, swatch, stackedColumns, hBars, table, api, fetchOnce, pending } = Dash;
+    $, el, swatch, stackedColumns, hBars, table, api, fetchOnce, pending, userSearch } = Dash;
 
   // Kinds are this page's series, so they take the first categorical slots (validated as adjacent pairs);
   // agents appear as text here.
@@ -117,6 +123,15 @@
     prompt_injection: { name: "Prompt injection", slot: 3 },
   };
   const KIND_ORDER = Object.keys(KINDS);
+  // The critical categories (the critical cases of severity()), offered under their kind in the
+  // Finding type filter.
+  const ran = f => f.outcome === "executed";
+  const CRITICAL = [
+    { kind: "sensitive_data", name: "Credentials", test: f => f.category === "credentials" },
+    { kind: "sensitive_data", name: "Identity or financial data", test: f => f.category === "identity_financial_pii" },
+    { kind: "risky_action", name: "Destructive actions run", test: f => f.category === "company_data_or_infra_destroyed" && ran(f) },
+    { kind: "risky_action", name: "Device defenses disabled", test: f => f.category === "device_defenses_disabled_or_wiped" && ran(f) },
+  ];
   const kindColor = k => `var(--s${KINDS[k].slot})`;
 
   const SEV = [
@@ -129,7 +144,7 @@
   function severity(f) {
     if (f.kind === "sensitive_data")
       return f.category === "credentials" || f.category === "identity_financial_pii" ? 0 : 3;
-    if (f.kind === "prompt_injection") return 1;
+    if (f.kind === "prompt_injection") return 0;
     const base = { company_data_or_infra_destroyed: 0, device_defenses_disabled_or_wiped: 0,
                    company_systems_changed: 1, device_or_dev_env_changed: 2 }[f.category];
     if (base == null) return 3;
@@ -150,7 +165,7 @@
 
   // ---------- state ----------
   let DATA;
-  const state = { days: 30, status: "open", kinds: new Set(KIND_ORDER), person: "",
+  const state = { days: 30, status: "open", match: () => true, person: "",
                   sort: { key: "severity", dir: 1 }, all: false, open: "", full: "" };
   const TIMELINES = new Map();
 
@@ -185,24 +200,18 @@
   // ---------- render ----------
   function render() {
     const dayList = windowDays(), days = new Set(dayList);
-    const findings = DATA.findings.filter(f => days.has(f.day) && state.kinds.has(f.kind)
-      && (state.status === "all" || OPEN.has(f.status)) && (!state.person || f.person === state.person));
+    const findings = DATA.findings.filter(f => days.has(f.day) && state.match(f)
+      && OPEN.has(f.status) === (state.status === "open") && (!state.person || f.person === state.person));
     const blocks = DATA.blocks.filter(b => days.has(b.day) && (!state.person || b.person === state.person));
     const incidents = incidentsOf(findings);
-    const word = state.status === "open" ? "Open " : "";
+    const word = state.status === "open" ? "Open " : "Resolved ";
 
     // KPIs
     const bySev = SEV.map((_, r) => incidents.filter(i => i.sev === r).length);
-    const creds = findings.filter(f => f.kind === "sensitive_data" && f.category === "credentials").length;
-    const destroyed = findings.filter(f => f.kind === "risky_action" && f.category === "company_data_or_infra_destroyed" && f.outcome === "executed").length;
     const kpis = [
-      { hero: true, label: word + "incidents", value: numExact(incidents.length),
-        note: SEV.map((s, r) => bySev[r] ? `${bySev[r]} ${s.label.toLowerCase()}` : "").filter(Boolean).join(" · ") || "Nothing in this selection" },
-      { label: "People affected", value: numExact(new Set(findings.map(f => f.person)).size),
-        note: `${compact(findings.length)} ${word.toLowerCase()}findings` },
-      { label: "Credentials exposed", value: numExact(creds), alert: creds > 0, note: "Sensitive-data findings" },
-      { label: "Destructive actions run", value: numExact(destroyed), alert: destroyed > 0, note: "Company data or infra destroyed" },
-      { label: "Prompt injections", value: numExact(findings.filter(f => f.kind === "prompt_injection").length) },
+      { hero: true, label: word + "critical incidents", value: numExact(bySev[0]), alert: bySev[0] > 0,
+        note: SEV.map((s, r) => r && bySev[r] ? `${bySev[r]} ${s.label.toLowerCase()}` : "").filter(Boolean).join(" · ") || "Nothing else in this selection" },
+      { label: "Users affected", value: numExact(new Set(findings.map(f => f.person)).size) },
       { label: "Blocked by TraceForce", value: numExact(blocks.length), note: "Any status" },
     ];
     $("kpis").replaceChildren(...kpis.map(k => {
@@ -216,7 +225,7 @@
 
     // Findings per day by kind
     const idx = new Map(dayList.map((d, i) => [d, i]));
-    const series = KIND_ORDER.filter(k => state.kinds.has(k) && findings.some(f => f.kind === k)).map(k => {
+    const series = KIND_ORDER.filter(k => findings.some(f => f.kind === k)).map(k => {
       const values = dayList.map(() => 0);
       for (const f of findings) if (f.kind === k) values[idx.get(f.day)]++;
       return { key: k, label: KINDS[k].name, color: kindColor(k), values };
@@ -256,12 +265,12 @@
       label: p || "Unknown", value: o.n, display: numExact(o.n), onClick: p ? pick(p) : null,
       tip: [{ value: numExact(o.n), label: "incidents" }, { value: numExact(o.crit), label: "critical" }, { value: numExact(o.findings), label: "findings" }],
     })), "No incidents in this selection");
-    table($("people-table"), ["Person", "Incidents", "Critical", "Findings"],
+    table($("people-table"), ["User", "Incidents", "Critical", "Findings"],
       peopleRows.map(([p, o]) => ({ onClick: p ? pick(p) : null, cells: [p || "Unknown", numExact(o.n), numExact(o.crit), numExact(o.findings)] })));
 
     // Blocks
     if (!blocks.length) $("blocks").replaceChildren(el("div", { class: "empty" }, "No blocks in this selection"));
-    else table($("blocks"), ["When (UTC)", "Person", "Agent", "Blocked", "Command or input"],
+    else table($("blocks"), ["When (UTC)", "User", "Agent", "Blocked", "Command or input"],
       blocks.slice().reverse().map(b => [fmtTs(b.at), b.person || "Unattributed", agentLabel(b.agent), b.detail,
         { node: el("span", { class: "turn-text" }, argsText(b.tool_args) || "—"), wrap: true }]), [1, 2, 3, 4]);
   }
@@ -272,13 +281,13 @@
     const val = i => key === "severity" ? i.sev * 1e13 - tsParse(i.last) : key === "last" ? tsParse(i.last) : i.findings.length;
     incidents.sort((a, b) => dir * (val(a) - val(b)));
     $("queue-sub").textContent = incidents.length
-      ? `${numExact(incidents.length)} sessions with ${state.status === "open" ? "open " : ""}findings in the last ${state.days} days · click one to triage`
+      ? `${numExact(incidents.length)} sessions with ${state.status === "open" ? "open" : "resolved"} findings in the last ${state.days} days · click one to triage`
       : "";
     const LIMIT = 25, shown = state.all ? incidents : incidents.slice(0, LIMIT);
     const col = (label, k, d) => ({ label, sort: { active: key === k, dir: key === k ? dir : d, onSort: () => {
       state.sort = { key: k, dir: key === k ? -dir : d }; render();
     } } });
-    const head = [col("Severity", "severity", 1), col("Last seen (UTC)", "last", -1), "Person", "Agent", col("Findings", "count", -1), "What was found", "Device"];
+    const head = [col("Severity", "severity", 1), col("Last seen (UTC)", "last", -1), "User", "Agent", col("Findings", "count", -1), "What was found", "Device"];
     if (!incidents.length) { $("queue").replaceChildren(el("div", { class: "empty" }, "No incidents in this selection")); }
     else {
       const trs = table($("queue"), head, shown.map(i => {
@@ -429,31 +438,27 @@
       : `Findings through ${(DATA.findings_through || "").slice(0, 16)} UTC · events through ${(DATA.events_through || "").slice(0, 16)} UTC · queried ${DATA.generated_at}`;
     $("sample").hidden = !isSample;
 
-    const seg = (id, attr, get, set) => {
-      const host = $(id);
-      const sync = () => host.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset[attr] === String(get()))));
-      host.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; set(b.dataset[attr]); state.open = ""; sync(); render(); });
-      sync();
+    const dropdown = (id, get, set) => {
+      const sel = $(id);
+      sel.value = String(get());
+      sel.addEventListener("change", () => { set(sel.value); state.open = ""; render(); });
     };
-    seg("range", "days", () => state.days, v => { state.days = +v; });
-    seg("status", "status", () => state.status, v => { state.status = v; });
+    dropdown("range", () => state.days, v => { state.days = +v; });
+    dropdown("status", () => state.status, v => { state.status = v; });
 
-    const chips = $("kinds");
     for (const k of KIND_ORDER) {
-      const b = el("button", { class: "chip", "aria-pressed": "true", type: "button" });
-      b.append(swatch(kindColor(k)), KINDS[k].name);
-      b.addEventListener("click", () => {
-        if (state.kinds.has(k)) { if (state.kinds.size > 1) state.kinds.delete(k); } else state.kinds.add(k);
-        chips.querySelectorAll(".chip").forEach((c, n) => c.setAttribute("aria-pressed", String(state.kinds.has(KIND_ORDER[n]))));
-        state.open = ""; render();
-      });
-      chips.append(b);
+      $("kinds").append(el("option", { value: k }, KINDS[k].name));
+      CRITICAL.forEach((c, n) => { if (c.kind === k) $("kinds").append(el("option", { value: n }, "\u2003" + c.name)); });
     }
+    dropdown("kinds", () => "", v => {
+      const c = CRITICAL[v];
+      state.match = !v ? () => true : c ? f => f.kind === c.kind && c.test(f) : f => f.kind === v;
+    });
 
     const sel = $("person");
     const people = [...new Set(DATA.findings.map(f => f.person).concat(DATA.blocks.map(b => b.person)).filter(Boolean))].sort();
-    for (const p of people) sel.append(el("option", { value: p }, p));
-    sel.addEventListener("change", () => { state.person = sel.value; state.open = ""; render(); });
+    for (const p of people) $("people").append(el("option", { value: p }));
+    userSearch(sel, people, () => state.person, p => { state.person = p; state.open = ""; render(); });
     $("queue-more").addEventListener("click", () => { state.all = !state.all; render(); });
 
     let raf, lastW = 0;

@@ -15,7 +15,7 @@ The page fetches each piece only when it needs it, through the endpoints in `api
 | when | endpoint | queries |
 |---|---|---|
 | the page loads | `api/overview` | `activity`, `models`, `unattributed`, `unattributed_devices`, `freshness`, in parallel |
-| you pick a person or device | `api/person` | `sessions`, `tools` for that person |
+| you pick a user or device | `api/person` | `sessions`, `tools` for that user |
 | you open a session | `api/prompts` | `prompts` for that session |
 
 Each takes a few seconds. The date range and agent filters apply in the page, so they're instant.
@@ -24,11 +24,11 @@ Prompt text leaves the lake only for the session you open.
 ## What it shows
 
 - **Filters** for the last 7, 30 or 90 days (UTC, ending today),
-  agent and person. Every panel follows them.
-- **Totals**: reported cost, active people, sessions, prompts, tool calls, tokens and cache share.
-- **Daily cost by agent**, **daily sessions by agent**, **top people by cost**, **cost by model**,
+  agent and user. Every panel follows them.
+- **Totals**: reported cost, active users, sessions, prompts, tool calls, tokens and cache share.
+- **Daily cost by agent**, **daily sessions by agent**, **top users by cost**, **cost by model**,
   and a **per-agent table**. Each chart has a table view.
-- **Person drill-down**: click a person (bar or table row) or pick one in the filter to see their
+- **User drill-down**: click a user (bar or table row) or pick one in the filter to see their
   sessions (start time, agent, duration, models, prompts, tool calls, tokens and cost; sortable,
   newest first) and their top tools. MCP tools show as `server/tool`.
 - **Prompts in a session**: click a session to expand its prompts. Each card shows the time, duration,
@@ -42,7 +42,7 @@ Prompt text leaves the lake only for the session you open.
 
 ## How the numbers are counted
 
-- **Person** is the event's `user_email`, else the device's MDM owner. With neither, the row is
+- **User** is the event's `user_email`, else the device's MDM owner. With neither, the row is
   *Unattributed*. GitHub Copilot never reports an email, so it relies on MDM.
 - **Sessions** are distinct `session_id`s, counted once on the UTC day they started.
   **Prompts** are distinct `prompt_id` / `generation_id`. **Tool calls** are distinct

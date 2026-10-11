@@ -18,18 +18,20 @@ sample data and labels it as such.
 ## What it shows
 
 - **Filters** for the last 7, 30 or 90 days (UTC, ending today), review status (*Open*, meaning
-  awaiting or under review, or *All*), finding kind and person.
-- **Totals**: incidents by severity, people affected, credentials exposed, destructive actions that
-  ran, prompt injections, and blocks.
+  awaiting or under review, or *Resolved*, any other status), finding type and user.
+- **Totals**: critical incidents (other severities beneath), then one card per critical category:
+  incidents with credentials, identity or financial data, prompt injections, destructive actions
+  that ran, or device defenses disabled. An incident can count on more than one of these. Then users
+  affected and blocks.
 - **Incidents**: one row per session with findings, most severe first, then most recent. Each shows
-  the person, agent, device and what was found.
+  the user, agent, device and what was found.
 - **An incident**: click one to see its findings inside the session's activity. Each risky action is
   attached to the exact tool call (by `tool_call_id`) with its command and how it was approved
   (permission rules, the user, a hook). Sensitive-data and prompt-injection findings are attached to
   their message where the ids match, or placed at their time. The prompt that led to each finding,
   and two events either side, are shown; the rest collapse to a count (*Show every event* expands
   them). Commands are cut at 2,000 characters.
-- **Findings per day** by kind, **top finding types**, **people** (click to filter), and
+- **Findings per day** by kind, **top finding types**, **users** (click to filter), and
   **blocked by TraceForce**: denied attempts, which never become findings.
 
 ## Severity
@@ -39,8 +41,8 @@ From the finding; an incident takes its most severe finding. The rubric is `seve
 
 | severity | findings |
 |---|---|
-| Critical | credentials (API keys, passwords, private keys, connection strings); identity or financial data (SSN, card numbers); destroying company data or infrastructure, or disabling device defenses, when it ran |
-| High | prompt injections; changes to company systems (cloud resources, shared repos, databases, connector records) that ran |
+| Critical | credentials (API keys, passwords, private keys, connection strings); identity or financial data (SSN, card numbers); prompt injections; destroying company data or infrastructure, or disabling device defenses, when it ran |
+| High | changes to company systems (cloud resources, shared repos, databases, connector records) that ran |
 | Medium | changes to the device or dev environment that ran |
 | Low | contact details such as email addresses and phone numbers; anything unclassified |
 

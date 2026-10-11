@@ -16,20 +16,24 @@
   </header>
 
   <div class="filters" role="toolbar" aria-label="Filters">
-    <div class="seg" id="range" role="group" aria-label="Date range">
-      <button data-days="7">Last 7 days</button>
-      <button data-days="30">Last 30 days</button>
-      <button data-days="90">Last 90 days</button>
-    </div>
-    <div class="chips" id="agents" role="group" aria-label="Agents"></div>
-    <label class="meta">Person
-      <select id="person"><option value="">Everyone</option></select>
+    <label>Date range
+      <select id="range">
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+    </label>
+    <label>Agent
+      <select id="agents"><option value="">All agents</option></select>
+    </label>
+    <label>User
+      <input id="person" type="search" list="people" placeholder="All users" autocomplete="off" spellcheck="false"><datalist id="people"></datalist>
     </label>
   </div>
 
   <section class="kpis" id="kpis" aria-label="Totals"></section>
 
-  <section class="grid" id="detail" aria-label="Person detail" hidden>
+  <section class="grid" id="detail" aria-label="User detail" hidden>
     <div class="card span-8">
       <div class="card-head">
         <h2 id="detail-title">Sessions</h2>
@@ -56,7 +60,7 @@
     </div>
 
     <div class="card span-4">
-      <div class="card-head"><h2>Top people by cost</h2><span class="sub">Click a person for their sessions and prompts</span></div>
+      <div class="card-head"><h2>Top users by cost</h2><span class="sub">Click a user for their sessions and prompts</span></div>
       <div class="chart" id="people-chart"></div>
       <details><summary>Table</summary><div class="tbl-wrap" id="people-table"></div></details>
     </div>
@@ -101,7 +105,7 @@
 
   const { DAY, isSample, agentColor, agentName, agentOrderFor, compact, usd, num, numExact, share, parseDay,
     isoDay, nsum, tsParse, fmtTs, fmtDuration, $, el, swatch, stackedColumns, lineChart, hBars, table, legend,
-    nameCell, api, fetchOnce, pending } = Dash;
+    nameCell, api, fetchOnce, pending, userSearch } = Dash;
 
   // ---------- data ----------
   // Served by serve.mjs, every panel is queried from the lake when the page needs it. Opened as a
@@ -154,7 +158,7 @@
     const kpis = [
       { hero: true, label: "Reported cost", value: usd(cost),
         note: noCost.length ? "Excludes " + noCost.map(agentName).join(", ") + " (no cost reported)" : `Last ${state.days} days` },
-      { label: "Active people", value: num(people), note: rows.some(r => !r.person) ? "Includes unattributed" : "" },
+      { label: "Active users", value: num(people), note: rows.some(r => !r.person) ? "Includes unattributed" : "" },
       { label: "Sessions", value: num(nsum(rows, "sessions") || 0) },
       { label: "Prompts", value: num(nsum(rows, "prompts") || 0) },
       { label: "Tool calls", value: num(nsum(rows, "tool_calls") || 0) },
@@ -211,7 +215,7 @@
       tip: [{ value: usd(o.cost, true), label: "cost" }, { value: numExact(o.sessions), label: "sessions" },
             { value: [...o.agents].map(agentName).join(", "), label: "" }],
     })), "No reported cost in this selection");
-    table($("people-table"), ["Person", "Cost", "Sessions", "Tool calls", "Agents"],
+    table($("people-table"), ["User", "Cost", "Sessions", "Tool calls", "Agents"],
       peopleRows.map(([p, o]) => ({ onClick: () => selectPerson(p),
         cells: [p, usd(o.cost, true), numExact(o.sessions), numExact(o.tools), [...o.agents].map(agentName).join(", ")] })), [4]);
 
@@ -235,12 +239,12 @@
             { value: num(o.tokens), label: "tokens in + out" }],
     })), "No reported cost in this selection");
     const modelsHost = $("models-chart");
-    if (state.person) modelsHost.prepend(el("div", { class: "sub" }, "All people: model rows aren't broken down per person"));
+    if (state.person) modelsHost.prepend(el("div", { class: "sub" }, "All users: model rows aren't broken down per user"));
     table($("models-table"), ["Model", "Cost", "Requests", "Tokens in + out", "Agents"],
       modelRows.map(([m, o]) => [m, usd(o.cost, true), numExact(o.requests), num(o.tokens), [...o.agents].map(agentName).join(", ")]), [4]);
 
     // By-agent table
-    table($("agent-table"), ["Agent", "People", "Sessions", "Prompts", "Tool calls", "Input tokens", "Output tokens", "Cache-read tokens", "Cost"],
+    table($("agent-table"), ["Agent", "Users", "Sessions", "Prompts", "Tool calls", "Input tokens", "Output tokens", "Cache-read tokens", "Cost"],
       shownAgents.filter(a => rows.some(r => r.agent === a)).map(a => {
         const ar = rows.filter(r => r.agent === a);
         const prompts = nsum(ar, "prompts");
@@ -474,29 +478,19 @@
     $("sample").hidden = !isSample;
 
     const range = $("range");
-    const syncRange = () => range.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.days === state.days)));
-    range.addEventListener("click", e => {
-      const b = e.target.closest("button"); if (!b) return;
-      state.days = +b.dataset.days; syncRange(); render();
-    });
-    syncRange();
+    range.value = String(state.days);
+    range.addEventListener("change", () => { state.days = +range.value; render(); });
 
-    const chips = $("agents");
-    for (const a of agentOrder) {
-      const b = el("button", { class: "chip", "aria-pressed": "true", type: "button" });
-      b.append(swatch(agentColor(a)), document.createTextNode(agentName(a)));
-      b.addEventListener("click", () => {
-        if (state.agents.has(a)) { if (state.agents.size > 1) state.agents.delete(a); } else state.agents.add(a);
-        chips.querySelectorAll(".chip").forEach((c, i) => c.setAttribute("aria-pressed", String(state.agents.has(agentOrder[i]))));
-        render();
-      });
-      chips.append(b);
-    }
+    const agentSel = $("agents");
+    for (const a of agentOrder) agentSel.append(el("option", { value: a }, agentName(a)));
+    agentSel.addEventListener("change", () => {
+      state.agents = new Set(agentSel.value ? [agentSel.value] : agentOrder); render();
+    });
 
     const sel = $("person");
     const people = [...new Set(DATA.activity.map(personOf))].sort((a, b) => (a === UNATTRIBUTED) - (b === UNATTRIBUTED) || a.localeCompare(b));
-    for (const p of people) sel.append(el("option", { value: p }, p));
-    sel.addEventListener("change", () => { state.person = sel.value; state.device = ""; state.sessAll = false; state.openSession = ""; render(); });
+    for (const p of people) $("people").append(el("option", { value: p }));
+    userSearch(sel, people, () => state.person, p => { state.person = p; state.device = ""; state.sessAll = false; state.openSession = ""; render(); });
     $("detail-clear").addEventListener("click", () => { state.person = ""; state.device = ""; sel.value = ""; render(); });
     $("detail-more").addEventListener("click", () => { state.sessAll = !state.sessAll; render(); });
 
