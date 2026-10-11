@@ -1,6 +1,7 @@
 // Endpoints for the AI agent usage & spend dashboard; served by ../serve.mjs at /usage-and-spend/api/<name>.
 export const title = "AI agent usage & spend";
 export const description = "Who uses which AI agents, how much, and what it costs, down to each session's prompts.";
+export const order = 1;
 
 // What the page may send. An empty person is the unattributed bucket (NULL).
 export const params = {

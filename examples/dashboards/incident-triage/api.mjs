@@ -1,6 +1,7 @@
 // Endpoints for the incident triage dashboard; served by ../serve.mjs at /incident-triage/api/<name>.
 export const title = "Incident triage";
 export const description = "Sensitive data, risky actions and prompt injections, grouped into incidents per session and ranked by severity.";
+export const order = 2;
 
 // What the page may send. An empty person is unknown (NULL).
 const TS = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,9})?$/;

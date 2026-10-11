@@ -13,6 +13,7 @@
 // Every folder here with an api.mjs is a dashboard, served at /<folder>/ and listed on the home page.
 // An api.mjs exports:
 //   title, description   for the home page
+//   order                optional number: lower comes first on the home page (then by folder name)
 //   params               { name: { pattern, timestamp?, emptyIsNull? } }: the values its pages may send
 //   routes               { name: async (query, { run, runAll, arg }) => json }, served at /<folder>/api/<name>
 // run("x", params) runs the folder's queries/x.sql through the skill's athena_query.sh, with each
@@ -105,13 +106,15 @@ function helpers(dir, params) {
   return { run, runAll, arg };
 }
 
-const DASHBOARDS = new Map();
-for (const ent of readdirSync(HERE, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+const found = [];
+for (const ent of readdirSync(HERE, { withFileTypes: true })) {
   const dir = join(HERE, ent.name);
   if (!ent.isDirectory() || !existsSync(join(dir, "api.mjs"))) continue;
   const mod = await import(pathToFileURL(join(dir, "api.mjs")).href);
-  DASHBOARDS.set(ent.name, { dir, mod, ctx: helpers(dir, mod.params || {}) });
+  found.push([ent.name, { dir, mod, ctx: helpers(dir, mod.params || {}) }]);
 }
+const rank = ([, { mod }]) => mod.order ?? Infinity;
+const DASHBOARDS = new Map(found.sort((a, b) => rank(a) - rank(b) || a[0].localeCompare(b[0])));
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 function homePage() {
