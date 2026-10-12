@@ -5,7 +5,7 @@ findings in plain English, with SQL, or on ready-made dashboards. Everything run
 cloud: one Terraform module sets up Iceberg tables, loaded hourly, on **AWS (Athena)**, **GCP
 (BigQuery)** or **Azure (Snowflake)** *(early access)*.
 
-## Commands
+## Examples
 
 In Claude Code:
 
@@ -14,47 +14,61 @@ In Claude Code:
 | `/traceforce-lakehouse:traceforce-lakehouse` | Answers questions about agent activity in plain English, read-only, and drills down into specific prompts and tool calls. |
 | `/traceforce-lakehouse:dashboards` | Opens the usage-and-spend and incident-triage dashboards in your browser. AWS only. |
 
+## What is in the lake
+
+- `agent_events`: one row per log record or span from every agent scout writes telemetry for
+  (e.g. Claude Code, Claude (claude.ai), Cursor, GitHub Copilot), loaded hourly.
+- 18 metadata tables mirrored daily from TraceForce: devices, accounts, installs,
+  conversations, findings, MCP inventory and catalog. Columns and joins are documented in
+  `skills/traceforce-lakehouse/reference/`.
+- Logs are stored exactly as TraceForce writes them, with sensitive values redacted according
+  to your policy. Finding evidence (the matched value itself) is never loaded; review it in
+  the TraceForce console.
+
+```mermaid
+flowchart LR
+  agents["AI agents<br/>Claude Code, Claude, Cursor, Copilot"] --> scout["TraceForce scout<br/>(on each device)"]
+
+  subgraph cloud["Your cloud: AWS, GCP or Azure"]
+    bucket[("Logs bucket<br/>S3 / GCS / Blob Storage")]
+    load["Scheduled load<br/>hourly ingest + daily mirror"]
+    tables[("Iceberg tables<br/>agent_events + 18 metadata tables")]
+    engine["Query engine<br/>Athena / BigQuery / Snowflake"]
+    bucket --> load --> tables --> engine
+  end
+
+  scout -- "telemetry, redacted" --> bucket
+  engine -- "results stay in your cloud" --> you["Claude Code plugin,<br/>dashboards, SQL"]
+```
+
 ## Install
 
-Install the plugin in Claude Code (other agents: see [`AGENTS.md`](AGENTS.md)):
+1. Deploy the Terraform module for your cloud ([Deploy](#deploy) below). It builds a queryable
+   database (Iceberg tables, loaded hourly) in your own cloud over the agent activity TraceForce
+   already writes to your storage. The easiest way to get the exact `main.tf` is the Lakehouse
+   tile in TraceForce Settings.
 
-```
-/plugin marketplace add traceforce/traceforce-lakehouse
-/plugin install traceforce-lakehouse@traceforce
-```
+2. Install the plugin in Claude Code (other agents: see [`AGENTS.md`](AGENTS.md)):
 
-Then deploy the module for your cloud below. The easiest way to get the exact `main.tf` is the
-Lakehouse tile in TraceForce Settings.
+   ```
+   /plugin marketplace add traceforce/traceforce-lakehouse
+   /plugin install traceforce-lakehouse@traceforce
+   ```
 
 ## Before you start
 
 - TraceForce Settings has an S3, GCS, or Azure Blob Storage Provider configured: the
-  bucket/container and prefix that TraceForce writes to. You will need these values. On Azure
-  you also need the logs storage account's resource group (not shown in Settings), and a globally
-  unique 3-24 character lowercase name for the storage account the module creates.
+  bucket/container and prefix that TraceForce writes to. You will need these values.
 - Terraform 1.5 or later.
-- **AWS:** a principal that can create S3 Tables, Glue, Athena, Step Functions and IAM resources
-  in that account; deploy in the bucket's region.
-- **GCP:** the gcloud CLI signed in (`gcloud auth login` + `gcloud auth application-default
-  login`) on the project that owns the bucket, as an identity that can create BigQuery
-  datasets/connections/transfers and a service account, set IAM, and enable the BigQuery APIs —
-  in practice **project Owner**.
-- **Azure** *(early access)*: an existing Snowflake account on Azure, in the logs storage
-  account's region (anywhere else pays cross-region egress on every load and query), with a
-  key-pair user whose session runs as `ACCOUNTADMIN`: either its default role, or `role =
-  "ACCOUNTADMIN"` in the `snowflake` provider block as the snippet below does (resource
-  monitors, integrations and external volumes need it).
-  Deploying reads `SNOWFLAKE_PRIVATE_KEY` from the environment; the organization, account and
-  user are plain provider arguments in the snippet. The Azure CLI signed in (`az login`) as an
-  identity that can create a storage account and role assignments in the logs resource group —
-  **Owner**, or **User Access Administrator** + **Storage Account Contributor** on that group
-  (the module creates its own storage account there for the Iceberg data). The subscription and
-  tenant IDs are provider arguments too (`az account show --query "{id:id,tenantId:tenantId}"`).
-  The first deployment against a Snowflake account/tenant pair needs a Microsoft Entra admin to
-  grant admin consent (step 3 below); subscription roles like Owner don't include that. With
-  `use_azuread_auth`, the state storage account also needs `Storage Blob Data Contributor`.
+- The cloud-specific requirements at the top of your cloud's section below.
 
-## Deploy — AWS (Athena)
+## Deploy
+
+<details>
+<summary><b>AWS (Athena)</b></summary>
+
+**Before you start:** a principal that can create S3 Tables, Glue, Athena, Step Functions and
+IAM resources in that account; deploy in the bucket's region.
 
 1. Create a root configuration. Keep the state in your own state bucket, never the logs bucket.
 
@@ -107,7 +121,15 @@ Lakehouse tile in TraceForce Settings.
 
 The first load runs within the hour and covers the last few days.
 
-## Deploy — GCP (BigQuery)
+</details>
+
+<details>
+<summary><b>GCP (BigQuery)</b></summary>
+
+**Before you start:** the gcloud CLI signed in (`gcloud auth login` + `gcloud auth
+application-default login`) on the project that owns the bucket, as an identity that can create
+BigQuery datasets/connections/transfers and a service account, set IAM, and enable the BigQuery
+APIs — in practice **project Owner**.
 
 1. Create a root configuration, keeping state in your own GCS bucket, never the logs bucket.
 
@@ -144,7 +166,29 @@ The first load runs within the hour and covers the last few days.
 
    The first load runs within the hour and covers the last few days.
 
-## Deploy — Azure (Snowflake) *(early access)*
+</details>
+
+<details>
+<summary><b>Azure (Snowflake)</b> <i>(early access)</i></summary>
+
+**Before you start:**
+
+- The logs storage account's resource group (not shown in TraceForce Settings), and a globally
+  unique 3-24 character lowercase name for the storage account the module creates.
+- An existing Snowflake account on Azure, in the logs storage account's region (anywhere else
+  pays cross-region egress on every load and query), with a key-pair user whose session runs as
+  `ACCOUNTADMIN`: either its default role, or `role = "ACCOUNTADMIN"` in the `snowflake`
+  provider block as the snippet below does (resource monitors, integrations and external volumes
+  need it). Deploying reads `SNOWFLAKE_PRIVATE_KEY` from the environment; the organization,
+  account and user are plain provider arguments in the snippet.
+- The Azure CLI signed in (`az login`) as an identity that can create a storage account and role
+  assignments in the logs resource group — **Owner**, or **User Access Administrator** +
+  **Storage Account Contributor** on that group (the module creates its own storage account
+  there for the Iceberg data). The subscription and tenant IDs are provider arguments too
+  (`az account show --query "{id:id,tenantId:tenantId}"`).
+- The first deployment against a Snowflake account/tenant pair needs a Microsoft Entra admin to
+  grant admin consent (step 3 below); subscription roles like Owner don't include that. With
+  `use_azuread_auth`, the state storage account also needs `Storage Blob Data Contributor`.
 
 1. Create a root configuration. Keep the state in your own state storage account, never the
    logs storage account.
@@ -283,53 +327,7 @@ The first load runs within the hour and covers the last few days.
 
 The first load runs within the hour and covers the last few days.
 
-## Ask questions
-
-- Show me everything around finding X: the prompts before it, the tool calls after it, and what the agent did with the result.
-- Which tool calls ran without a human approving them, by person and tool?
-- Of the MCP servers installed on our machines, which are actually called, by whom, and which never?
-- Which prompts were blocked and which tool calls were rejected, per person and day?
-- What did each person and model cost this month, in tokens and dollars?
-- Who sent credentials or PII this week, what type, in which file or prompt?
-
-By hand:
-
-- **AWS:** the Athena console (data source `AwsDataCatalog`, catalog
-  `s3tablescatalog/traceforce-lakehouse`, database `traceforce`) or
-  `skills/traceforce-lakehouse/scripts/athena_query.sh "SELECT ..."`.
-- **GCP:** the BigQuery console (dataset `traceforce_lakehouse`) or
-  `skills/traceforce-lakehouse/scripts/bq_query.sh "SELECT ..."`.
-- **Azure:** Snowsight with the reader role from step 4 above active, every name quoted:
-  `USE ROLE "traceforce_lakehouse_reader"; USE WAREHOUSE "traceforce_lakehouse"; USE DATABASE
-  "traceforce_lakehouse"; USE SCHEMA "traceforce";` — the reader only has `USAGE` on that
-  specific warehouse, so a query fails without it selected.
-
-```sql
-SELECT agent, count(*) AS events, max(ts) AS latest FROM agent_events GROUP BY 1;
--- on GCP, qualify tables with the dataset: FROM traceforce_lakehouse.agent_events
--- on Azure/Snowflake, quote every identifier -- table and column names are case-preserved
--- lowercase, and this snippet's bare, unquoted names would otherwise fold to uppercase and
--- not be found: SELECT "agent", count(*) AS events, max("ts") AS latest FROM "agent_events" GROUP BY 1;
-```
-
-## Dashboards (AWS)
-
-Two local pages that query the lake live: AI agent usage and spend, and incident triage. In
-Claude Code with the plugin installed, type `/traceforce-lakehouse:dashboards`; it checks your
-AWS access, starts the server and opens your browser. From a terminal, `node
-examples/dashboards/serve.mjs --open` (Node 18+). See
-[`examples/dashboards/README.md`](examples/dashboards/README.md).
-
-## What is in the lake
-
-- `agent_events`: one row per log record or span from every agent scout writes telemetry for
-  (e.g. Claude Code, Claude (claude.ai), Cursor, GitHub Copilot), loaded hourly.
-- 18 metadata tables mirrored daily from TraceForce: devices, accounts, installs,
-  conversations, findings, MCP inventory and catalog. Columns and joins are documented in
-  `skills/traceforce-lakehouse/reference/`.
-- Logs are stored exactly as TraceForce writes them, with sensitive values redacted according
-  to your policy. Finding evidence (the matched value itself) is never loaded; review it in
-  the TraceForce console.
+</details>
 
 ## How it works
 
