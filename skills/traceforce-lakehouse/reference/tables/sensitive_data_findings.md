@@ -7,6 +7,7 @@ Joins:
 - device owner (secondary, for display): device_id → devices.device_native_id → device_owner_mappings.owner_email
 - conversation_id → agent_conversations.id → conversation_external_id = agent_events.session_id
 - file_id → agent_conversation_files.id (file name, type, size)
+- ChatGPT, the exact event: a message finding is the session's `user_prompt` row with prompt_id = message_external_id; a file finding is its `user_attachment` row with traceforce.file.id (attrs_json) = agent_conversation_files.file_external_id. Events repeat per device: dedupe first (reference/joins.md)
 
 Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 - (org_id, conversation_id, message_external_id, file_id, part_index, start_offset, end_offset, start_line, end_line, rule_id): one row per match location
@@ -19,7 +20,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `sandbox_id` | string | → sandboxes.id; NULL when the row is about the host device itself. |
 | `conversation_id` | string | → agent_conversations.id (TraceForce uuid, NOT the agent's session id). |
 | `file_id` | string | → agent_conversation_files.id when the match is in an attachment; NULL for message findings. |
-| `message_external_id` | string | The agent's own id of the source message (Claude prompt/response id, Cursor generation id). |
+| `message_external_id` | string | The agent's own id of the source message (Claude prompt/response id, Cursor generation id, ChatGPT user message id). ChatGPT: equals agent_events.prompt_id; a file finding carries the message the file was attached to. |
 | `message_timestamp` | timestamp | When the message was sent (UTC): the column to bound a period on; created_at is when TraceForce recorded it. |
 | `category` | string | Coarse sensitive-data class as text (e.g. 'credentials'); never NULL, 'unknown' when the rule mapped no class. |
 | `type` | string | Specific sensitive-data type as text (e.g. 'ssn', 'email_address'); never NULL, 'unknown' when the rule mapped no type. |

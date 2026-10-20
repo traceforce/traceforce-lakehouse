@@ -15,11 +15,12 @@ window.Dash = (() => {
     claude:         { name: "Claude",         slot: 3 },
     github_copilot: { name: "GitHub Copilot", slot: 4 },
     chatgpt_codex:  { name: "ChatGPT Codex",  slot: 5 },
+    chatgpt:        { name: "ChatGPT",        slot: 6 },
   };
   const agentColor = a => AGENTS[a] && AGENTS[a].slot ? `var(--s${AGENTS[a].slot})` : "var(--other)";
   const agentName = a => (AGENTS[a] ? AGENTS[a].name : a);
 
-  // Agents beyond the known five get the next free color slots; the order follows the slots.
+  // Agents beyond the known six get the next free color slots; the order follows the slots.
   function agentOrderFor(seen) {
     const extra = [...new Set(seen)].filter(a => !AGENTS[a]).sort();
     const used = Object.values(AGENTS).filter(x => x.slot).length;

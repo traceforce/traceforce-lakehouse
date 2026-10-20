@@ -19,7 +19,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `sandbox_id` | string | → sandboxes.id; NULL when the row is about the host device itself. |
 | `agent_account_id` | string | → agent_accounts.id |
 | `conversation_external_id` | string | The agent's session/conversation id; equals agent_events.session_id. |
-| `name` | string | Conversation title as shown in the agent UI; NULL if untitled. |
+| `name` | string | Conversation title as shown in the agent UI; NULL if untitled. ChatGPT has one row per device the conversation was scanned on: collapse per conversation_external_id first (max_by(name, updated_at)). |
 | `is_archived` | boolean | Archived in the agent UI. |
 | `conversation_create_time` | timestamp | Agent-reported creation time (UTC). |
 | `conversation_update_time` | timestamp | Agent-reported last update (UTC). |

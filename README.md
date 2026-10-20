@@ -1,9 +1,9 @@
 # TraceForce lakehouse
 
-Query your AI-agent activity (Claude Code, Claude, Cursor, GitHub Copilot) and TraceForce
-findings in plain English, with SQL, or on ready-made dashboards. Everything runs in your own
-cloud: one Terraform module sets up Iceberg tables, loaded hourly, on **AWS (Athena)**, **GCP
-(BigQuery)** or **Azure (Snowflake)** *(early access)*.
+Query your AI-agent activity (Claude Code, Claude, Cursor, GitHub Copilot, ChatGPT) and
+TraceForce findings in plain English, with SQL, or on ready-made dashboards. Everything runs in
+your own cloud: one Terraform module sets up Iceberg tables, loaded hourly, on **AWS (Athena)**,
+**GCP (BigQuery)** or **Azure (Snowflake)** *(early access)*.
 
 ## Examples
 
@@ -17,7 +17,8 @@ In Claude Code:
 ## What is in the lake
 
 - `agent_events`: one row per log record or span from every agent scout writes telemetry for
-  (e.g. Claude Code, Claude (claude.ai), Cursor, GitHub Copilot), loaded hourly.
+  (e.g. Claude Code, Claude (claude.ai), Cursor, GitHub Copilot, and ChatGPT web history),
+  loaded hourly.
 - 18 metadata tables mirrored daily from TraceForce: devices, accounts, installs,
   conversations, findings, MCP inventory and catalog. Columns and joins are documented in
   `skills/traceforce-lakehouse/reference/`.
@@ -27,7 +28,7 @@ In Claude Code:
 
 ```mermaid
 flowchart LR
-  agents["AI agents<br/>Claude Code, Claude, Cursor, Copilot"] --> scout["TraceForce scout<br/>(on each device)"]
+  agents["AI agents<br/>Claude Code, Claude, Cursor, Copilot, ChatGPT"] --> scout["TraceForce scout<br/>(on each device)"]
 
   subgraph cloud["Your cloud: AWS, GCP or Azure"]
     bucket[("Logs bucket<br/>S3 / GCS / Blob Storage")]

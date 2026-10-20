@@ -11,8 +11,8 @@ a span with no decision row is a gap, not an unapproved call. Cursor: only `post
 
 | column | type | meaning |
 |---|---|---|
-| `agent` | string | The agent's proto AgentIdentity name, e.g. AGENT_IDENTITY_CLAUDE_CODE (Claude Code), AGENT_IDENTITY_CLAUDE (the claude.ai chat agent, any deployment — not the desktop app specifically), AGENT_IDENTITY_CURSOR, AGENT_IDENTITY_GITHUB_COPILOT. |
-| `agent_type` | string | `agent` lowercased without the AGENT_IDENTITY_ prefix (e.g. `claude_code`, `cursor`). Join on this, not on `agent`. |
+| `agent` | string | The agent's proto AgentIdentity name, e.g. AGENT_IDENTITY_CLAUDE_CODE (Claude Code), AGENT_IDENTITY_CLAUDE (the claude.ai chat agent, any deployment — not the desktop app specifically), AGENT_IDENTITY_CURSOR, AGENT_IDENTITY_GITHUB_COPILOT, AGENT_IDENTITY_CHATGPT (ChatGPT web history, written by scout from the conversation history after the fact, not live telemetry). |
+| `agent_type` | string | `agent` lowercased without the AGENT_IDENTITY_ prefix (e.g. `claude_code`, `cursor`, `chatgpt`). Join on this, not on `agent`. |
 | `device_native_id` | string | Device serial. Joins devices.device_native_id. |
 | `device_uuid` | string | A stable per-install device GUID; NULL when the agent doesn't provide one. Prefer it over the serial when present. |
 | `sandbox_native_id` | string | Always NULL today; joins sandboxes.sandbox_native_id. |
@@ -29,10 +29,10 @@ a span with no decision row is a gap, not an unapproved call. Cursor: only `post
 | `resource_session_id` | string | OTLP resource attribute `session.id`, a fallback source for `session_id`. Always NULL today. |
 | `ts` | timestamp | Event time, UTC. |
 | `end_ts` | timestamp | Span end time, UTC; NULL on logs. |
-| `event_name` | string | Agent-specific event name (user_prompt, tool_decision, tool_result, api_request, api_error, preToolUse, ...). Vocabularies differ per agent. |
+| `event_name` | string | Agent-specific event name (user_prompt, tool_decision, tool_result, api_request, api_error, preToolUse, ...). Vocabularies differ per agent. ChatGPT: user_prompt, user_attachment, assistant_response, tool_call, tool_result. |
 | `span_name` | string | Span name (spans only). |
 | `operation` | string | Operation type per GenAI semconv (`chat`, `execute_tool`, `invoke_agent`); the cross-agent grouping key. NULL on non-GenAI rows (e.g. connection/session-lifecycle events). |
-| `prompt_id` | string | Per-turn (request/response) identifier; NULL when the agent emits none. |
+| `prompt_id` | string | Per-turn (request/response) identifier; NULL when the agent emits none. ChatGPT: the turn's user message id, on every row of the turn (NULL when that user message was in an earlier scan); equals sensitive_data_findings.message_external_id. |
 | `generation_id` | string | Per-turn identifier for agents that emit one instead of `prompt_id` (e.g. Cursor); NULL otherwise. |
 | `tool_name` | string | The tool invoked. Claude Code MCP calls: the decision/result rows say `mcp_tool`, the span row of the same `tool_call_id` carries the MCP tool's name; the server is in `mcp_server_name`. |
 | `tool_type` | string | Tool type (function, ...). |
@@ -49,11 +49,11 @@ a span with no decision row is a gap, not an unapproved call. Cursor: only `post
 | `output_tokens` | long | Output tokens for the request; NULL when the agent reports no token counts. |
 | `cache_read_tokens` | long | Cache-read tokens for the request; NULL when the agent reports no token counts. |
 | `cost_usd` | double | Turn cost in USD as reported by the agent; NULL when the agent reports none. |
-| `content_input` | string | Prompt as a JSON message array; masked per matched value when the org redacts. Large. |
+| `content_input` | string | Prompt as a JSON message array; masked per matched value when the org redacts. On ChatGPT `user_attachment` rows, the text of a plain-text attachment (up to 512 KiB), NULL on metadata-only attachment rows. Large. |
 | `content_output` | string | Response as a JSON message array; masked per matched value when the org redacts. Large. |
 | `service_name` | string | The emitting service's name (OTLP resource attribute); may name the collector rather than the agent. |
 | `service_version` | string | Version string of the emitter — the agent, or the collector when it emits on the agent's behalf. |
 | `os_type` | string | Operating system of the device; NULL when not reported. |
-| `attrs_json` | string | Every other record attribute as JSON text: json_extract_scalar(attrs_json, '$["cursor.version"]'). The decision source lives here: $.source. |
+| `attrs_json` | string | Every other record attribute as JSON text: json_extract_scalar(attrs_json, '$["cursor.version"]'). The decision source lives here: $.source. ChatGPT rows add `traceforce.record.id` (dedupe on its base id, without a trailing `#meta`; see reference/joins.md), `traceforce.message.id` / `.parent_id` / `.status` (ChatGPT's own status: `in_progress` is a reply captured while still generating), `traceforce.content.truncated` (any row's text cut at 512 KiB) and `traceforce.content.omitted` (`scan_error`: text that could not be reliably masked was dropped), and on `user_attachment` rows `traceforce.file.id` / `.name` / `.mime_type` / `.size_bytes` / `.text_status` / `.is_paste`. `.text_status` is `stored` when the row holds the file's text, otherwise why it has none: `not_downloaded` (no copy of the file kept: not downloaded, or an image, archive or other binary file scout scanned but does not store), `not_text`, `not_utf8`. |
 | `resource_json` | string | Every resource attribute as JSON text. |
 | `ingested_at` | timestamp | When the row was loaded, UTC. |

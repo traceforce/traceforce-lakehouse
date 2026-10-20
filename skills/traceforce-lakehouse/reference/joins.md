@@ -37,6 +37,43 @@ WHERE e.ts BETWEEN f.at - interval '10' minute AND f.at + interval '10' minute
 ORDER BY e.ts
 ```
 
+## ChatGPT: one copy per record, and a finding's exact event
+
+Use for ChatGPT web history (`agent_type = 'chatgpt'`). Its rows are per device and the same
+message can arrive in several copies; a copy is (`device_native_id`, `upload_ts`). Per
+(`session_id`, base id) keep the copy with content, then
+`traceforce.message.status = 'finished_successfully'`, then the latest `upload_ts`. The base id
+is `traceforce.record.id` without a trailing `#meta`, so an attachment's stored copy and its
+metadata-only copy collapse into one. A message finding is the turn's `user_prompt` row; a file finding is its `user_attachment` row, matched by
+file id. Instead of deduping you can match the finding's own device (`device_id →
+devices.device_native_id`).
+
+```sql
+WITH f AS (
+  SELECT c.conversation_external_id AS session_id, sf.message_external_id, sf.message_timestamp AS at,
+         cf.file_external_id
+  FROM sensitive_data_findings sf
+  JOIN agent_conversations c ON c.id = sf.conversation_id
+  LEFT JOIN agent_conversation_files cf ON cf.id = sf.file_id
+  WHERE sf.id = '<finding id>'
+),
+ev AS (
+  SELECT e.ts, e.event_name, e.content_input,
+         row_number() OVER (
+           PARTITION BY e.session_id, regexp_replace(json_extract_scalar(e.attrs_json, '$["traceforce.record.id"]'), '#meta$', '')
+           ORDER BY CASE WHEN coalesce(e.content_input, e.content_output, e.tool_args, e.tool_result) IS NOT NULL THEN 0 ELSE 1 END,
+                    CASE WHEN json_extract_scalar(e.attrs_json, '$["traceforce.message.status"]') = 'finished_successfully' THEN 0 ELSE 1 END,
+                    e.upload_ts DESC) AS copy_rank
+  FROM agent_events e JOIN f ON e.session_id = f.session_id
+  WHERE e.agent_type = 'chatgpt'
+    AND e.ts BETWEEN f.at - interval '1' day AND f.at + interval '1' day
+    AND ((f.file_external_id IS NULL AND e.event_name = 'user_prompt' AND e.prompt_id = f.message_external_id)
+      OR (e.event_name = 'user_attachment'
+          AND json_extract_scalar(e.attrs_json, '$["traceforce.file.id"]') = f.file_external_id))
+)
+SELECT ts, event_name, substr(content_input, 1, 300) AS input_preview FROM ev WHERE copy_rank = 1
+```
+
 ## Containment finding to the decision that approved it
 
 Use when asking how a write or delete was approved. `tool_use_id` on the finding equals

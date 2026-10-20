@@ -47,9 +47,9 @@ Prompt text leaves the lake only for the session you open.
 - **Sessions** are distinct `session_id`s, counted once on the UTC day they started.
   **Prompts** are distinct `prompt_id` / `generation_id`. **Tool calls** are distinct
   `tool_call_id`s on `execute_tool` rows, plus Copilot's id-less tool spans.
-- **Cost and tokens** are what the agent reports. Cursor reports neither. GitHub Copilot and
-  ChatGPT Codex report tokens but no cost, so their spend is excluded from the totals, and the
-  page says so. `invoke_agent` spans are skipped so tokens aren't counted twice.
+- **Cost and tokens** are what the agent reports. Cursor and ChatGPT report neither. GitHub
+  Copilot and ChatGPT Codex report tokens but no cost, so their spend is excluded from the
+  totals, and the page says so. `invoke_agent` spans are skipped so tokens aren't counted twice.
 - The agent comes from the `agent` column (`AGENT_IDENTITY_*`), so the queries work whether
   `agent_type` is stored as text or as the older integer code.
 
