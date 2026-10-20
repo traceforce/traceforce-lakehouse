@@ -16,11 +16,11 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `device_id` | string | → devices.id |
 | `sandbox_id` | string | → sandboxes.id; NULL when the row is about the host device itself. |
 | `conversation_id` | string | → agent_conversations.id |
-| `file_external_id` | string | Agent's own file id. ChatGPT: equals json_extract_scalar(agent_events.attrs_json, '$["traceforce.file.id"]') on that file's `user_attachment` row. |
+| `file_external_id` | string | Agent's own file id. |
 | `file_name` | string | Original filename. |
 | `mime_type` | string | MIME type. |
 | `size_bytes` | long | Attachment size in bytes as reported; NULL for a zero-byte or unreported attachment (never 0). |
-| `message_external_id` | string | Agent's id of the message the file was attached to (ChatGPT: equals agent_events.prompt_id). |
+| `message_external_id` | string | Agent's id of the message the file was attached to. |
 | `message_timestamp` | timestamp | When it was attached (UTC). |
 | `archive_inner_path` | string | Entry path when the file is an archive member; '' (never NULL) for a plain file. |
 | `customer_storage` | string | JSON text: a pointer into the customer's BYO storage bucket; provider is a code, not a name (1 = GCS, 2 = S3, 3 = Azure Blob). On conversations it locates the session's uploaded activity objects; on findings it locates the evidence object holding the verbatim matched value / tool input. NULL when BYO storage is unconfigured or the source object is empty. Evidence is not in the lake by design; see reference/redaction.md. |

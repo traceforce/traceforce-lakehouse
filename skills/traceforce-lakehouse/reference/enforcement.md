@@ -52,9 +52,5 @@ So this outcome is derived from the agent_events logs, per agent, using the lite
   matched value shorter than eight bytes. Needs redaction on (the default); with redaction off,
   prompt blocks are not observable, and blocked prompts never produce a finding row.
 - Cursor sensitive-data blocks are not observable in the lake (no stamp, no event).
-- ChatGPT (`agent_type = 'chatgpt'`) rows are its web history, written after the fact: no
-  `decision`, no enforcement stamp, no outcome. A prompt TraceForce blocked at send time never
-  reached ChatGPT and never appears. `[PI_DETECTED ...]` lines inside its replies are the model's
-  unreviewed output, not findings; ChatGPT raises no `prompt_injection_findings`.
 - On the findings tables, `outcome` is execution status and `finding_status` is reviewer
   triage; denied attempts never reach `connector_containment_findings`.
