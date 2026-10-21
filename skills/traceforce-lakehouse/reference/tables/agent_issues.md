@@ -23,7 +23,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `issue_type_control_id` | string | → issue_type_controls.id |
 | `agent_type` | string | Which agent product. |
 | `plan` | string | Account plan as text, same vocabulary as agent_accounts.plan. |
-| `issue_status` | string | 'active' / 'resolved' / 'dismissed' ('unknown' = unset). Open, as the console counts it, is 'active'. |
+| `issue_status` | string | 'active' / 'resolved' / 'dismissed' ('unknown' = unset). Open, as the console counts it, is 'active' on an 'instance' issue type. |
 | `metadata` | string | JSON text, camelCase keys set as the issue changes: resolutionReason ('issue_resolved' / 'entity_deleted') and resolvedAt; dismissalReason ('false_positive' / 'risk_accepted' / 'other'), dismissalComment, dismissedBy (the console user's email) and dismissedAt; reopenedBy and reopenedAt. '{}' or NULL before any of these. |
 | `last_seen_at` | timestamp | Most recent scan that still raised the issue (UTC). |
 | `created_at` | timestamp | Row created (UTC). |

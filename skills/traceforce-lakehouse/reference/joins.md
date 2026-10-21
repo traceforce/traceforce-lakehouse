@@ -100,7 +100,8 @@ LEFT JOIN calls c ON c.device_native_id = d.device_native_id AND c.agent_type = 
 An issue (`agent_issues`, `mcp_server_issues`) reaches its type in two steps:
 `issue_type_control_id` → `issue_type_controls.id`, then `issue_type_controls.issue_type_id` →
 `issue_types.id`, which holds the name, `trigger_score` and `criticality`. Open, as the console
-counts it, is `issue_status = 'active'`.
+counts it, is `issue_status = 'active'` on an issue type with `applicable_to = 'instance'`;
+'global' types are acknowledgment-only baselines the console does not list.
 
 Every findings table carries `issue_detail`. A finding's criticality is the `issue_types` row with
 the same `issue_detail` and `applicable_to = 'instance'`: `issue_types` has one row per
