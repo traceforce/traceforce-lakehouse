@@ -6,6 +6,7 @@ Joins:
 - issue_type_control_id → issue_type_controls.id → issue_types.id, as for agent_issues
 - mcp_server_instance_id → mcp_server_instances.id (no deleted_at filter)
 - mcp_server_type → mcp_catalog.mcp_server_type or org_mcp_catalog.mcp_server_type (product name)
+- The console's issue lists show issues that have a device_id and whose issue type has applicable_to = 'instance'
 
 Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 - (org_id, device_id, sandbox_id, mcp_server_instance_id, issue_type_control_id), NULLs compared as equal

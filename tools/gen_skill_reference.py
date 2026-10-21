@@ -257,7 +257,8 @@ TABLES = {
     "mcp_server_issues": dict(
         purpose="One row per MCP server issue: an issue type raised on one MCP server instance, open or closed.",
         joins=["issue_type_control_id → issue_type_controls.id → issue_types.id, as for agent_issues",
-               "mcp_server_instance_id → mcp_server_instances.id (no deleted_at filter)", "mcp_server_type → mcp_catalog.mcp_server_type or org_mcp_catalog.mcp_server_type (product name)"],
+               "mcp_server_instance_id → mcp_server_instances.id (no deleted_at filter)", "mcp_server_type → mcp_catalog.mcp_server_type or org_mcp_catalog.mcp_server_type (product name)",
+               "The console's issue lists show issues that have a device_id and whose issue type has applicable_to = 'instance'"],
         notes={"mcp_server_instance_id": "→ mcp_server_instances.id", "issue_type_control_id": "→ issue_type_controls.id",
                "mcp_server_type": "Integer product code; LEFT JOIN the catalogs for the name.",
                "issue_status": "'active' / 'resolved' / 'dismissed' ('unknown' = unset). Open, as the console counts it, is 'active'.",
