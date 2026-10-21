@@ -2,9 +2,9 @@
 terraform {
   required_version = ">= 1.5"
   backend "s3" {
-    bucket       = "acme-terraform-state" # NOT the logs bucket
-    key          = "traceforce-lakehouse/terraform.tfstate"
-    region       = "us-east-1"
+    bucket = "acme-terraform-state" # NOT the logs bucket
+    key    = "traceforce-lakehouse/terraform.tfstate"
+    region = "us-east-1"
   }
 }
 
@@ -13,7 +13,7 @@ provider "aws" {
 }
 
 module "traceforce_lakehouse" {
-  source      = "../../terraform/aws" # customers: github.com/traceforce/traceforce-lakehouse//terraform/aws?ref=1.3.0
+  source      = "../../terraform/aws" # customers: github.com/traceforce/traceforce-lakehouse//terraform/aws?ref=1.4.0
   logs_bucket = "acme-traceforce-logs"
   logs_prefix = "traceforce"
 }

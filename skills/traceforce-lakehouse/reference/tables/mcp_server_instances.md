@@ -33,7 +33,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `linked_plans` | string | JSON array of AgentPlanType text the instance is reachable through — its direct account plus junction-linked installs (e.g. ["personal","enterprise"]). NULL or '[]' when it has neither a direct account nor an active junction link. Attribute an instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan). |
 | `metadata` | string | JSON text; detection details for filesystem MCPs: matched_pattern, auth_matched_pattern, config_type, uid, version, agent_deployment. |
 | `security_findings` | string | JSON text; TraceForce's security observations for this instance. |
-| `tools` | string | JSON object: '{}' until tools are discovered; '{"tools": [...]}' once they are ('[]' when none). Elements (json_extract(tools, '$.tools')) carry name, description and integer codes tool_status (1 enabled / 2 disabled), hitl_setting (1 allow_unsupervised / 2 always_ask / 3 blocked), permission_type (1 read / 2 write / 3 delete); 0 = unknown. |
+| `tools` | string | JSON object: '{}' until tools are discovered; '{"tools": [...]}' once they are ('[]' when none). Elements (json_extract(tools, '$.tools')) carry name, description, tool_status ('enabled' / 'disabled'), hitl_setting ('allow_unsupervised' / 'always_ask' / 'blocked') and permission_type ('read' / 'write' / 'delete'); 'unknown' when unset. |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |
 | `last_seen_at` | timestamp | Most recent check-in that observed this row (UTC). |

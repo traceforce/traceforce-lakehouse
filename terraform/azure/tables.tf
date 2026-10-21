@@ -12,7 +12,7 @@ locals {
   }
 }
 
-# The table customers and Claude Code query; everything else feeds it and its 18 siblings.
+# The table customers and Claude Code query; everything else feeds it and the metadata mirrors.
 # Unpartitioned: partition_by on a time column crashes the provider (v2.21.0, nil assertion in
 # parseIcebergTablePartitionTime); revisit on a newer provider.
 # catalog = "SNOWFLAKE" is the keyword for Snowflake-managed, not a catalog integration name.
@@ -37,7 +37,7 @@ resource "snowflake_iceberg_table" "agent_events" {
   }
 }
 
-# 18 metadata mirror tables: typed Iceberg, same names as in TraceForce (the export_ sources
+# Metadata mirror tables: typed Iceberg, same names as in TraceForce (the export_ sources
 # are in raw.tf).
 resource "snowflake_iceberg_table" "export" {
   for_each = local.export_columns

@@ -1,8 +1,9 @@
 # Incident triage dashboard
 
 Which sessions leaked sensitive data, ran risky actions or met a prompt injection, ranked by severity,
-with what happened around each finding. Built from the three findings tables, `agent_conversations`,
-`agent_accounts` and `devices`, plus `agent_events` for blocks and each incident's activity.
+with what happened around each finding. Built from the three findings tables, `issue_types`,
+`agent_conversations`, `agent_accounts` and `devices`, plus `agent_events` for blocks and each incident's
+activity.
 
 ## Run it
 
@@ -19,7 +20,7 @@ sample data and labels it as such.
 
 - **Filters** for the last 7, 30 or 90 days (UTC, ending today), review status (*Open*, meaning
   awaiting or under review, or *Resolved*, any other status), finding type and user.
-- **Totals**: critical incidents (other severities beneath), then one card per critical category:
+- **Totals**: critical incidents (other severities beneath), then one card per notable category:
   incidents with credentials, identity or financial data, prompt injections, destructive actions
   that ran, or device defenses disabled. An incident can count on more than one of these. Then users
   affected and blocks.
@@ -36,20 +37,14 @@ sample data and labels it as such.
 
 ## Severity
 
-From the finding; an incident takes its most severe finding. The rubric is `severity()` in
-`index.html` (and the page's footer); change both together.
-
-| severity | findings |
-|---|---|
-| Critical | credentials (API keys, passwords, private keys, connection strings); identity or financial data (SSN, card numbers); prompt injections; destroying company data or infrastructure, or disabling device defenses, when it ran |
-| High | changes to company systems (cloud resources, shared repos, databases, connector records) that ran |
-| Medium | changes to the device or dev environment that ran |
-| Low | contact details such as email addresses and phone numbers; anything unclassified |
-
-A risky action that failed drops one step.
+A finding's severity is the criticality TraceForce gives the issue type it maps to
+(`issue_types.criticality` on the finding's `issue_detail`, in the same bands as the console's risk
+badge); a finding with no issue type ranks low. An incident takes its most severe finding.
 
 ## Caveats
 
+- **Needs lakehouse module 1.4.0 or later** for `issue_types` and the findings' `issue_detail`. On an
+  older module the page can't load from the lake until you re-apply Terraform.
 - **The matched sensitive value is never in the lake.** Open the finding in the TraceForce console for
   its evidence.
 - **Agent:** on lakehouses whose `agent_accounts.agent_type` is empty (older deployments), the agent

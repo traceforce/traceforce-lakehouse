@@ -11,7 +11,7 @@ resource "snowflake_resource_monitor" "lakehouse" {
   notify_users    = var.credit_notification_users
 }
 
-# Compute for ad-hoc queries and for the hourly ingest and 18 export-mirror Tasks (ingest.tf).
+# Compute for ad-hoc queries and for the hourly ingest and the export-mirror Tasks (ingest.tf).
 resource "snowflake_warehouse" "lakehouse" {
   name           = "traceforce_lakehouse"
   warehouse_size = upper(var.warehouse_size)

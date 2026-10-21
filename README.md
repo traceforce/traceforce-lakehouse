@@ -18,9 +18,9 @@ In Claude Code:
 
 - `agent_events`: one row per log record or span from every agent scout writes telemetry for
   (e.g. Claude Code, Claude (claude.ai), Cursor, GitHub Copilot), loaded hourly.
-- 18 metadata tables mirrored daily from TraceForce: devices, accounts, installs,
-  conversations, findings, MCP inventory and catalog. Columns and joins are documented in
-  `skills/traceforce-lakehouse/reference/`.
+- 28 metadata tables mirrored daily from TraceForce: devices, accounts, installs,
+  conversations, findings, issues, MCP inventory and catalog, user groups and IdP users. Columns
+  and joins are documented in `skills/traceforce-lakehouse/reference/`.
 - Logs are stored exactly as TraceForce writes them, with sensitive values redacted according
   to your policy. Finding evidence (the matched value itself) is never loaded; review it in
   the TraceForce console.
@@ -32,7 +32,7 @@ flowchart LR
   subgraph cloud["Your cloud: AWS, GCP or Azure"]
     bucket[("Logs bucket<br/>S3 / GCS / Blob Storage")]
     load["Scheduled load<br/>hourly ingest + daily mirror"]
-    tables[("Iceberg tables<br/>agent_events + 18 metadata tables")]
+    tables[("Iceberg tables<br/>agent_events + metadata tables")]
     engine["Query engine<br/>Athena / BigQuery / Snowflake"]
     bucket --> load --> tables --> engine
   end
@@ -87,7 +87,7 @@ IAM resources in that account; deploy in the bucket's region.
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws?ref=1.3.0"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws?ref=1.4.0"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
@@ -147,7 +147,7 @@ APIs — in practice **project Owner**.
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform/gcp?ref=1.3.0"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform/gcp?ref=1.4.0"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
@@ -255,7 +255,7 @@ APIs — in practice **project Owner**.
    }
 
    module "traceforce_lakehouse" {
-     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure?ref=1.3.0"
+     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure?ref=1.4.0"
 
      # Must be globally unique across all of Azure (storage account names share one namespace
      # account-wide) and stable for the life of the deployment: changing it later destroys and
@@ -338,10 +338,8 @@ serverless and native to the same account as your logs, so there are no servers 
 nothing to upgrade. Azure is the exception: it runs on Snowflake, so you need an existing
 Snowflake account and warehouse credits of your own.
 
-Azure is early access and holds activity logs only for now, because TraceForce's metadata
-export doesn't support Azure yet. On AWS and GCP, the daily metadata snapshots (findings,
-catalogs, and more) are written into your bucket by TraceForce's storage role, under the grant
-you already gave it. On Azure the 18 metadata tables stay empty.
+The daily metadata snapshots (findings, catalogs, and more) are written into your bucket or
+container by TraceForce's storage role, under the grant you already gave it.
 
 Query results never leave your cloud. They go to a bucket this module owns on AWS, and to
 BigQuery- or Snowflake-managed result storage on GCP and Azure. TraceForce can read none of
@@ -363,10 +361,10 @@ them.
   a new deployment and clears on its own once the first object arrives.
 - **Azure:** `SELECT * FROM TABLE("traceforce_lakehouse".INFORMATION_SCHEMA.TASK_HISTORY(DATABASE_NAME => '"traceforce_lakehouse"', SCHEMA_NAME => '"traceforce"', ERROR_ONLY => TRUE, RESULT_LIMIT => 10000))`
   in Snowsight (with a warehouse active) shows every failed scheduled Task of the last 7 days (the
-  hourly ingest, or any of the 18 daily export mirrors) with Snowflake's own error message; set
+  hourly ingest, or any of the daily export mirrors) with Snowflake's own error message; set
   `alarm_notification_email` to also get emailed. The metadata mirrors are each a MERGE, so
   re-running one loads nothing twice, and one
-  table failing never blocks the other 17 (they're independent Tasks).
+  table failing never blocks the others (they're independent Tasks).
 
 ## More
 
