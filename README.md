@@ -19,7 +19,7 @@ In Claude Code:
 - `agent_events`: one row per log record or span from every agent scout writes telemetry for
   (e.g. Claude Code, Claude, Cursor, GitHub Copilot and ChatGPT),
   loaded hourly.
-- 28 metadata tables mirrored daily from TraceForce: devices, accounts, installs,
+- Metadata tables mirrored daily from TraceForce: devices, accounts, installs,
   conversations, findings, issues, MCP inventory and catalog, user groups and IdP users. Columns
   and joins are documented in `skills/traceforce-lakehouse/reference/`.
 - Logs are stored exactly as TraceForce writes them, with sensitive values redacted according

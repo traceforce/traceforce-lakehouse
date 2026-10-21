@@ -14,7 +14,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `id` | string | Primary key (uuid as text). |
 | `risk_rule_id` | string | The risk rule the type belongs to (that table is not in the lake). |
 | `entity_type` | string | Which issues use it: 'agent' (agent_issues) or 'mcp' (mcp_server_issues). |
-| `issue_detail` | string | The specific condition, as text (e.g. 'agent_sensitive_data_credentials_detected'). The findings tables carry the same value in their issue_detail column. |
+| `issue_detail` | string | The specific condition, as text. The findings tables carry the same value in their issue_detail column. |
 | `applicable_to` | string | 'instance': a controllable issue raised from what scout detects on an install; findings map only to these. 'global': a baseline issue raised because the agent is present at all, not tied to findings (acknowledgment-only in the console, which lists 'instance' types). |
 | `trigger_score` | double | Risk score (0-100) an issue of this type carries; drives the console's risk badge. |
 | `criticality` | string | trigger_score in the console's risk-badge bands: 'low' (below 40), 'medium' (below 60), 'high' (below 80), else 'critical'. |

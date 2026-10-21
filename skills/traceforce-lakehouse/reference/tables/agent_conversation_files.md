@@ -1,6 +1,6 @@
 # agent_conversation_files
 
-Files attached to conversations (uploads).
+Files attached to conversations (uploads, and long pastes the agent stored as attachments).
 
 Joins:
 - agent_conversation_files.id = sensitive_data_findings.file_id

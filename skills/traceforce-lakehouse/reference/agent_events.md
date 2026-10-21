@@ -54,6 +54,6 @@ a span with no decision row is a gap, not an unapproved call. Cursor: only `post
 | `service_name` | string | The emitting service's name (OTLP resource attribute); may name the collector rather than the agent. One agent can have rows from more than one source (for example its web chat history and its app's own telemetry); service_name tells them apart. |
 | `service_version` | string | Version string of the emitter — the agent, or the collector when it emits on the agent's behalf. |
 | `os_type` | string | Operating system of the device; NULL when not reported. |
-| `attrs_json` | string | Every other record attribute as JSON text: json_extract_scalar(attrs_json, '$["cursor.version"]'). The decision source lives here: $.source. |
+| `attrs_json` | string | Every other record attribute as JSON text: json_extract_scalar(attrs_json, '$["cursor.version"]'). The decision source lives here: $.source. Where present, $["traceforce.record.id"] with any trailing '#meta' removed is the same in every copy of a record; dedupe on that, preferring a copy without '#meta' (a '#meta' copy has no file text), then the newest upload_ts. |
 | `resource_json` | string | Every resource attribute as JSON text. |
 | `ingested_at` | timestamp | When the row was loaded, UTC. |

@@ -45,8 +45,8 @@ badge); a finding with no issue type ranks low. An incident takes its most sever
 - **The matched sensitive value is never in the lake.** Open the finding in the TraceForce console for
   its evidence.
 - **Agent:** on lakehouses whose `agent_accounts.agent_type` is empty (older deployments), the agent
-  comes from the session's events. Sessions with no events (for example Claude web chats, or findings
-  older than the event logs) show *Unknown agent*, and their incident shows findings only.
+  comes from the session's events. Sessions with no events (for example a chat whose activity is not
+  logged, or findings older than the event logs) show *Unknown agent*, and their incident shows findings only.
 - **Blocks** are inferred from agent behavior, per the skill's `reference/enforcement.md`: Claude Code
   hook denials, tagged Cursor permission denials, and Claude Code prompts blocked for sensitive data.
   Copilot and Cowork blocks, and Cursor prompt blocks, leave no event.

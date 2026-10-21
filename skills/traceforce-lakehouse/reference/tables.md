@@ -24,7 +24,7 @@ One file per table under `tables/`; read only the ones a question needs.
 | `connector_containment_findings` | One row per risky write/delete a tool attempted through a connector (Bash, Shell, MCP) | `tables/connector_containment_findings.md` |
 | `prompt_injection_findings` | One row per distinct prompt-injection attempt (assistant reply + sanitized description) the agent flagged | `tables/prompt_injection_findings.md` |
 | `agent_conversations` | One row per agent session/conversation TraceForce has scanned; created on scan whether or not anything was found | `tables/agent_conversations.md` |
-| `agent_conversation_files` | Files attached to conversations (uploads) | `tables/agent_conversation_files.md` |
+| `agent_conversation_files` | Files attached to conversations (uploads, and long pastes the agent stored as attachments) | `tables/agent_conversation_files.md` |
 | `mcp_server_instances` | MCP servers configured on a device for an agent | `tables/mcp_server_instances.md` |
 | `mcp_server_agent_instances` | Junction: which install (agent_instances) an MCP server instance is configured in | `tables/mcp_server_agent_instances.md` |
 | `mcp_servers` | Org-level rollup per MCP product: counts and scores | `tables/mcp_servers.md` |

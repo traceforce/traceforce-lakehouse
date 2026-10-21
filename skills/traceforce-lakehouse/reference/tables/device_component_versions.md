@@ -16,7 +16,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `device_id` | string | → devices.id |
 | `component` | string | 'scout' / 'updater' / 'proxy' / 'chrome-extension' / 'edge-extension' / 'safari-extension'. |
 | `instance_id` | string | The extension's per-browser-profile id; NULL for scout, updater and proxy. |
-| `version` | string | Reported version: dotted numbers, though scout and updater can report a commit hash or 'unknown'. |
+| `version` | string | Reported version: dotted numbers, though scout and updater can report a commit hash or 'unknown'. Compare part by part as numbers, never as text ('1.0.9' sorts above '1.0.52'). |
 | `request_id` | string | Id of the check-in that last reported it. |
 | `metadata` | string | JSON text; on scout's row, proxy status {proxy: {certInstalled, pacURL}}; NULL otherwise. |
 | `created_at` | timestamp | Row created (UTC). |

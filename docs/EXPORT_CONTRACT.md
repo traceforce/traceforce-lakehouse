@@ -113,7 +113,7 @@ Before writing a table, the export job checks that every column in this contract
 in TraceForce's database with a compatible type (a derived column through its source column). A
 mismatch fails the run for that table and is reported to TraceForce; the previous snapshot stays the newest and the mirror keeps yesterday's rows.
 
-## Tables (28)
+## Tables
 
 | Group | Tables |
 |---|---|

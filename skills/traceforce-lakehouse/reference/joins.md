@@ -67,7 +67,9 @@ aggregate the inventory side or the counts multiply. Count calls, not rows: a ca
 rows name the server without being a call (`operation` IS NULL there). Cursor's MCP rows carry
 no `tool_call_id`, so id-less rows count one each. `LEFT JOIN` so a NULL count means
 installed and never called, except for a browser connector: it is listed by display name while
-its calls may carry the connector's id, so a NULL there does not mean unused. The `calls` side is per serial: a Windows placeholder serial
+its calls may carry the connector's id, so a NULL there does not mean unused. A NULL means unused only if
+that device has `execute_tool` rows with `mcp_server_name` for that `agent_type` in the window;
+otherwise say there is no call data. The `calls` side is per serial: a Windows placeholder serial
 shared by several devices repeats its count on each of them (see identity.md). Product name and category come through `mcp_server_type` against
 both catalogs, never through `mcp_servers.mcp_catalog_id` for org-private servers.
 
