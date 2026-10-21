@@ -160,5 +160,5 @@ covers flagged operations.
 - Copilot tool calls: `tool_call_id` and `tool_name` come from the span; count
   `signal = 'span' AND operation = 'execute_tool'` rows if `tool_call_id` is NULL.
 - Block vs warn per agent: `reference/enforcement.md`.
-- A chat attachment is a `user_attachment` row. Only a text file's content is in the lake
-  (`content_input`); for other files the lake has only the name, type and size (`attrs_json`).
+- A chat attachment is a `user_attachment` row. Its text, if any, is in `content_input`; images
+  and other binary files have only their name, type and size (`attrs_json`).
