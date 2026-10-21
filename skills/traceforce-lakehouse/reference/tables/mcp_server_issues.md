@@ -20,7 +20,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `sandbox_id` | string | → sandboxes.id; NULL when the row is about the host device itself. |
 | `issue_type_control_id` | string | → issue_type_controls.id |
 | `mcp_server_type` | int | Integer product code; LEFT JOIN the catalogs for the name. |
-| `issue_status` | string | 'active' / 'resolved' / 'dismissed' ('unknown' = unset). Open, as the console counts it, is 'active' on an 'instance' issue type. |
+| `issue_status` | string | 'active' / 'resolved' / 'dismissed' ('unknown' = unset). Open, as the console counts it, is 'active'. |
 | `metadata` | string | JSON text, same keys as agent_issues.metadata. |
 | `last_seen_at` | timestamp | Most recent scan that still raised the issue (UTC). |
 | `created_at` | timestamp | Row created (UTC). |

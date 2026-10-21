@@ -251,7 +251,7 @@ TABLES = {
         notes={"agent_instance_id": "→ agent_instances.id; NULL when the issue is not about one install.", "agent_account_id": "→ agent_accounts.id; NULL when the issue is not about one account.",
                "cloud_agent_id": "The cloud agent the issue is about (that table is not in the lake); set only on cloud-agent issues, which have no device_id.",
                "issue_type_control_id": "→ issue_type_controls.id", "agent_type": "Which agent product.", "plan": "Account plan as text, same vocabulary as agent_accounts.plan.",
-               "issue_status": "'active' / 'resolved' / 'dismissed' ('unknown' = unset). Open, as the console counts it, is 'active' on an 'instance' issue type.",
+               "issue_status": "'active' / 'resolved' / 'dismissed' ('unknown' = unset). Open, as the console counts it, is 'active'.",
                "metadata": "JSON text, camelCase keys set as the issue changes: resolutionReason ('issue_resolved' / 'entity_deleted') and resolvedAt; dismissalReason ('false_positive' / 'risk_accepted' / 'other'), dismissalComment, dismissedBy (the console user's email) and dismissedAt; reopenedBy and reopenedAt. '{}' or NULL before any of these.",
                "last_seen_at": "Most recent scan that still raised the issue (UTC)."}),
     "mcp_server_issues": dict(
@@ -261,7 +261,7 @@ TABLES = {
                "The console's issue lists show issues that have a device_id and whose issue type has applicable_to = 'instance'"],
         notes={"mcp_server_instance_id": "→ mcp_server_instances.id", "issue_type_control_id": "→ issue_type_controls.id",
                "mcp_server_type": "Integer product code; LEFT JOIN the catalogs for the name.",
-               "issue_status": "'active' / 'resolved' / 'dismissed' ('unknown' = unset). Open, as the console counts it, is 'active' on an 'instance' issue type.",
+               "issue_status": "'active' / 'resolved' / 'dismissed' ('unknown' = unset). Open, as the console counts it, is 'active'.",
                "metadata": "JSON text, same keys as agent_issues.metadata.", "last_seen_at": "Most recent scan that still raised the issue (UTC)."}),
     "issue_type_controls": dict(
         purpose="Your org's link from an issue to its issue type: one row per issue type in your org.",
