@@ -20,10 +20,7 @@ sample data and labels it as such.
 
 - **Filters** for the last 7, 30 or 90 days (UTC, ending today), review status (*Open*, meaning
   awaiting or under review, or *Resolved*, any other status), finding type and user.
-- **Totals**: critical incidents (other severities beneath), then one card per notable category:
-  incidents with credentials, identity or financial data, prompt injections, destructive actions
-  that ran, or device defenses disabled. An incident can count on more than one of these. Then users
-  affected and blocks.
+- **Totals**: critical incidents (other severities beneath), users affected and blocks.
 - **Incidents**: one row per session with findings, most severe first, then most recent. Each shows
   the user, agent, device and what was found.
 - **An incident**: click one to see its findings inside the session's activity. Each risky action is
