@@ -167,9 +167,9 @@ locals {
         ForEachTable = {
           Type      = "Map"
           ItemsPath = "$.exports.tables"
-          # One iteration per table, all at once: Athena's default DML concurrency is 20 and
-          # each .sync task costs about a minute of polling for a two-second query.
-          MaxConcurrency = length(local.export_sql)
+          # As many tables at once as Athena's default DML concurrency (20) allows: each .sync
+          # task costs about a minute of polling for a two-second query.
+          MaxConcurrency = min(length(local.export_sql), 20)
           ItemProcessor = {
             ProcessorConfig = { Mode = "INLINE" }
             StartAt         = "Merge"

@@ -21,3 +21,5 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `domain` | string | Vendor domain. |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |
+| `hosts` | string | JSON array of the network hosts the agent talks to (e.g. ["chat.deepseek.com","api.deepseek.com"]), not the marketing `domain`; a value containing '*' is a glob. '[]' when none are curated yet. |
+| `origin_country` | string | Country of origin (e.g. 'China'); NULL when not curated. |

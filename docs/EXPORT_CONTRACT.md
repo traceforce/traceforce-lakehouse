@@ -1,7 +1,7 @@
 # Export contract: TraceForce metadata snapshots
 
 Producer: TraceForce's export job, run daily around 11:00 UTC for every org with a CONNECTED
-S3 or GCS Storage Provider (Azure Blob Storage is not a producer yet).
+S3, GCS or Azure Blob Storage Provider.
 Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glue tables on AWS
 (Athena), or the external tables on GCP (BigQuery) and Azure (Snowflake).
 
@@ -37,8 +37,8 @@ Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glu
   millisecond precision; TraceForce's database microseconds are truncated.
 - Rows: exactly the contract columns (`export_tables` in `terraform/schema/columns.json`, the one
   column list all three cloud modules read), `WHERE org_id = $org` for tenant tables; whole table for
-  `agent_catalog`, `mcp_catalog` and `mcp_categories` (global, no `org_id` column). Soft-deleted rows
-  (`deleted_at` set) are included; consumers filter.
+  `agent_catalog`, `mcp_catalog`, `mcp_categories` and `issue_types` (global, no `org_id` column).
+  Soft-deleted rows (`deleted_at` set) are included; consumers filter.
 - Columns outside the contract are never exported, so adding a column to TraceForce's database
   never changes the snapshot. Exposing it in Iceberg means adding it to the contract on both
   sides, the export job's table list and `export_tables`, in either order: a missing key reads as
@@ -67,31 +67,65 @@ Decoded columns (`[]` = JSON text array):
   `deployment_model`, `auth_type`, `distribution_channel`, `linked_plans[]`
 - `mcp_servers`: `distribution_channels[]`, `auth_types[]`, `sandbox_runtime_types[]`
 - `mcp_categories`: `resource_type`
+- `agents`: `agent_type`, `plan`, `deployment_types[]`, `sandbox_runtime_types[]`
+- `agent_issues`: `agent_type`, `plan`, `issue_status`
+- `mcp_server_issues`: `issue_status`
+- `issue_types`: `entity_type`, `issue_detail`, `applicable_to`
+- `user_groups`: `user_group_source`
+- `user_group_members`, `idp_directory_users`: `state`
 
 `mcp_categories.resource_type` uses an explicit `ISSUE_DETAIL_MCP_RESOURCE_TYPE_` prefix, so it
 reads `public` / `internal_apps`.
 
 `mcp_server_type` is NOT decoded: it is a catalog-assigned product key, not a proto enum, resolved
-through `mcp_catalog` / `org_mcp_catalog`.
+through `mcp_catalog` / `org_mcp_catalog`. The same holds for `bridge_proxy_server_type` inside
+`mcp_server_instances.metadata`.
+
+Enum keys inside JSON columns are decoded the same way (`k[]` = every element of array `k`):
+
+- `customer_storage.provider` on the three findings tables, `agent_conversations` and
+  `agent_conversation_files`; `conversation_storage.provider` on the three findings tables
+- `agent_accounts`: `metadata.source_deployment_type`; `security_settings.training_data_usage`,
+  `.mfa`, `.location_sharing`, `.remote_browser_data`, `.conversation_storage`
+- `mcp_server_instances`: `metadata.config_type`, `.agent_identity`, `.agent_deployment`;
+  `security_findings.secrets[].source_type`, `.unsafe_commands[].severity`, `.cert_status`,
+  `.min_tls_version` (reads `1_2`, `1_3`, ...); `tools.tools[].tool_status`, `tools.tools[].hitl_setting`,
+  `tools.tools[].permission_type`
+- `agent_issues`, `mcp_server_issues`: `metadata.resolutionReason`, `metadata.dismissalReason`
+
+Only an integer at a listed key is decoded; a missing key, null, string or non-integer number is
+left as is. A listed column is re-encoded as compact JSON with sorted keys.
+
+## Derived columns
+
+These have no TraceForce database column; the producer computes them from another column of the
+same row:
+
+- `issue_types.criticality`: `trigger_score` in the console's risk bands, `low` below 40, `medium`
+  below 60, `high` below 80, else `critical`.
+- `issue_detail` on `sensitive_data_findings` (from `category`), `connector_containment_findings`
+  (from `risky_action_category`) and `prompt_injection_findings` (always
+  `agent_prompt_injection_detected`): the issue detail TraceForce maps the finding to, decoded
+  like `issue_types.issue_detail`; NULL when the category maps to none.
 
 ## Producer-side validation
 
 Before writing a table, the export job checks that every column in this contract exists
-in TraceForce's database with a compatible type. A mismatch fails the run for that table and is reported
-to TraceForce; the previous snapshot stays the newest and the mirror keeps yesterday's rows.
+in TraceForce's database with a compatible type (a derived column through its source column). A
+mismatch fails the run for that table and is reported to TraceForce; the previous snapshot stays the newest and the mirror keeps yesterday's rows.
 
-## Tables (v1, 18)
+## Tables (28)
 
 | Group | Tables |
 |---|---|
-| Identity | devices, sandboxes, agent_accounts, agent_instances, agent_instances_accounts, device_owner_mappings |
-| Agent names | agent_catalog (global) |
+| Identity | devices, sandboxes, agent_accounts, agent_instances, agent_instances_accounts, device_owner_mappings, device_component_versions |
+| Agents | agent_catalog (global), agents |
 | Findings + bridge to logs | sensitive_data_findings, connector_containment_findings, prompt_injection_findings, agent_conversations, agent_conversation_files |
 | MCP | mcp_server_instances, mcp_server_agent_instances, mcp_servers, mcp_catalog (global), org_mcp_catalog, mcp_categories (global) |
+| Issues | agent_issues, mcp_server_issues, issue_type_controls, issue_types (global) |
+| User groups + IdP | user_groups, user_group_members, user_group_devices, idp_directory_users |
 
-Deferred: user_groups / user_group_devices / user_group_members / idp_directory_users
-(no data yet), agent_issues / mcp_server_issues + their lookup chain, policies +
-their lookup chain, orgs.
+Deferred: policies + their lookup chain, orgs, idp_integrations.
 
 ## Sizing
 

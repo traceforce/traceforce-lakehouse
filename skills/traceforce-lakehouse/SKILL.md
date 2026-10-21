@@ -91,9 +91,6 @@ module's `traceforce_lakehouse_reader` role with secondary roles off, and the sc
 single `SELECT`/`WITH`/`SHOW`/`DESCRIBE`/`EXPLAIN` statement, refusing stored-procedure calls and
 the `->>` operator. Do not work around it by connecting as another role.
 
-TraceForce's metadata export does not write to Azure yet, so the 18 mirror tables are empty
-there: answer from `agent_events`, and say so when a question needs a mirror.
-
 ```bash
 "${CLAUDE_SKILL_DIR}/scripts/snowflake_query.sh" "SELECT \"agent\", count(*) FROM \"agent_events\" WHERE \"ts\" > DATEADD('day', -7, CURRENT_TIMESTAMP()) GROUP BY 1"
 ```
@@ -124,14 +121,17 @@ example SQL is Athena/Trino. Translate to Snowflake SQL, quoting this module's n
    (Athena: `DESCRIBE traceforce.<table>`; BigQuery: `SELECT column_name, data_type FROM
    traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<table>'`; Azure/
    Snowflake: `DESCRIBE TABLE "<table>"`), fix, rerun.
+   A table or column that is missing altogether means the customer's lakehouse module predates
+   it: say so (re-applying Terraform with the current module adds it) and answer without it.
    If it returns 0 rows: widen the window, check `deleted_at`, and check that every
    joined mirror has rows (an empty mirror may mean its data has not arrived; say so).
+   A mirror whose source drops to zero rows keeps its last rows until the source has one again.
 5. Resolve `agent_type` / `mcp_server_type` names via the catalogs, state gaps, answer.
 
 ## Reference (each one level from here)
 
 - `reference/agent_events.md`: every column of the events table with its meaning.
-- `reference/tables.md`: index of the 18 metadata tables, one file each under `reference/tables/`
+- `reference/tables.md`: index of the metadata tables, one file each under `reference/tables/`
   (purpose, joins, source uniqueness, columns).
 - `reference/joins.md`: the joins that are not obvious from the schema.
 - `reference/identity.md`: attributing an event or finding to a person, device and account.
