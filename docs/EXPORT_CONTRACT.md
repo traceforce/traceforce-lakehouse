@@ -104,9 +104,8 @@ same row:
 - `issue_types.criticality`: `trigger_score` in the console's risk bands, `low` below 40, `medium`
   below 60, `high` below 80, else `critical`.
 - `issue_detail` on `sensitive_data_findings` (from `category`), `connector_containment_findings`
-  (from `risky_action_category`) and `prompt_injection_findings` (always
-  `agent_prompt_injection_detected`): the issue detail TraceForce maps the finding to, decoded
-  like `issue_types.issue_detail`; NULL when the category maps to none.
+  (from `risky_action_category`) and `prompt_injection_findings`: the issue detail TraceForce
+  maps the finding to, decoded like `issue_types.issue_detail`; NULL when it maps to none.
 
 ## Producer-side validation
 

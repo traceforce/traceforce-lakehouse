@@ -37,4 +37,4 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `conversation_storage` | string | JSON text: a pointer into the customer's BYO storage bucket to the conversation or activity object the finding came from. Not a join key: reach the finding's events through the joins above. NULL when BYO storage is unconfigured or that object is empty. |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |
-| `issue_detail` | string | The issue detail this finding maps to, as in issue_types.issue_detail ('agent_sensitive_data_credentials_detected' / 'agent_sensitive_data_identity_financial_pii_detected' / 'agent_sensitive_data_contact_pii_detected'), derived from category; NULL when category is 'unknown'. Criticality and the matching issue: reference/joins.md. |
+| `issue_detail` | string | Which issue type this finding counts toward (matches issue_types.issue_detail); NULL when it maps to none. Criticality and the matching issue: reference/joins.md. |
