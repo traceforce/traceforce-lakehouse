@@ -3,7 +3,7 @@
 Query your AI-agent activity (Claude Code, Claude, Cursor, GitHub Copilot, ChatGPT) and
 TraceForce findings in plain English, with SQL, or on ready-made dashboards. Everything runs in
 your own cloud: one Terraform module sets up Iceberg tables, loaded hourly, on **AWS (Athena)**,
-**GCP (BigQuery)** or **Azure (Snowflake)** *(early access)*.
+**GCP (BigQuery)** or **Azure (Snowflake)**.
 
 ## Examples
 
@@ -170,7 +170,7 @@ APIs — in practice **project Owner**.
 </details>
 
 <details>
-<summary><b>Azure (Snowflake)</b> <i>(early access)</i></summary>
+<summary><b>Azure (Snowflake)</b></summary>
 
 **Before you start:**
 
