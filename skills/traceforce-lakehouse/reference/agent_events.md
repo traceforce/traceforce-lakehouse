@@ -11,7 +11,7 @@ a span with no decision row is a gap, not an unapproved call. Cursor: only `post
 
 | column | type | meaning |
 |---|---|---|
-| `agent` | string | The agent's proto AgentIdentity name, e.g. AGENT_IDENTITY_CLAUDE_CODE (Claude Code), AGENT_IDENTITY_CLAUDE (the claude.ai chat agent, any deployment — not the desktop app specifically), AGENT_IDENTITY_CURSOR, AGENT_IDENTITY_GITHUB_COPILOT. |
+| `agent` | string | The agent's proto AgentIdentity name, e.g. AGENT_IDENTITY_CLAUDE_CODE, AGENT_IDENTITY_CLAUDE, AGENT_IDENTITY_CURSOR, AGENT_IDENTITY_GITHUB_COPILOT, AGENT_IDENTITY_CHATGPT. |
 | `agent_type` | string | `agent` lowercased without the AGENT_IDENTITY_ prefix (e.g. `claude_code`, `cursor`). Join on this, not on `agent`. |
 | `device_native_id` | string | Device serial. Joins devices.device_native_id. |
 | `device_uuid` | string | A stable per-install device GUID; NULL when the agent doesn't provide one. Prefer it over the serial when present. |
@@ -51,9 +51,9 @@ a span with no decision row is a gap, not an unapproved call. Cursor: only `post
 | `cost_usd` | double | Turn cost in USD as reported by the agent; NULL when the agent reports none. |
 | `content_input` | string | Prompt as a JSON message array; masked per matched value when the org redacts. Large. |
 | `content_output` | string | Response as a JSON message array; masked per matched value when the org redacts. Large. |
-| `service_name` | string | The emitting service's name (OTLP resource attribute); may name the collector rather than the agent. |
+| `service_name` | string | The emitting service's name (OTLP resource attribute); may name the collector rather than the agent. One agent can have rows from more than one source (for example its web chat history and its app's own telemetry); service_name tells them apart. |
 | `service_version` | string | Version string of the emitter — the agent, or the collector when it emits on the agent's behalf. |
 | `os_type` | string | Operating system of the device; NULL when not reported. |
-| `attrs_json` | string | Every other record attribute as JSON text: json_extract_scalar(attrs_json, '$["cursor.version"]'). The decision source lives here: $.source. |
+| `attrs_json` | string | Every other record attribute as JSON text: json_extract_scalar(attrs_json, '$["cursor.version"]'). The decision source lives here: $.source. Where present, $["traceforce.record.id"] with any trailing '#meta' removed is the same in every copy of a record; dedupe on that, preferring a copy without '#meta' (a '#meta' copy has no file text), then the newest upload_ts. |
 | `resource_json` | string | Every resource attribute as JSON text. |
 | `ingested_at` | timestamp | When the row was loaded, UTC. |

@@ -330,7 +330,9 @@
       "agent_type:string",
       "domain:string",
       "created_at:timestamp",
-      "updated_at:timestamp"
+      "updated_at:timestamp",
+      "hosts:string",
+      "origin_country:string"
     ],
     "sensitive_data_findings": [
       "id:string",
@@ -356,7 +358,8 @@
       "customer_storage:string",
       "conversation_storage:string",
       "created_at:timestamp",
-      "updated_at:timestamp"
+      "updated_at:timestamp",
+      "issue_detail:string"
     ],
     "connector_containment_findings": [
       "id:string",
@@ -379,7 +382,8 @@
       "customer_storage:string",
       "conversation_storage:string",
       "created_at:timestamp",
-      "updated_at:timestamp"
+      "updated_at:timestamp",
+      "issue_detail:string"
     ],
     "prompt_injection_findings": [
       "id:string",
@@ -395,7 +399,8 @@
       "customer_storage:string",
       "conversation_storage:string",
       "created_at:timestamp",
-      "updated_at:timestamp"
+      "updated_at:timestamp",
+      "issue_detail:string"
     ],
     "agent_conversations": [
       "id:string",
@@ -524,6 +529,149 @@
       "name:string",
       "description:string",
       "resource_type:string",
+      "created_at:timestamp",
+      "updated_at:timestamp"
+    ],
+    "agents": [
+      "id:string",
+      "org_id:string",
+      "agent_catalog_id:string",
+      "agent_type:string",
+      "plan:string",
+      "active_users:int",
+      "total_incidents:int",
+      "active_issues:int",
+      "affected_devices:int",
+      "base_score:double",
+      "actual_score:double",
+      "deployment_types:string",
+      "sandbox_runtime_types:string",
+      "instance_count:int",
+      "has_host_instances:boolean",
+      "first_seen_at:timestamp",
+      "last_active_at:timestamp",
+      "last_reviewed:timestamp",
+      "created_at:timestamp",
+      "updated_at:timestamp",
+      "deleted_at:timestamp"
+    ],
+    "agent_issues": [
+      "id:string",
+      "org_id:string",
+      "agent_instance_id:string",
+      "device_id:string",
+      "sandbox_id:string",
+      "agent_account_id:string",
+      "cloud_agent_id:string",
+      "issue_type_control_id:string",
+      "agent_type:string",
+      "plan:string",
+      "issue_status:string",
+      "metadata:string",
+      "last_seen_at:timestamp",
+      "created_at:timestamp",
+      "updated_at:timestamp"
+    ],
+    "mcp_server_issues": [
+      "id:string",
+      "org_id:string",
+      "mcp_server_instance_id:string",
+      "device_id:string",
+      "sandbox_id:string",
+      "issue_type_control_id:string",
+      "mcp_server_type:int",
+      "issue_status:string",
+      "metadata:string",
+      "last_seen_at:timestamp",
+      "created_at:timestamp",
+      "updated_at:timestamp"
+    ],
+    "issue_type_controls": [
+      "id:string",
+      "org_id:string",
+      "issue_type_id:string",
+      "created_at:timestamp",
+      "updated_at:timestamp"
+    ],
+    "issue_types": [
+      "id:string",
+      "risk_rule_id:string",
+      "entity_type:string",
+      "issue_detail:string",
+      "applicable_to:string",
+      "trigger_score:double",
+      "criticality:string",
+      "name:string",
+      "description:string",
+      "remediation_text:string",
+      "expected_value:string",
+      "display_order:int",
+      "created_at:timestamp",
+      "updated_at:timestamp"
+    ],
+    "user_groups": [
+      "id:string",
+      "org_id:string",
+      "name:string",
+      "user_group_source:string",
+      "idp_integration_id:string",
+      "external_id:string",
+      "external_idp_id:string",
+      "last_modified_at:timestamp",
+      "external_updated_at:timestamp",
+      "last_seen_at:timestamp",
+      "created_at:timestamp",
+      "updated_at:timestamp",
+      "deleted_at:timestamp"
+    ],
+    "user_group_members": [
+      "id:string",
+      "org_id:string",
+      "user_group_id:string",
+      "member_email:string",
+      "external_user_id:string",
+      "idp_directory_user_id:string",
+      "state:string",
+      "external_updated_at:timestamp",
+      "last_seen_at:timestamp",
+      "created_at:timestamp",
+      "updated_at:timestamp",
+      "deleted_at:timestamp"
+    ],
+    "user_group_devices": [
+      "id:string",
+      "org_id:string",
+      "user_group_id:string",
+      "device_id:string",
+      "created_at:timestamp",
+      "updated_at:timestamp"
+    ],
+    "idp_directory_users": [
+      "id:string",
+      "org_id:string",
+      "idp_integration_id:string",
+      "external_user_id:string",
+      "external_idp_id:string",
+      "email:string",
+      "first_name:string",
+      "last_name:string",
+      "display_name:string",
+      "state:string",
+      "external_updated_at:timestamp",
+      "last_seen_at:timestamp",
+      "created_at:timestamp",
+      "updated_at:timestamp",
+      "deleted_at:timestamp"
+    ],
+    "device_component_versions": [
+      "id:string",
+      "org_id:string",
+      "device_id:string",
+      "component:string",
+      "instance_id:string",
+      "version:string",
+      "request_id:string",
+      "metadata:string",
       "created_at:timestamp",
       "updated_at:timestamp"
     ]

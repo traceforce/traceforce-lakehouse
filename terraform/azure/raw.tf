@@ -63,7 +63,7 @@ resource "snowflake_external_table" "raw_telemetry" {
   }
 }
 
-# 18 snapshot external tables, one per TraceForce daily export under
+# Snapshot external tables, one per TraceForce daily export under
 #   <container_root>/<prefix>/_traceforce/lakehouse/exports/<table>/dt=YYYY-MM-DD/<HHMMSS>.jsonl.gz
 # Every column is a string; the mirror MERGE (ingest.tf) casts into the Iceberg tables.
 resource "snowflake_external_table" "export_src" {

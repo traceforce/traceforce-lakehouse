@@ -1,11 +1,11 @@
 # TraceForce's control-plane metadata, mirrored into the same S3 Tables namespace so
-# Claude can join it against agent_events with plain SQL. v1 = 18 tables: identity
-# (devices, sandboxes, accounts, installs and their junction, MDM owners), agent names,
-# the three finding types with their bridges to the logs (conversations, files), and the
-# whole MCP chain (instances, junction to installs, rollups, global + org catalogs,
-# categories).
-# Deferred until a customer question needs them: user groups and IdP users, issues and
-# policies (each comes with its lookup chain).
+# Claude can join it against agent_events with plain SQL. Tables: identity (devices,
+# sandboxes, accounts, installs and their junction, MDM owners, component versions), agent
+# names and rollups, the three finding types with their bridges to the logs (conversations,
+# files), the whole MCP chain (instances, junction to installs, rollups, global + org
+# catalogs, categories), issues with their type chain, and user groups with their members,
+# devices and IdP users.
+# Deferred until a customer question needs them: policies (with its lookup chain).
 #
 # Flow: a TraceForce job (TraceForce's export job) writes one full
 # snapshot per table per day as gzipped JSON Lines to

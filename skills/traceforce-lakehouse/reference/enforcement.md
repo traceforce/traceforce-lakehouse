@@ -19,7 +19,7 @@ So this outcome is derived from the agent_events logs, per agent, using the lite
   TraceForce's ask; otherwise Claude's own permission prompt). `source = 'config'` is Claude's
   own permission rules, never TraceForce. Values are `accept` / `reject`. The source lives on
   the `tool_decision` row as `$.source`; a rejected call produces no `tool_result` row, and
-  `tool_result` rows carry only `$.success` for outcome. Claude (claude.ai) emits the same
+  `tool_result` rows carry only `$.success` for outcome. Claude emits the same
   `tool_decision` rows, but TraceForce installs no hook there, so a `hook` source on its rows is
   the user's own; its enforcement is the proxy (see Cowork below).
 - Cowork: scout's inline proxy blocks with an HTTP 403 whose body is

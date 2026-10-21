@@ -16,7 +16,8 @@ WITH e AS (
     AND ({{person}} IS NULL OR ev.user_email IS NULL OR lower(ev.user_email) = {{person}})
 ),
 prompts AS (
-  SELECT ts, 'prompt' AS kind, NULL AS tool, NULL AS tool_call_id,
+  -- DISTINCT: the same prompt can be stored more than once.
+  SELECT DISTINCT ts, 'prompt' AS kind, NULL AS tool, NULL AS tool_call_id,
     substr(coalesce(
       -- Text of the last user message in the JSON message array; unparseable content is shown raw.
       try(array_join(transform(
@@ -51,7 +52,7 @@ calls AS (
 ),
 flags AS (
   -- Replies that carry the agent's prompt-injection flag: its leading [PI_DETECTED ...] line(s).
-  SELECT ts, 'reply', NULL, NULL,
+  SELECT DISTINCT ts, 'reply', NULL, NULL,
     substr(regexp_extract(content_output, '\[PI_DETECTED[^\]]*\]'), 1, 2000),
     NULL, NULL, NULL, response_id
   FROM e

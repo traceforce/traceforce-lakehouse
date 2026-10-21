@@ -10,6 +10,9 @@ How to attribute an event or finding to a person, a device, and a corporate acco
   `device_native_id`. Windows serials can be placeholders shared by several machines: if a
   serial matches more than one live device, aggregate at the serial grain and report the
   device count behind it; do not attribute those events, or an MDM owner, to one machine.
+- **Has used AI** = `agent_events` activity in the window, or a `last_active_at` in the window on an
+  `agent_instances` row of a device the person owns (MDM owner) or on an `agent_accounts` row with
+  their `agent_email`. `agent_events` alone misses agents whose activity is not logged.
 - **Corporate account** = an `agent_email` whose domain is the customer's own email domain.
   Ask for the domain if you do not know it; list the distinct domains seen if in doubt.
 - **Agent, as the console counts it** = an install's (`agent_type`, `coalesce(plan, 'unknown')`): start
