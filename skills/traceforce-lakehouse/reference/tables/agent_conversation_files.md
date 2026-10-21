@@ -18,7 +18,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `conversation_id` | string | → agent_conversations.id |
 | `file_external_id` | string | Agent's own file id. |
 | `file_name` | string | Original filename. |
-| `mime_type` | string | MIME type. |
+| `mime_type` | string | MIME type or file extension, as the agent reports it; may be empty. |
 | `size_bytes` | long | Attachment size in bytes as reported; NULL for a zero-byte or unreported attachment (never 0). |
 | `message_external_id` | string | Agent's id of the message the file was attached to. |
 | `message_timestamp` | timestamp | When it was attached (UTC). |

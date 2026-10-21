@@ -174,7 +174,7 @@ TABLES = {
         purpose="Files attached to conversations (uploads).",
         joins=["agent_conversation_files.id = sensitive_data_findings.file_id", "conversation_id → agent_conversations.id"],
         notes={"conversation_id": "→ agent_conversations.id", "file_external_id": "Agent's own file id.", "file_name": "Original filename.",
-               "mime_type": "MIME type.", "size_bytes": "Attachment size in bytes as reported; NULL for a zero-byte or unreported attachment (never 0).", "message_external_id": "Agent's id of the message the file was attached to.",
+               "mime_type": "MIME type or file extension, as the agent reports it; may be empty.", "size_bytes": "Attachment size in bytes as reported; NULL for a zero-byte or unreported attachment (never 0).", "message_external_id": "Agent's id of the message the file was attached to.",
                "message_timestamp": "When it was attached (UTC).", "archive_inner_path": "Entry path when the file is an archive member; '' (never NULL) for a plain file."}),
     "mcp_server_instances": dict(
         purpose="MCP servers configured on a device for an agent.",
