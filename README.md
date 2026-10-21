@@ -17,7 +17,7 @@ In Claude Code:
 ## What is in the lake
 
 - `agent_events`: one row per log record or span from every agent scout writes telemetry for
-  (e.g. Claude Code, Claude (claude.ai), Cursor, GitHub Copilot, and ChatGPT web history),
+  (e.g. Claude Code, Claude, Cursor, GitHub Copilot and ChatGPT),
   loaded hourly.
 - 28 metadata tables mirrored daily from TraceForce: devices, accounts, installs,
   conversations, findings, issues, MCP inventory and catalog, user groups and IdP users. Columns
