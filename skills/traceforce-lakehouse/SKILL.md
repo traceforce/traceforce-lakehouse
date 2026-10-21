@@ -160,8 +160,5 @@ covers flagged operations.
 - Copilot tool calls: `tool_call_id` and `tool_name` come from the span; count
   `signal = 'span' AND operation = 'execute_tool'` rows if `tool_call_id` is NULL.
 - Block vs warn per agent: `reference/enforcement.md`.
-- Storage paths (`customer_storage`, `conversation_storage`, `source_object`) point into the
-  bucket, which the user may not be able to open. For content not in the lake, point them to
-  the TraceForce console.
 - A chat attachment is a `user_attachment` row. Only a text file's content is in the lake
   (`content_input`); for other files the lake has only the name, type and size (`attrs_json`).
