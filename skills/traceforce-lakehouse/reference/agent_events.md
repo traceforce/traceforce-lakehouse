@@ -51,7 +51,7 @@ a span with no decision row is a gap, not an unapproved call. Cursor: only `post
 | `cost_usd` | double | Turn cost in USD as reported by the agent; NULL when the agent reports none. |
 | `content_input` | string | Prompt as a JSON message array; masked per matched value when the org redacts. Large. |
 | `content_output` | string | Response as a JSON message array; masked per matched value when the org redacts. Large. |
-| `service_name` | string | The emitting service's name (OTLP resource attribute); may name the collector rather than the agent. |
+| `service_name` | string | The emitting service's name (OTLP resource attribute); may name the collector rather than the agent. One agent can have rows from more than one source (for example its web chat history and its app's own telemetry); service_name tells them apart. |
 | `service_version` | string | Version string of the emitter — the agent, or the collector when it emits on the agent's behalf. |
 | `os_type` | string | Operating system of the device; NULL when not reported. |
 | `attrs_json` | string | Every other record attribute as JSON text: json_extract_scalar(attrs_json, '$["cursor.version"]'). The decision source lives here: $.source. |

@@ -367,7 +367,7 @@ EVENT_NOTES = {
     "cost_usd": "Turn cost in USD as reported by the agent; NULL when the agent reports none.",
     "content_input": "Prompt as a JSON message array; masked per matched value when the org redacts. Large.",
     "content_output": "Response as a JSON message array; masked per matched value when the org redacts. Large.",
-    "service_name": "The emitting service's name (OTLP resource attribute); may name the collector rather than the agent.",
+    "service_name": "The emitting service's name (OTLP resource attribute); may name the collector rather than the agent. One agent can have rows from more than one source (for example its web chat history and its app's own telemetry); service_name tells them apart.",
     "service_version": "Version string of the emitter — the agent, or the collector when it emits on the agent's behalf.",
     "os_type": "Operating system of the device; NULL when not reported.",
     "attrs_json": "Every other record attribute as JSON text: json_extract_scalar(attrs_json, '$[\"cursor.version\"]'). The decision source lives here: $.source.",
