@@ -33,16 +33,16 @@
 
   <section class="kpis" id="kpis" aria-label="Totals"></section>
 
-  <section class="grid" id="detail" aria-label="User detail" hidden>
-    <div class="card span-8">
+  <section class="grid" id="detail" aria-label="Sessions">
+    <div class="card span-8" id="detail-card">
       <div class="card-head">
         <h2 id="detail-title">Sessions</h2>
-        <span class="sub"><span id="detail-sub"></span> · <button class="link" id="detail-clear" type="button">Show everyone</button></span>
+        <span class="sub"><span id="detail-sub"></span><span id="detail-clear-wrap"> · <button class="link" id="detail-clear" type="button">Show everyone</button></span></span>
       </div>
       <div class="tbl-wrap" id="detail-sessions"></div>
       <button class="link" id="detail-more" type="button" hidden></button>
     </div>
-    <div class="card span-4">
+    <div class="card span-4" id="tools-card">
       <div class="card-head"><h2>Top tools</h2><span class="sub" id="tools-sub">Tool calls, selected period</span></div>
       <div class="chart" id="detail-tools"></div>
       <details><summary>Table</summary><div class="tbl-wrap" id="detail-tools-table"></div></details>
@@ -60,7 +60,7 @@
     </div>
 
     <div class="card span-4">
-      <div class="card-head"><h2>Top users by cost</h2><span class="sub">Click a user for their sessions and prompts</span></div>
+      <div class="card-head"><h2 id="people-title">Top users by cost</h2><span class="sub">Click a user for their sessions and prompts</span></div>
       <div class="chart" id="people-chart"></div>
       <details><summary>Table</summary><div class="tbl-wrap" id="people-table"></div></details>
     </div>
@@ -121,7 +121,8 @@
                   sessSort: { key: "started_at", dir: -1 }, sessAll: false, openSession: "", turnsAll: false };
   let UNATTR = [], UNATTR_DEVICES = new Map();
   // Drill-down results fetched so far, kept in memory until the page is reloaded.
-  const PEOPLE = new Map(), PROMPTS = new Map();
+  const PEOPLE = new Map(), PROMPTS = new Map(), RECENT = new Map();
+  const RECENT_LIMIT = 30;
 
   function setData(d) {
     DATA = d;
@@ -210,16 +211,21 @@
       byPerson.set(p, o);
     }
     const peopleRows = [...byPerson].sort((a, b) => (b[1].cost || 0) - (a[1].cost || 0) || b[1].sessions - a[1].sessions);
-    hBars($("people-chart"), peopleRows.filter(p => p[1].cost > 0).slice(0, 8).map(([p, o]) => ({
-      label: p, value: o.cost, display: usd(o.cost), onClick: () => selectPerson(p),
+    // Agents that report no cost (ChatGPT, Codex, Cursor, ...) would leave no one to click, so rank by sessions instead.
+    const byCost = peopleRows.some(p => p[1].cost > 0);
+    $("people-title").textContent = byCost ? "Top users by cost" : "Top users by sessions";
+    const ranked = byCost ? peopleRows.filter(p => p[1].cost > 0)
+      : peopleRows.filter(p => p[1].sessions > 0).sort((a, b) => b[1].sessions - a[1].sessions);
+    hBars($("people-chart"), ranked.slice(0, 8).map(([p, o]) => ({
+      label: p, value: byCost ? o.cost : o.sessions, display: byCost ? usd(o.cost) : numExact(o.sessions), onClick: () => selectPerson(p),
       tip: [{ value: usd(o.cost, true), label: "cost" }, { value: numExact(o.sessions), label: "sessions" },
             { value: [...o.agents].map(agentName).join(", "), label: "" }],
-    })), "No reported cost in this selection");
+    })), "No sessions in this selection");
     table($("people-table"), ["User", "Cost", "Sessions", "Tool calls", "Agents"],
       peopleRows.map(([p, o]) => ({ onClick: () => selectPerson(p),
         cells: [p, usd(o.cost, true), numExact(o.sessions), numExact(o.tools), [...o.agents].map(agentName).join(", ")] })), [4]);
 
-    renderDetail(days);
+    renderDetail(days, dayList);
     renderUnattributed(days);
 
     // Models (the person filter can't apply: model rows aren't per person)
@@ -267,23 +273,40 @@
     $("detail").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function renderDetail(days) {
-    const host = $("detail");
-    host.hidden = !state.person;
-    if (!state.person) return;
+  // With no user picked, the latest sessions across everyone, for the agent filter and date range.
+  function recentKey(since) {
+    const agent = state.agents.size === 1 && agentOrder.length > 1 ? [...state.agents][0] : "";
+    return `${agent}|${since}`;
+  }
+  function recentSessions(since) {
+    const key = recentKey(since), agent = key.split("|")[0];
+    return fetchOnce(RECENT, key, () => ({
+      sessions: DATA.sessions.filter(x => x.started_at >= since && (!agent || x.agent === agent))
+        .sort((a, b) => tsParse(b.started_at) - tsParse(a.started_at)).slice(0, RECENT_LIMIT) }),
+      "api/recent", { agent, since });
+  }
+
+  function renderDetail(days, dayList) {
+    const everyone = !state.person;
     const unattr = state.person === UNATTRIBUTED;
     const devCol = unattr && !state.device;
+    $("detail-clear-wrap").hidden = everyone;
+    $("tools-card").hidden = everyone;
+    $("detail-card").className = "card " + (everyone ? "span-12" : "span-8");
 
-    $("detail-title").textContent = unattr
-      ? (state.device ? `Unattributed sessions on ${deviceLabel(state.device)}` : "Unattributed sessions")
+    $("detail-title").textContent = everyone ? "Recent sessions"
+      : unattr ? (state.device ? `Unattributed sessions on ${deviceLabel(state.device)}` : "Unattributed sessions")
       : `Sessions · ${state.person}`;
     const p = state.person;
-    const pd = fetchOnce(PEOPLE, p, () => ({ sessions: DATA.sessions.filter(x => personOf(x) === p), tools: DATA.tools.filter(r => personOf(r) === p) }),
-      "api/person", { person: unattr ? "" : p });
+    const since = dayList[0] + " 00:00:00";
+    const pd = everyone ? recentSessions(since)
+      : fetchOnce(PEOPLE, p, () => ({ sessions: DATA.sessions.filter(x => personOf(x) === p), tools: DATA.tools.filter(r => personOf(r) === p) }),
+        "api/person", { person: unattr ? "" : p });
     if (pd.status !== "ready") {
       $("detail-sub").textContent = `Last ${state.days} days`;
-      $("detail-sessions").replaceChildren(pending(pd, "sessions", PEOPLE, p));
+      $("detail-sessions").replaceChildren(pending(pd, "sessions", everyone ? RECENT : PEOPLE, everyone ? recentKey(since) : p));
       $("detail-more").hidden = true;
+      if (everyone) return;
       $("detail-tools").replaceChildren(pending(pd, "tools", PEOPLE, p));
       $("detail-tools-table").replaceChildren();
       return;
@@ -291,22 +314,27 @@
     const sess = pd.sessions.filter(x => days.has(x.started_at.slice(0, 10)) && state.agents.has(x.agent)
       && (!state.device || x.device_native_id === state.device));
     const totalCost = nsum(sess, "cost_usd");
-    $("detail-sub").textContent = `${numExact(sess.length)} sessions started in the last ${state.days} days`
-      + (totalCost != null ? ` · ${usd(totalCost, true)}` : "") + " · click a session for its prompts";
+    $("detail-sub").textContent = (everyone
+      ? (sess.length >= RECENT_LIMIT ? `Latest ${numExact(RECENT_LIMIT)} sessions` : `${numExact(sess.length)} sessions`)
+        + ` across all users in the last ${state.days} days · pick a user for all of theirs`
+      : `${numExact(sess.length)} sessions started in the last ${state.days} days`
+        + (totalCost != null ? ` · ${usd(totalCost, true)}` : "")) + " · click a session for its prompts";
 
     const { key, dir } = state.sessSort;
     const val = x => key === "duration" ? tsParse(x.ended_at) - tsParse(x.started_at)
       : key === "tokens" ? (x.input_tokens || 0) + (x.output_tokens || 0)
       : key === "started_at" ? tsParse(x.started_at) : (x[key] == null ? -1 : x[key]);
     sess.sort((a, b) => dir * (val(a) - val(b)));
-    const LIMIT = 25;
+    const LIMIT = everyone ? RECENT_LIMIT : 25;
     const shown = state.sessAll ? sess : sess.slice(0, LIMIT);
 
     const col = (label, k) => ({ label, sort: { active: key === k, dir, onSort: () => {
       state.sessSort = { key: k, dir: key === k ? -dir : -1 }; render();
     } } });
+    // Across everyone, a User column names who ran each session (the device, for unattributed ones).
+    const userOf = x => x.person || `${UNATTRIBUTED} · ${deviceLabel(x.device_native_id)}`;
     const head = [col("Started (UTC)", "started_at"), "Agent"]
-      .concat(devCol ? ["Device"] : [], [col("Duration", "duration"), "Models", col("Prompts", "prompts"),
+      .concat(everyone ? ["User"] : devCol ? ["Device"] : [], [col("Duration", "duration"), "Models", col("Prompts", "prompts"),
         col("Tool calls", "tool_calls"), col("Tokens", "tokens"), col("Cost", "cost_usd")]);
     const sessKey = x => `${x.agent}|${x.person || ""}|${x.session_id}`;
     const trs = table($("detail-sessions"), head, shown.map(x => {
@@ -318,12 +346,12 @@
       const models = el("span", ms.length ? { title: x.models } : { class: "na" }, ms.length ? null : "—");
       if (ms.length) models.append(el("span", { class: "model" }, ms[0]), ms.length > 1 ? `+${ms.length - 1}` : "");
       return { onClick: () => toggleSession(sessKey(x)), cells: [{ node: started }, nameCell(x.agent)]
-        .concat(devCol ? [deviceLabel(x.device_native_id)] : [], [
+        .concat(everyone ? [userOf(x)] : devCol ? [deviceLabel(x.device_native_id)] : [], [
           fmtDuration(tsParse(x.ended_at) - tsParse(x.started_at)), { node: models, wrap: true },
           x.prompts ? numExact(x.prompts) : "—", numExact(x.tool_calls),
           x.input_tokens == null && x.output_tokens == null ? "—" : num((x.input_tokens || 0) + (x.output_tokens || 0)),
           usd(x.cost_usd, true)]) };
-    }), devCol ? [1, 2, 4] : [1, 3]);
+    }), everyone || devCol ? [1, 2, 4] : [1, 3]);
     shown.forEach((x, i) => {
       const tr = trs[i];
       tr.setAttribute("aria-expanded", String(state.openSession === sessKey(x)));
@@ -343,6 +371,7 @@
     const more = $("detail-more");
     more.hidden = sess.length <= LIMIT;
     more.textContent = state.sessAll ? "Show fewer" : `Show all ${numExact(sess.length)} sessions`;
+    if (everyone) return;
 
     // Top tools. Tool rows carry no device, so a device-scoped view still shows all unattributed tools.
     const byTool = new Map();

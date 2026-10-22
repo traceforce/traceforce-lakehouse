@@ -63,8 +63,10 @@ esac
 # on both paths rather than losing it to set -e.
 TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
+# The leading newline keeps SQL that opens with a "--" comment from being parsed as a bq flag
+# (bq doesn't honor "--" as the end of its flags).
 bq query --project_id="$PROJECT" --use_legacy_sql=false --format=csv \
-  --maximum_bytes_billed="$(( MAX_GB * 1073741824 ))" --max_rows="$MAX_ROWS" "$SQL" > "$TMP" \
+  --maximum_bytes_billed="$(( MAX_GB * 1073741824 ))" --max_rows="$MAX_ROWS" $'\n'"$SQL" > "$TMP" \
   || { cat "$TMP"; exit 1; }
 cat "$TMP"
 [[ -s "$TMP" ]] || echo "-- 0 rows" >&2

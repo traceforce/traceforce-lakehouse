@@ -65,3 +65,6 @@ badge); a finding with no issue type ranks low. An incident takes its most sever
 
 `timeline.sql` has `{{session_id}}`, `{{person}}`, `{{since}}` and `{{until}}` placeholders that
 `../serve.mjs` fills in. To run it by hand, replace them with literals.
+
+The SQL in `queries/` is Athena (Trino); `queries/bigquery/` has the same queries in GoogleSQL, used
+with `--cloud gcp`. Keep the two in step.

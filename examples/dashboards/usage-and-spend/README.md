@@ -15,10 +15,12 @@ The page fetches each piece only when it needs it, through the endpoints in `api
 | when | endpoint | queries |
 |---|---|---|
 | the page loads | `api/overview` | `activity`, `models`, `unattributed`, `unattributed_devices`, `freshness`, in parallel |
+| the page loads, or you change the date range or agent with no user picked | `api/recent` | `recent_sessions` for that range and agent |
 | you pick a user or device | `api/person` | `sessions`, `tools` for that user |
 | you open a session | `api/prompts` | `prompts` for that session |
 
-Each takes a few seconds. The date range and agent filters apply in the page, so they're instant.
+Each takes a few seconds. The date range and agent filters apply in the page, so they're instant,
+except that the recent sessions list is fetched again for each new range or agent.
 Prompt text leaves the lake only for the session you open.
 
 ## What it shows
@@ -28,6 +30,8 @@ Prompt text leaves the lake only for the session you open.
 - **Totals**: reported cost, active users, sessions, prompts, tool calls, tokens and cache share.
 - **Daily cost by agent**, **daily sessions by agent**, **top users by cost**, **cost by model**,
   and a **per-agent table**. Each chart has a table view.
+- **Recent sessions**: before you pick a user, the 30 most recent sessions across everyone for the
+  date range and agent, with who ran each (the device, for unattributed ones).
 - **User drill-down**: click a user (bar or table row) or pick one in the filter to see their
   sessions (start time, agent, duration, models, prompts, tool calls, tokens and cost; sortable,
   newest first) and their top tools. MCP tools show as `server/tool`.
@@ -59,6 +63,7 @@ Prompt text leaves the lake only for the session you open.
 | `activity.sql` | day × agent × person | totals, daily charts, people, per-agent table |
 | `models.sql` | day × agent × model | cost by model |
 | `sessions.sql` | one row per session, for one person | person drill-down |
+| `recent_sessions.sql` | one row per session, the latest 30 across everyone | recent sessions |
 | `tools.sql` | day × agent × tool, for one person | top tools |
 | `unattributed.sql` | day × agent × device serial, no person | unattributed by device |
 | `unattributed_devices.sql` | device serial | device name, MDM status, signed-in accounts |
@@ -70,12 +75,13 @@ and response in between are credited to it. This works for agents that emit no p
 logged before a session's first prompt isn't credited to any prompt. The prompts are what each agent
 logs as one: Claude Code also logs its own task notifications as prompts, so they appear here too.
 
-All read the last 90 days. `sessions.sql`, `tools.sql` and `prompts.sql` have `{{person}}`-style
+All read the last 90 days, except `recent_sessions.sql`, which reads from the start of the date range.
+`sessions.sql`, `recent_sessions.sql`, `tools.sql` and `prompts.sql` have `{{person}}`-style
 placeholders that `../serve.mjs` fills in. To run one by hand, replace them with literals (`NULL` for the
-unattributed person).
+unattributed person, or for all agents in `recent_sessions.sql`).
 
 ## Other clouds
 
-The SQL in `queries/` is Athena (Trino). For BigQuery or Snowflake, translate it as described in
-the skill's `SKILL.md` and point `QUERY` in `../serve.mjs` at `bq_query.sh` or `snowflake_query.sh`.
-The page reads the same JSON either way.
+The SQL in `queries/` is Athena (Trino); `queries/bigquery/` has the same queries in GoogleSQL, used
+with `--cloud gcp`. Keep the two in step: same columns, same meaning. The page reads the same JSON
+either way. Snowflake isn't supported yet.

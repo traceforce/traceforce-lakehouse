@@ -12,7 +12,7 @@ In Claude Code:
 | command | what it does |
 |---|---|
 | `/traceforce-lakehouse:traceforce-lakehouse` | Answers questions about agent activity in plain English, read-only, and drills down into specific prompts and tool calls. |
-| `/traceforce-lakehouse:dashboards` | Opens the usage-and-spend and incident-triage dashboards in your browser. AWS only. |
+| `/traceforce-lakehouse:dashboards` | Opens the usage-and-spend and incident-triage dashboards in your browser. AWS and GCP. |
 
 ## What is in the lake
 
