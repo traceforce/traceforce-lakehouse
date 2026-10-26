@@ -1,4 +1,5 @@
 -- BigQuery (GoogleSQL) version of ../tools.sql: one person's tool calls per (UTC day, agent, tool).
+-- Also in traceforce-ui src/lib/lakehouse/queries/usage.ts (the in-app GCP dashboards): keep the two in sync.
 WITH e AS (
   SELECT
     DATE(ev.ts) AS day,

@@ -1,4 +1,5 @@
 -- BigQuery (GoogleSQL) version of ../models.sql: one row per (UTC day, agent, model).
+-- Also in traceforce-ui src/lib/lakehouse/queries/usage.ts (the in-app GCP dashboards): keep the two in sync.
 SELECT
   CAST(DATE(ts) AS STRING) AS day,
   lower(replace(agent, 'AGENT_IDENTITY_', '')) AS agent,

@@ -1,4 +1,5 @@
 -- BigQuery (GoogleSQL) version of ../recent_sessions.sql: the 30 most recent sessions across everyone.
+-- Also in traceforce-ui src/lib/lakehouse/queries/usage.ts (the in-app GCP dashboards): keep the two in sync.
 WITH e AS (
   SELECT
     lower(replace(ev.agent, 'AGENT_IDENTITY_', '')) AS agent,

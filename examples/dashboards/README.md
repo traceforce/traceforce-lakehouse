@@ -8,6 +8,10 @@ on disk.
 | [`usage-and-spend/`](usage-and-spend/README.md) | Who uses which AI agents, how much, and what it costs, down to each session's prompts |
 | [`incident-triage/`](incident-triage/README.md) | Which sessions leaked sensitive data, ran risky actions or met prompt injections, ranked by severity |
 
+On GCP, the same two dashboards are also in the TraceForce console (Lakehouse in the sidebar), querying
+BigQuery from your browser with your own Google sign-in, with nothing to install. Set them up in
+Settings › Lakehouse, step 3.
+
 ## Run it (AWS / Athena, GCP / BigQuery)
 
 In Claude Code with the `traceforce-lakehouse` plugin installed, type `/traceforce-lakehouse:dashboards` (or ask Claude to

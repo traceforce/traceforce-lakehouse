@@ -1,4 +1,5 @@
 -- BigQuery (GoogleSQL) version of ../freshness.sql.
+-- Also in traceforce-ui src/lib/lakehouse/queries/incidents.ts (the in-app GCP dashboards): keep the two in sync.
 SELECT
   FORMAT_TIMESTAMP('%F %H:%M:%E6S', (SELECT max(created_at) FROM (
      SELECT created_at FROM traceforce_lakehouse.sensitive_data_findings

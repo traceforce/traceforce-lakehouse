@@ -1,4 +1,5 @@
 -- BigQuery (GoogleSQL) version of ../timeline.sql: what happened in one session around its findings.
+-- Also in traceforce-ui src/lib/lakehouse/queries/incidents.ts (the in-app GCP dashboards): keep the two in sync.
 WITH e AS (
   SELECT
     ev.ts, ev.event_name, ev.signal, ev.operation, ev.tool_call_id, ev.tool_name, ev.mcp_server_name,
@@ -47,9 +48,10 @@ calls AS (
 ),
 flags AS (
   -- Replies that carry the agent's prompt-injection flag: its leading [PI_DETECTED ...] line(s).
-  SELECT ts, 'reply', NULL, NULL,
+  -- Typed NULLs: a bare NULL in its own CTE is INT64, which UNION ALL won't match to STRING.
+  SELECT ts, 'reply', CAST(NULL AS STRING), CAST(NULL AS STRING),
     substr(REGEXP_EXTRACT(content_output, r'\[PI_DETECTED[^\]]*\]'), 1, 2000),
-    NULL, NULL, NULL, response_id
+    CAST(NULL AS STRING), CAST(NULL AS STRING), CAST(NULL AS STRING), response_id
   FROM e
   WHERE content_output LIKE '%[PI_DETECTED%'
 )

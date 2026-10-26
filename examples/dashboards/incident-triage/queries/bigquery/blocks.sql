@@ -1,4 +1,5 @@
 -- BigQuery (GoogleSQL) version of ../blocks.sql: actions TraceForce blocked in the last 90 days.
+-- Also in traceforce-ui src/lib/lakehouse/queries/incidents.ts (the in-app GCP dashboards): keep the two in sync.
 WITH e AS (
   SELECT
     lower(replace(ev.agent, 'AGENT_IDENTITY_', '')) AS agent,

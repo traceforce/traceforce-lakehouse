@@ -1,4 +1,5 @@
 -- BigQuery (GoogleSQL) version of ../unattributed_devices.sql: what TraceForce knows about each unattributed serial.
+-- Also in traceforce-ui src/lib/lakehouse/queries/usage.ts (the in-app GCP dashboards): keep the two in sync.
 WITH serials AS (
   SELECT DISTINCT ev.device_native_id
   FROM traceforce_lakehouse.agent_events ev

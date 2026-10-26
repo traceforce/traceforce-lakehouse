@@ -1,4 +1,5 @@
 -- BigQuery (GoogleSQL) version of ../prompts.sql: one row per prompt (turn) in one session.
+-- Also in traceforce-ui src/lib/lakehouse/queries/usage.ts (the in-app GCP dashboards): keep the two in sync.
 -- The JSON message arrays are parsed with SAFE.PARSE_JSON, so unparseable content falls back to the raw text.
 WITH ev AS (
   SELECT

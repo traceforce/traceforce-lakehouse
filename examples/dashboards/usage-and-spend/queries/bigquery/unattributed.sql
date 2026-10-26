@@ -1,4 +1,5 @@
 -- BigQuery (GoogleSQL) version of ../unattributed.sql: activity with no person, per (UTC day, agent, device serial).
+-- Also in traceforce-ui src/lib/lakehouse/queries/usage.ts (the in-app GCP dashboards): keep the two in sync.
 WITH e AS (
   SELECT DATE(ev.ts) AS day, lower(replace(ev.agent, 'AGENT_IDENTITY_', '')) AS agent,
          coalesce(ev.device_native_id, 'unknown') AS device_native_id,
