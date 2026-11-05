@@ -230,7 +230,8 @@ TABLES = {
     "agents": dict(
         purpose="Org-level rollup per agent and plan: counts and scores. One row per (agent_type, plan) per org.",
         joins=["agents.agent_type = agent_catalog.agent_type (product name; agent_catalog_id may be NULL)", "agent_accounts.agent_id = agents.id",
-               "Its counts are over agent_issues with the same agent_type and plan"],
+               "Its counts are over agent_issues with the same agent_type and plan",
+               "The console's Agents list shows only live rollups with active_users > 0 and agent_catalog_id NOT NULL"],
         notes={"agent_catalog_id": "→ agent_catalog.id (FK); may be NULL, join agent_catalog on agent_type instead.", "agent_type": "Which agent product.",
                "plan": "Account plan as text, same vocabulary as agent_accounts.plan; 'unknown' for installs with no signed-in account.",
                "active_users": "Distinct active devices (not users) with this agent and plan; 0 or NULL when none.",
