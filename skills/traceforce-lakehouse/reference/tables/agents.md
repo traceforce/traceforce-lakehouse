@@ -32,4 +32,4 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `last_reviewed` | timestamp | Last reviewed (UTC). Always NULL. |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |
-| `deleted_at` | timestamp | Set when no live install remains. NULL = live. |
+| `deleted_at` | timestamp | Set when no live install remains; a row that has had installs stays NULL while it has open issues, and once set only a returning install clears it. NULL = live. |

@@ -179,7 +179,7 @@ TABLES = {
     "mcp_server_instances": dict(
         purpose="MCP servers configured on a device for an agent.",
         joins=["lower(mcp_server_instances.mcp_native_id) = lower(agent_events.mcp_server_name) AND mcp_server_instances.agent_type = agent_events.agent_type, on the same device via mcp_server_instances.device_id → devices.device_native_id = agent_events.device_native_id. Not a key: the same server name can have several live rows per device (one per project_path or location), so aggregate or SELECT DISTINCT",
-               "account: agent_account_id when set; else mcp_server_agent_instances → agent_instances_accounts → agent_accounts, taking the greatest agent_accounts.last_seen_at when several match (the console's rule). For a live instance, walk only live links (deleted_at IS NULL on both links) to live installs and live accounts",
+               "account: agent_account_id when set; else mcp_server_agent_instances → agent_instances_accounts → agent_accounts, taking the greatest agent_accounts.last_seen_at when several match (the console's rule). For a live instance, walk only live links (deleted_at IS NULL on both links) to live installs and live accounts. For a deleted instance, use any link and rank first by when the path was cut: a path with neither link cut wins, then the later LEAST of the two links' deleted_at (COALESCE each to a far-future timestamp first), then the greatest agent_accounts.last_seen_at",
                "mcp_server_id → mcp_servers.id", "mcp_server_type → mcp_catalog.mcp_server_type or org_mcp_catalog.mcp_server_type (product name)",
                "mcp_server_agent_instances links to the install it is configured in"],
         notes={"metadata": "JSON text; detection details for filesystem MCPs: matched_pattern, auth_matched_pattern, config_type, uid, version, agent_deployment.",
@@ -242,7 +242,7 @@ TABLES = {
                "sandbox_runtime_types": "JSON array of the distinct runtime types of the sandboxes live installs run in, same vocabulary as sandboxes.runtime_type; '[]' when none run in a sandbox.",
                "instance_count": "Count of distinct live installs; 0 or NULL when none.", "has_host_instances": "Any install on a host (not only sandboxes).",
                "first_seen_at": "First observed (UTC).", "last_reviewed": "Last reviewed (UTC). Always NULL.",
-               "deleted_at": "Set when no live install remains. NULL = live."}),
+               "deleted_at": "Set when no live install remains; a row that has had installs stays NULL while it has open issues, and once set only a returning install clears it. NULL = live."}),
     "agent_issues": dict(
         purpose="One row per agent issue: an issue type raised on one install, account or cloud agent, open or closed.",
         joins=["issue_type_control_id → issue_type_controls.id → issue_type_controls.issue_type_id → issue_types.id (name, score, criticality); see reference/joins.md",

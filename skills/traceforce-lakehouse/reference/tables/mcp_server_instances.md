@@ -4,7 +4,7 @@ MCP servers configured on a device for an agent.
 
 Joins:
 - lower(mcp_server_instances.mcp_native_id) = lower(agent_events.mcp_server_name) AND mcp_server_instances.agent_type = agent_events.agent_type, on the same device via mcp_server_instances.device_id → devices.device_native_id = agent_events.device_native_id. Not a key: the same server name can have several live rows per device (one per project_path or location), so aggregate or SELECT DISTINCT
-- account: agent_account_id when set; else mcp_server_agent_instances → agent_instances_accounts → agent_accounts, taking the greatest agent_accounts.last_seen_at when several match (the console's rule). For a live instance, walk only live links (deleted_at IS NULL on both links) to live installs and live accounts
+- account: agent_account_id when set; else mcp_server_agent_instances → agent_instances_accounts → agent_accounts, taking the greatest agent_accounts.last_seen_at when several match (the console's rule). For a live instance, walk only live links (deleted_at IS NULL on both links) to live installs and live accounts. For a deleted instance, use any link and rank first by when the path was cut: a path with neither link cut wins, then the later LEAST of the two links' deleted_at (COALESCE each to a far-future timestamp first), then the greatest agent_accounts.last_seen_at
 - mcp_server_id → mcp_servers.id
 - mcp_server_type → mcp_catalog.mcp_server_type or org_mcp_catalog.mcp_server_type (product name)
 - mcp_server_agent_instances links to the install it is configured in
