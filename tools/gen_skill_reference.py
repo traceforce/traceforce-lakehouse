@@ -97,7 +97,7 @@ TABLES = {
         purpose="Installs: one row per (device, agent, deployment form factor, OS user). Includes agents that never produce an account (GitHub Copilot).",
         joins=["agent_instances.device_id = devices.id AND agent_instances.agent_type = agent_events.agent_type",
                "agent_instances_accounts links an install to the accounts signed in through it"],
-        notes={"metadata": "JSON text; how the install was identified: identifier, store_id, heuristic_match_method, heuristic_url, store_error. auth_method and auth_provider, when present, are the raw sign-in method and model provider (or reply id prefix) the agent recorded on the device; absent when not read, and a scan that cannot read them keeps the last value.",
+        notes={"metadata": "JSON text; how the install was identified: identifier, store_id, heuristic_match_method, heuristic_url, store_error. auth_method and auth_provider are the raw sign-in method and model provider (or reply id prefix) the agent saved locally. Absent until first read; a scan that does not find them (including after a sign-out) keeps the last value.",
                "agent_type": "Which agent product.", "agent_deployment": "Form factor of this install, as text ('desktop_app' / 'vscode_extension' / 'cli' / 'browser' / 'ai_browser' / 'service' / 'unknown').",
                "tenant": "OS-level user (uid on macOS/Linux, SID on Windows) the install belongs to; resolve to a username via devices.account_metadata. For agent_deployment = 'browser' it is the agent's web domain instead (does not resolve).",
                "agent_catalog_id": "→ agent_catalog.id (FK); may be NULL — join agent_catalog on agent_type instead.", "configuration": "JSON text; always '{}'.",
@@ -243,7 +243,7 @@ TABLES = {
                "sandbox_runtime_types": "JSON array of the distinct runtime types of the sandboxes live installs run in, same vocabulary as sandboxes.runtime_type; '[]' when none run in a sandbox.",
                "instance_count": "Count of distinct live installs; 0 or NULL when none.", "has_host_instances": "Any install on a host (not only sandboxes).",
                "first_seen_at": "First observed (UTC).", "last_reviewed": "Last reviewed (UTC). Always NULL.",
-               "deleted_at": "Set when no live install remains; a row that has had installs stays NULL while it has open issues, and once set only a returning install clears it. NULL = live."}),
+               "deleted_at": "Set when no live install remains. NULL = live."}),
     "agent_issues": dict(
         purpose="One row per agent issue: an issue type raised on one install, account or cloud agent, open or closed.",
         joins=["issue_type_control_id → issue_type_controls.id → issue_type_controls.issue_type_id → issue_types.id (name, score, criticality); see reference/joins.md",
