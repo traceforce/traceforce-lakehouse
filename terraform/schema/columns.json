@@ -309,7 +309,9 @@
       "device_id:string",
       "sandbox_id:string",
       "created_at:timestamp",
-      "updated_at:timestamp"
+      "updated_at:timestamp",
+      "last_seen_at:timestamp",
+      "deleted_at:timestamp"
     ],
     "device_owner_mappings": [
       "id:string",
@@ -468,7 +470,9 @@
       "device_id:string",
       "sandbox_id:string",
       "created_at:timestamp",
-      "updated_at:timestamp"
+      "updated_at:timestamp",
+      "last_seen_at:timestamp",
+      "deleted_at:timestamp"
     ],
     "mcp_servers": [
       "id:string",
