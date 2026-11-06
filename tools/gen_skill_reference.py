@@ -97,7 +97,7 @@ TABLES = {
         purpose="Installs: one row per (device, agent, deployment form factor, OS user). Includes agents that never produce an account (GitHub Copilot).",
         joins=["agent_instances.device_id = devices.id AND agent_instances.agent_type = agent_events.agent_type",
                "agent_instances_accounts links an install to the accounts signed in through it"],
-        notes={"metadata": "JSON text; how the install was identified: identifier, store_id, heuristic_match_method, heuristic_url, store_error. auth_method and auth_provider are the raw sign-in method and model provider (or reply id prefix) the agent saved locally. Absent until first read; a scan that does not find them (including after a sign-out) keeps the last value.",
+        notes={"metadata": "JSON text; how the install was identified: identifier, store_id, heuristic_match_method, heuristic_url, store_error. auth_method and model_host_raw are the raw sign-in method and model host (provider id or reply id prefix) the agent saved locally. Absent until first read; a scan that does not find them (including after a sign-out) keeps the last value.",
                "agent_type": "Which agent product.", "agent_deployment": "Form factor of this install, as text ('desktop_app' / 'vscode_extension' / 'cli' / 'browser' / 'ai_browser' / 'service' / 'unknown').",
                "tenant": "OS-level user (uid on macOS/Linux, SID on Windows) the install belongs to; resolve to a username via devices.account_metadata. For agent_deployment = 'browser' it is the agent's web domain instead (does not resolve).",
                "agent_catalog_id": "→ agent_catalog.id (FK); may be NULL — join agent_catalog on agent_type instead.", "configuration": "JSON text; always '{}'.",
