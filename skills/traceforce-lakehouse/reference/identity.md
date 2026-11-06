@@ -16,14 +16,16 @@ How to attribute an event or finding to a person, a device, and a corporate acco
 - **Corporate account** = an `agent_email` whose domain is the customer's own email domain.
   Ask for the domain if you do not know it; list the distinct domains seen if in doubt.
 - **Agent, as the console counts it** = an install's (`agent_type`, `coalesce(plan, 'unknown')`): start
-  from `agent_instances` (`WHERE deleted_at IS NULL`), `LEFT JOIN agent_instances_accounts` (it
-  has no `deleted_at`), `LEFT JOIN agent_accounts a ON a.id = ia.agent_account_id AND
-  a.deleted_at IS NULL` (that filter must be in the ON clause, or account-less installs vanish).
-  No signed-in account
+  from `agent_instances i` (`WHERE i.deleted_at IS NULL`) and LEFT JOIN its live links and their
+  live accounts as one unit: `LEFT JOIN (SELECT ia.agent_instance_id, a.plan FROM
+  agent_instances_accounts ia JOIN agent_accounts a ON a.id = ia.agent_account_id AND
+  a.deleted_at IS NULL WHERE ia.deleted_at IS NULL) l ON l.agent_instance_id = i.id`. No signed-in account
   = plan 'unknown'; that is how Copilot appears. Never count agents from `agent_accounts` alone. A
   device's MCP count in the console is `COUNT(DISTINCT mcp_server_type)` over its live
   `mcp_server_instances`.
-- **Live inventory** = `deleted_at IS NULL` on devices, accounts, installs and MCP instances.
+- **Live inventory** = `deleted_at IS NULL` on devices, accounts, installs, MCP instances and the
+  links between them (`agent_instances_accounts`, `mcp_server_agent_instances`); a link also
+  needs both parents live.
   Do not filter `deleted_at` when walking from a finding to its account: signed-out accounts
   still own their past findings.
 - Emails are stored byte-exact; `lower()` is a tolerance. If a lowercased join returns more

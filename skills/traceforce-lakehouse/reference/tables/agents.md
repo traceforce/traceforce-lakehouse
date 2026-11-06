@@ -6,6 +6,7 @@ Joins:
 - agents.agent_type = agent_catalog.agent_type (product name; agent_catalog_id may be NULL)
 - agent_accounts.agent_id = agents.id
 - Its counts are over agent_issues with the same agent_type and plan
+- The console's Agents list shows only live rollups with active_users > 0 and agent_catalog_id NOT NULL
 
 Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 - (org_id, agent_type, plan): one rollup per agent and plan per org

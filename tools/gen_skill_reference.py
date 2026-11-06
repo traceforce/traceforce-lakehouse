@@ -97,7 +97,7 @@ TABLES = {
         purpose="Installs: one row per (device, agent, deployment form factor, OS user). Includes agents that never produce an account (GitHub Copilot).",
         joins=["agent_instances.device_id = devices.id AND agent_instances.agent_type = agent_events.agent_type",
                "agent_instances_accounts links an install to the accounts signed in through it"],
-        notes={"metadata": "JSON text; how the install was identified: identifier, store_id, heuristic_match_method, heuristic_url, store_error.",
+        notes={"metadata": "JSON text; how the install was identified: identifier, store_id, heuristic_match_method, heuristic_url, store_error. auth_method and model_host_raw are the raw sign-in method and model provider the agent saved locally.",
                "agent_type": "Which agent product.", "agent_deployment": "Form factor of this install, as text ('desktop_app' / 'vscode_extension' / 'cli' / 'browser' / 'ai_browser' / 'service' / 'unknown').",
                "tenant": "OS-level user (uid on macOS/Linux, SID on Windows) the install belongs to; resolve to a username via devices.account_metadata. For agent_deployment = 'browser' it is the agent's web domain instead (does not resolve).",
                "agent_catalog_id": "→ agent_catalog.id (FK); may be NULL — join agent_catalog on agent_type instead.", "configuration": "JSON text; always '{}'.",
@@ -105,8 +105,8 @@ TABLES = {
     "agent_instances_accounts": dict(
         purpose="Junction: which account is signed in through which install.",
         joins=["agent_instance_id → agent_instances.id", "agent_account_id → agent_accounts.id",
-               "No deleted_at of its own. A link is live only when BOTH parents are: agent_instances.deleted_at IS NULL AND agent_accounts.deleted_at IS NULL"],
-        notes={"agent_instance_id": "→ agent_instances.id", "agent_account_id": "→ agent_accounts.id"}),
+               "A link is live when its deleted_at IS NULL and both parents are live: agent_instances.deleted_at IS NULL AND agent_accounts.deleted_at IS NULL"],
+        notes={"agent_instance_id": "→ agent_instances.id", "agent_account_id": "→ agent_accounts.id", "last_seen_at": "Most recent scan that reported this link (UTC)."}),
     "device_owner_mappings": dict(
         purpose="Device owner from your MDM.",
         joins=["device_owner_mappings.device_native_id = agent_events.device_native_id (or = devices.device_native_id)"],
@@ -179,7 +179,7 @@ TABLES = {
     "mcp_server_instances": dict(
         purpose="MCP servers configured on a device for an agent.",
         joins=["lower(mcp_server_instances.mcp_native_id) = lower(agent_events.mcp_server_name) AND mcp_server_instances.agent_type = agent_events.agent_type, on the same device via mcp_server_instances.device_id → devices.device_native_id = agent_events.device_native_id. Not a key: the same server name can have several live rows per device (one per project_path or location), so aggregate or SELECT DISTINCT",
-               "account: agent_account_id when set; else mcp_server_agent_instances → agent_instances_accounts → agent_accounts, taking the greatest agent_accounts.last_seen_at when several match (the console's rule)",
+               "account: agent_account_id when set; else mcp_server_agent_instances → agent_instances_accounts → agent_accounts, taking the greatest agent_accounts.last_seen_at when several match (the console's rule). For a live instance, use only live links to live installs and live accounts.",
                "mcp_server_id → mcp_servers.id", "mcp_server_type → mcp_catalog.mcp_server_type or org_mcp_catalog.mcp_server_type (product name)",
                "mcp_server_agent_instances links to the install it is configured in"],
         notes={"metadata": "JSON text; detection details for filesystem MCPs: matched_pattern, auth_matched_pattern, config_type, uid, version, agent_deployment.",
@@ -195,8 +195,8 @@ TABLES = {
     "mcp_server_agent_instances": dict(
         purpose="Junction: which install (agent_instances) an MCP server instance is configured in.",
         joins=["agent_instance_id → agent_instances.id", "mcp_server_instance_id → mcp_server_instances.id",
-               "No deleted_at of its own. A link is live only when BOTH parents are: agent_instances.deleted_at IS NULL AND mcp_server_instances.deleted_at IS NULL"],
-        notes={"agent_instance_id": "→ agent_instances.id", "mcp_server_instance_id": "→ mcp_server_instances.id"}),
+               "A link is live when its deleted_at IS NULL and both parents are live: agent_instances.deleted_at IS NULL AND mcp_server_instances.deleted_at IS NULL"],
+        notes={"agent_instance_id": "→ agent_instances.id", "mcp_server_instance_id": "→ mcp_server_instances.id", "last_seen_at": "Most recent scan that reported this link (UTC)."}),
     "mcp_servers": dict(
         purpose="Org-level rollup per MCP product: counts and scores. One row per product per org.",
         joins=["mcp_catalog_id → mcp_catalog.id; for org-private products resolve by mcp_server_type against both catalogs",
@@ -230,7 +230,8 @@ TABLES = {
     "agents": dict(
         purpose="Org-level rollup per agent and plan: counts and scores. One row per (agent_type, plan) per org.",
         joins=["agents.agent_type = agent_catalog.agent_type (product name; agent_catalog_id may be NULL)", "agent_accounts.agent_id = agents.id",
-               "Its counts are over agent_issues with the same agent_type and plan"],
+               "Its counts are over agent_issues with the same agent_type and plan",
+               "The console's Agents list shows only live rollups with active_users > 0 and agent_catalog_id NOT NULL"],
         notes={"agent_catalog_id": "→ agent_catalog.id (FK); may be NULL, join agent_catalog on agent_type instead.", "agent_type": "Which agent product.",
                "plan": "Account plan as text, same vocabulary as agent_accounts.plan; 'unknown' for installs with no signed-in account.",
                "active_users": "Distinct active devices (not users) with this agent and plan; 0 or NULL when none.",

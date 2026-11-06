@@ -88,7 +88,7 @@ IAM resources in that account; deploy in the bucket's region.
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws?ref=1.4.0"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws?ref=1.5.0"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
@@ -148,7 +148,7 @@ APIs — in practice **project Owner**.
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform/gcp?ref=1.4.0"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform/gcp?ref=1.5.0"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
@@ -256,7 +256,7 @@ APIs — in practice **project Owner**.
    }
 
    module "traceforce_lakehouse" {
-     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure?ref=1.4.0"
+     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure?ref=1.5.0"
 
      # Must be globally unique across all of Azure (storage account names share one namespace
      # account-wide) and stable for the life of the deployment: changing it later destroys and
