@@ -97,7 +97,7 @@ TABLES = {
         purpose="Installs: one row per (device, agent, deployment form factor, OS user). Includes agents that never produce an account (GitHub Copilot).",
         joins=["agent_instances.device_id = devices.id AND agent_instances.agent_type = agent_events.agent_type",
                "agent_instances_accounts links an install to the accounts signed in through it"],
-        notes={"metadata": "JSON text; how the install was identified: identifier, store_id, heuristic_match_method, heuristic_url, store_error. auth_method and model_host_raw are the raw sign-in method and model host (provider id or reply id prefix) the agent saved locally. Absent until first read; a scan that does not find them (including after a sign-out) keeps the last value.",
+        notes={"metadata": "JSON text; how the install was identified: identifier, store_id, heuristic_match_method, heuristic_url, store_error. auth_method is the raw sign-in method or billing type and model_host_raw the raw model host (provider id or reply id prefix) the agent saved locally. Absent until first read; a scan that does not find them (including after a sign-out) keeps the last value.",
                "agent_type": "Which agent product.", "agent_deployment": "Form factor of this install, as text ('desktop_app' / 'vscode_extension' / 'cli' / 'browser' / 'ai_browser' / 'service' / 'unknown').",
                "tenant": "OS-level user (uid on macOS/Linux, SID on Windows) the install belongs to; resolve to a username via devices.account_metadata. For agent_deployment = 'browser' it is the agent's web domain instead (does not resolve).",
                "agent_catalog_id": "→ agent_catalog.id (FK); may be NULL — join agent_catalog on agent_type instead.", "configuration": "JSON text; always '{}'.",
@@ -106,7 +106,7 @@ TABLES = {
         purpose="Junction: which account is signed in through which install.",
         joins=["agent_instance_id → agent_instances.id", "agent_account_id → agent_accounts.id",
                "A link is live when its own deleted_at IS NULL and BOTH parents are live: agent_instances.deleted_at IS NULL AND agent_accounts.deleted_at IS NULL. Check the parents too: a link's deleted_at can stay NULL after a parent is deleted, and reads NULL until the export carries it"],
-        notes={"agent_instance_id": "→ agent_instances.id", "agent_account_id": "→ agent_accounts.id"}),
+        notes={"agent_instance_id": "→ agent_instances.id", "agent_account_id": "→ agent_accounts.id", "last_seen_at": "Most recent scan that reported this link (UTC). Links that existed before this column was added start at the time it was added."}),
     "device_owner_mappings": dict(
         purpose="Device owner from your MDM.",
         joins=["device_owner_mappings.device_native_id = agent_events.device_native_id (or = devices.device_native_id)"],
@@ -196,7 +196,7 @@ TABLES = {
         purpose="Junction: which install (agent_instances) an MCP server instance is configured in.",
         joins=["agent_instance_id → agent_instances.id", "mcp_server_instance_id → mcp_server_instances.id",
                "A link is live when its own deleted_at IS NULL and BOTH parents are live: agent_instances.deleted_at IS NULL AND mcp_server_instances.deleted_at IS NULL. Check the parents too: a link's deleted_at can stay NULL after a parent is deleted, and reads NULL until the export carries it"],
-        notes={"agent_instance_id": "→ agent_instances.id", "mcp_server_instance_id": "→ mcp_server_instances.id"}),
+        notes={"agent_instance_id": "→ agent_instances.id", "mcp_server_instance_id": "→ mcp_server_instances.id", "last_seen_at": "Most recent scan that reported this link (UTC). Links that existed before this column was added start at the time it was added."}),
     "mcp_servers": dict(
         purpose="Org-level rollup per MCP product: counts and scores. One row per product per org.",
         joins=["mcp_catalog_id → mcp_catalog.id; for org-private products resolve by mcp_server_type against both catalogs",
