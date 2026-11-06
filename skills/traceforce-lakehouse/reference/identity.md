@@ -19,9 +19,7 @@ How to attribute an event or finding to a person, a device, and a corporate acco
   from `agent_instances i` (`WHERE i.deleted_at IS NULL`) and LEFT JOIN its live links and their
   live accounts as one unit: `LEFT JOIN (SELECT ia.agent_instance_id, a.plan FROM
   agent_instances_accounts ia JOIN agent_accounts a ON a.id = ia.agent_account_id AND
-  a.deleted_at IS NULL WHERE ia.deleted_at IS NULL) l ON l.agent_instance_id = i.id`. Filtering
-  after the join drops account-less installs; joining the link and the account separately adds
-  an 'unknown' row for an install that also has a live account. No signed-in account
+  a.deleted_at IS NULL WHERE ia.deleted_at IS NULL) l ON l.agent_instance_id = i.id`. No signed-in account
   = plan 'unknown'; that is how Copilot appears. Never count agents from `agent_accounts` alone. A
   device's MCP count in the console is `COUNT(DISTINCT mcp_server_type)` over its live
   `mcp_server_instances`.
