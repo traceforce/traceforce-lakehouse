@@ -1,6 +1,6 @@
 # mcp_server_agent_instances
 
-Junction: which install a filesystem MCP server instance is configured in. That is the one install whose (agent_type, agent_deployment, tenant) equals the MCP row's metadata (agent_identity, agent_deployment, uid). At most one link per instance per scan, so a config shared by several OS users or form factors links only one of them. Browser connectors (agent_account_id set) and remote-connector MCPs have no link: LEFT JOIN it.
+Junction: which install a filesystem MCP server instance is configured in (browser connectors have no link, so LEFT JOIN it).
 
 Joins:
 - agent_instance_id → agent_instances.id

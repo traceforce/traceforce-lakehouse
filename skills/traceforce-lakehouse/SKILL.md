@@ -111,7 +111,7 @@ example SQL is Athena/Trino. Translate to Snowflake SQL, quoting this module's n
 - `current_timestamp - interval '7' day` -> `DATEADD('day', -7, CURRENT_TIMESTAMP())`; `date_format(...)` -> `TO_CHAR(...)`.
 - `SHOW TABLES` -> `SHOW TABLES IN SCHEMA "traceforce"`; `DESCRIBE <table>` -> `DESCRIBE TABLE "<table>"`.
 - `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `, LATERAL FLATTEN(input => PARSE_JSON(x)) AS elem` (the value is `elem.VALUE`).
-- A lookup by a per-row JSON key, `json_extract_scalar(x, '$["' || key || '"].username')` -> `GET(PARSE_JSON(x), key):"username"::string` (e.g. `x` = `d."account_metadata"`, `key` = `i."tenant"`, or `PARSE_JSON(i."metadata"):"uid"::string` for browser rows).
+- A lookup by a per-row JSON key, `json_extract_scalar(x, '$["' || key || '"].username')` -> `GET(PARSE_JSON(x), key):"username"::string` (e.g. `key` = `i."tenant"`).
 - Ingest/mirror run history: `SELECT NAME, STATE, SCHEDULED_TIME, ERROR_MESSAGE FROM TABLE(INFORMATION_SCHEMA.TASK_HISTORY(SCHEDULED_TIME_RANGE_START => DATEADD('day', -1, CURRENT_TIMESTAMP())))`; the reader role holds `MONITOR` on the Tasks for this.
 
 ## Workflow

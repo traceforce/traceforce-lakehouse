@@ -116,7 +116,7 @@ TABLES = {
         joins=["agent_instance_id → agent_instances.id", "agent_account_id → agent_accounts.id",
                "A link is live when its deleted_at IS NULL and both parents are live: agent_instances.deleted_at IS NULL AND agent_accounts.deleted_at IS NULL"],
         notes={"agent_instance_id": "→ agent_instances.id", "agent_account_id": "→ agent_accounts.id", "last_seen_at": LINK_LAST_SEEN,
-               "deleted_at": LINK_DELETED + " Also set when the install stops using its signed-in account (the install's unknown_plan_reason is 'cloud' or 'api_key'); exclude those installs when counting links that went stale."}),
+               "deleted_at": LINK_DELETED}),
     "device_owner_mappings": dict(
         purpose="Device owner from your MDM.",
         joins=["device_owner_mappings.device_native_id = agent_events.device_native_id (or = devices.device_native_id)"],
@@ -203,7 +203,7 @@ TABLES = {
                "security_findings": "JSON text; TraceForce's security observations for this instance.",
                "tools": "JSON object: '{}' until tools are discovered; '{\"tools\": [...]}' once they are ('[]' when none). Elements (json_extract(tools, '$.tools')) carry name, description, tool_status ('enabled' / 'disabled'), hitl_setting ('allow_unsupervised' / 'always_ask' / 'blocked') and permission_type ('read' / 'write' / 'delete'); 'unknown' when unset."}),
     "mcp_server_agent_instances": dict(
-        purpose="Junction: which install a filesystem MCP server instance is configured in. That is the one install whose (agent_type, agent_deployment, tenant) equals the MCP row's metadata (agent_identity, agent_deployment, uid). At most one link per instance per scan, so a config shared by several OS users or form factors links only one of them. Browser connectors (agent_account_id set) and remote-connector MCPs have no link: LEFT JOIN it.",
+        purpose="Junction: which install a filesystem MCP server instance is configured in (browser connectors have no link, so LEFT JOIN it).",
         joins=["agent_instance_id → agent_instances.id", "mcp_server_instance_id → mcp_server_instances.id",
                "A link is live when its deleted_at IS NULL and both parents are live: agent_instances.deleted_at IS NULL AND mcp_server_instances.deleted_at IS NULL"],
         notes={"agent_instance_id": "→ agent_instances.id", "mcp_server_instance_id": "→ mcp_server_instances.id", "last_seen_at": LINK_LAST_SEEN, "deleted_at": LINK_DELETED}),
