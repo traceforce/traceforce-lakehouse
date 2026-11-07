@@ -69,12 +69,13 @@ How to attribute an event or finding to a person, a device, a corporate account 
   user, so other users of it are not counted. Browser connectors and remote-connector MCPs have
   no uid and no link: take `agent_account_id` → its live `agent_instances_accounts` links → each
   linked install, then the install rule above. An account linked to several installs gives one OS
-  user per install: list them all. For current use, drop links not in their install's latest scan
-  (`last_seen_at` rule under Live inventory).
+  user per install: list them all. For current use of a non-browser install, drop links not in its
+  latest scan (`last_seen_at` rule under Live inventory).
 - **Live inventory** = `deleted_at IS NULL` on devices, accounts, installs, MCP instances and the
   links between them (`agent_instances_accounts`, `mcp_server_agent_instances`); a link also
   needs both parents live. A live link with an older `last_seen_at` than its install was not in
-  the install's latest scan (link tables: `last_seen_at`, `deleted_at`).
+  the install's latest scan, except for browser installs, whose profiles scan separately (link
+  tables: `last_seen_at`, `deleted_at`).
   Do not filter `deleted_at` when walking from a finding to its account: signed-out accounts
   still own their past findings.
 - Emails are stored byte-exact; `lower()` is a tolerance. If a lowercased join returns more
