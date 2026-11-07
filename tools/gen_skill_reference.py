@@ -69,7 +69,7 @@ COMMON = {
 
 # Link lifecycle, shared by agent_instances_accounts and mcp_server_agent_instances.
 LINK_LAST_SEEN = ("Most recent scan that reported this link (UTC); older than the install's last_seen_at = "
-                  "not in the install's latest scan. Links that predate 2026-11-05 carry that date, not their real last report.")
+                  "not in the install's latest scan. Links that predate the column share one backfill timestamp (when it was added, 2026-11-05 or shortly after), not their real last report.")
 LINK_DELETED = ("Soft delete. NULL = live. An unreported link stays live until its last_seen_at is 2 weeks behind its device's "
                 "(or sandbox's) last_seen_at, then is set. A later report clears it and refreshes last_seen_at. "
                 "Also set, to the same timestamp, when its device or sandbox is deleted.")
@@ -116,7 +116,7 @@ TABLES = {
         joins=["agent_instance_id → agent_instances.id", "agent_account_id → agent_accounts.id",
                "A link is live when its deleted_at IS NULL and both parents are live: agent_instances.deleted_at IS NULL AND agent_accounts.deleted_at IS NULL"],
         notes={"agent_instance_id": "→ agent_instances.id", "agent_account_id": "→ agent_accounts.id", "last_seen_at": LINK_LAST_SEEN + " Not for agent_deployment = 'browser', whose profiles scan separately into one install.",
-               "deleted_at": LINK_DELETED + " Set at once when the install turns cloud or api_key."}),
+               "deleted_at": LINK_DELETED + " Set at once, to the install's last_seen_at, when the install's unknown_plan_reason becomes 'cloud' or 'api_key'."}),
     "device_owner_mappings": dict(
         purpose="Device owner from your MDM.",
         joins=["device_owner_mappings.device_native_id = agent_events.device_native_id (or = devices.device_native_id)"],
@@ -198,7 +198,7 @@ TABLES = {
                "mcp_server_location": "Where it was found: the config file path (e.g. mcp.json) for filesystem MCPs, the agent's web domain (e.g. .claude.ai) for browser connectors.",
                "mcp_native_id": "The server's key in the host config (mcp.json). Equals agent_events.mcp_server_name (case-insensitive), except for browser connectors: they are listed by display name while their calls may carry the connector's id.",
                "transport_type": "Transport protocol as text ('stdio' / 'http' / 'sse' / 'websocket' / 'unknown'); never NULL, 'unknown' = unclassified.", "deployment_model": "Where the server runs, as text ('local_process' / 'local_container' / 'local_service' / 'remote' / 'unknown'); never NULL, 'unknown' = unclassified.", "auth_type": "Authentication method as text ('oauth' / 'token' / 'basic_auth' / 'no_auth' / 'unknown'); never NULL, 'unknown' = no method detected.",
-               "transport_security_type": "Transport encryption as text ('none' / 'tls' / 'unknown'); never NULL, 'unknown' = unclassified.", "distribution_channel": "Who provisioned it, as text ('platform' / 'tenant' / 'user' / 'unknown'); never NULL, filesystem MCPs are 'user', 'unknown' = unmatched.", "agent_type": "Agent it is configured for.",
+               "transport_security_type": "Transport encryption as text ('none' / 'tls' / 'unknown'); never NULL, 'unknown' = unclassified.", "distribution_channel": "Who provisioned it, as text ('platform' / 'tenant' / 'user' / 'unknown'); never NULL, filesystem MCPs are 'user', 'unknown' = unmatched.", "agent_type": "Agent it is configured for. A config several agents read is one row naming one of them; the full set is its live mcp_server_agent_instances links -> agent_instances.agent_type.",
                "project_path": "Project/workspace path the MCP is scoped to; NULL for global-scope configs and browser connectors.", "linked_plans": "JSON array of AgentPlanType text the instance is reachable through — its direct account plus junction-linked installs (e.g. [\"personal\",\"enterprise\"]). NULL or '[]' when it has neither a direct account nor an active junction link. Attribute an instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan).",
                "security_findings": "JSON text; TraceForce's security observations for this instance.",
                "tools": "JSON object: '{}' until tools are discovered; '{\"tools\": [...]}' once they are ('[]' when none). Elements (json_extract(tools, '$.tools')) carry name, description, tool_status ('enabled' / 'disabled'), hitl_setting ('allow_unsupervised' / 'always_ask' / 'blocked') and permission_type ('read' / 'write' / 'delete'); 'unknown' when unset."}),

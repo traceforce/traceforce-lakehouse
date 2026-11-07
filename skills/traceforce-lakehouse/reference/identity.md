@@ -36,8 +36,8 @@ How to attribute an event or finding to a person, a device, a corporate account 
   `agent_deployment = 'browser'`, whose `tenant` is a web domain: there it is
   `json_extract_scalar(i.metadata, '$.uid')` (the latest OS user seen), and when that is absent the
   OS user is unknown (never use `tenant`). Show the username, never the raw uid/SID.
-- **OS user of an MCP server instance** = its `metadata.uid`, resolved like an install's; a shared
-  config lists only the first OS user. Browser connectors (rows with `agent_account_id` set; no
+- **OS user of an MCP server instance** = its `metadata.uid`, resolved like an install's; a config file
+  at the same path reported for several OS users is stored once, under the first OS user. Browser connectors (rows with `agent_account_id` set; no
   `uid` key in `metadata`) have no uid: take
   `agent_account_id` -> its live `agent_instances_accounts` links -> each linked install's OS user
   (list them all).
