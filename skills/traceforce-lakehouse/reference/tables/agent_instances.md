@@ -27,5 +27,5 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `last_seen_at` | timestamp | Most recent check-in that observed this row (UTC). |
 | `last_active_at` | timestamp | Most recent activity (UTC); NULL if never active. |
 | `deleted_at` | timestamp | Soft delete. NULL = live. Filter `deleted_at IS NULL` for the current inventory. |
-| `unknown_plan_reason` | string | Why the install's plan is unknown, as text ('not_supported' / 'no_account_found' / 'plan_not_shared' / 'api_key' / 'account_unreadable' / 'org_not_found' / 'no_sign_in' / 'cloud' / 'usage_billed' / 'gateway'); never NULL, 'unknown' = no reason reported. Meaningful only where the install's plan is unknown: reference/identity.md. |
+| `unknown_plan_reason` | string | Why the install's plan is unknown, as text ('not_supported' / 'no_account_found' / 'plan_not_shared' / 'api_key' / 'account_unreadable' / 'org_not_found' / 'no_sign_in' / 'cloud' / 'usage_billed'); never NULL, 'unknown' = no reason reported. Meaningful only where the install's plan is unknown: reference/identity.md. |
 | `model_host` | string | Cloud platform serving the agent's models, as text ('aws_bedrock' / 'gcp_vertex' / 'unknown'); never NULL. Filled only for filesystem installs; browser installs are always 'unknown'. |
