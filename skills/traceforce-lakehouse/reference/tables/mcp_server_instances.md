@@ -28,7 +28,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `auth_type` | string | Authentication method as text ('oauth' / 'token' / 'basic_auth' / 'no_auth' / 'unknown'); never NULL, 'unknown' = no method detected. |
 | `transport_security_type` | string | Transport encryption as text ('none' / 'tls' / 'unknown'); never NULL, 'unknown' = unclassified. |
 | `distribution_channel` | string | Who provisioned it, as text ('platform' / 'tenant' / 'user' / 'unknown'); never NULL, filesystem MCPs are 'user', 'unknown' = unmatched. |
-| `agent_type` | string | Agent it is configured for. A config several agents read is one row naming one of them; the full set is its live mcp_server_agent_instances links -> agent_instances.agent_type. |
+| `agent_type` | string | Agent it is configured for. A config several agents read is one row naming one of them; the other agents that read it are not recorded. |
 | `project_path` | string | Project/workspace path the MCP is scoped to; NULL for global-scope configs and browser connectors. |
 | `linked_plans` | string | JSON array of AgentPlanType text the instance is reachable through — its direct account plus junction-linked installs (e.g. ["personal","enterprise"]). NULL or '[]' when it has neither a direct account nor an active junction link. Attribute an instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan). |
 | `metadata` | string | JSON text; detection details for filesystem MCPs: matched_pattern, auth_matched_pattern, config_type, uid, version, agent_identity (same labels as agent_type), agent_deployment. uid is the OS user key of the matched config: reference/identity.md. |
