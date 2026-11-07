@@ -69,7 +69,7 @@ COMMON = {
 
 # Link lifecycle, shared by agent_instances_accounts and mcp_server_agent_instances.
 LINK_LAST_SEEN = ("Most recent scan that reported this link (UTC); older than the install's last_seen_at = "
-                  "not in the install's latest scan. Links that predate the column share one backfill timestamp (when it was added, 2026-11-05 or shortly after), not their real last report.")
+                  "not in the install's latest scan. Links not reported since the column was added (2026-11-05 or shortly after) carry that one backfill timestamp, not their real last report.")
 LINK_DELETED = ("Soft delete. NULL = live. An unreported link stays live until its last_seen_at is 2 weeks behind its device's "
                 "(or sandbox's) last_seen_at, then is set. A later report clears it and refreshes last_seen_at. "
                 "Also set, to its device's (or sandbox's) deleted_at, when that is deleted.")
