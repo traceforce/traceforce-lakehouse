@@ -30,20 +30,20 @@ How to attribute an event or finding to a person, a device, a corporate account 
   usage_billed > plan_not_shared > no_account_found > no_sign_in > org_not_found >
   account_unreadable > not_supported > gateway. Skip 'unknown': a device with no other reason
   gets none.
-- **OS user of an install** = the `username` in `account_metadata` under the install's OS uid/SID.
-  The key is `tenant`, except for `agent_deployment = 'browser'`, whose `tenant` is a web domain:
-  there it is `json_extract_scalar(i.metadata, '$.uid')` (the latest OS user seen), and when that
-  is absent the OS user is unknown; never resolve a browser row's `tenant`. The map is
-  `sandboxes.account_metadata` when `sandbox_id` is set, else `devices.account_metadata`:
-  `json_extract_scalar(<map>, '$["' || <key> || '"].username')`. Show the username, never the raw uid/SID.
-- **OS user of an MCP server instance** = its `metadata.uid`, resolved like an install's; a shared
-  config lists only the first OS user. Browser and remote connectors have no uid: take
+- **OS user of an install** = the `username` under the install's OS uid/SID in `account_metadata`
+  (`sandboxes.account_metadata` when `sandbox_id` is set, else `devices.account_metadata`):
+  `json_extract_scalar(<map>, '$["' || <key> || '"].username')`. The key is `tenant`, except for
+  `agent_deployment = 'browser'`, whose `tenant` is a web domain: there it is
+  `json_extract_scalar(i.metadata, '$.uid')` (the latest OS user seen), and when that is absent the
+  OS user is unknown (never use `tenant`). Show the username, never the raw uid/SID.
+- **OS user of an MCP server instance** = its `metadata.uid`, resolved like an install's; a config file
+  at the same path reported for several OS users is stored once, under the first OS user. Browser connectors (rows with `agent_account_id` set; no
+  `uid` key in `metadata`) have no uid: take
   `agent_account_id` -> its live `agent_instances_accounts` links -> each linked install's OS user
   (list them all).
 - **Live inventory** = `deleted_at IS NULL` on devices, accounts, installs, MCP instances and the
   links between them (`agent_instances_accounts`, `mcp_server_agent_instances`); a link also
-  needs both parents live. A live non-browser link with an older `last_seen_at` than its install
-  was not in its latest scan.
+  needs both parents live.
   Do not filter `deleted_at` when walking from a finding to its account: signed-out accounts
   still own their past findings.
 - Emails are stored byte-exact; `lower()` is a tolerance. If a lowercased join returns more

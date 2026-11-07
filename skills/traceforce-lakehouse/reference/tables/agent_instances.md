@@ -1,13 +1,13 @@
 # agent_instances
 
-Installs: one row per device, agent and form factor, one per OS user (browser: one per device per web domain, latest OS user in metadata.uid). Includes agents that never produce an account (GitHub Copilot).
+Installs: one row per device, agent, form factor and OS user (browser: per web domain). Includes agents that never produce an account.
 
 Joins:
 - agent_instances.device_id = devices.id AND agent_instances.agent_type = agent_events.agent_type
 - agent_instances_accounts links an install to the accounts signed in through it
 
 Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
-- (org_id, device_id, sandbox_id, tenant, agent_type, agent_deployment): one install per form factor, one per OS user (browser: one per device per web domain, latest OS user in metadata.uid)
+- (org_id, device_id, sandbox_id, tenant, agent_type, agent_deployment): one install per form factor and OS user (browser: per web domain)
 
 | column | type | meaning |
 |---|---|---|
@@ -18,8 +18,8 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `agent_catalog_id` | string | → agent_catalog.id (FK); may be NULL — join agent_catalog on agent_type instead. |
 | `agent_type` | string | Which agent product. |
 | `agent_deployment` | string | Form factor of this install, as text ('desktop_app' / 'vscode_extension' / 'cli' / 'browser' / 'ai_browser' / 'service' / 'unknown'). |
-| `tenant` | string | OS-level user (uid on macOS/Linux, SID on Windows) the install belongs to; resolve to a username per reference/identity.md. For agent_deployment = 'browser' it is the agent's web domain instead: never resolve it; the OS user is metadata.uid, unknown when that key is absent. |
-| `metadata` | string | JSON text; how the install was identified: identifier, store_id, heuristic_match_method, heuristic_url, store_error; uid on browser installs (the latest OS user seen). auth_method and model_host_raw are the raw sign-in method and model provider the agent saved locally; prefer model_host over model_host_raw. |
+| `tenant` | string | OS-level user (uid on macOS/Linux, SID on Windows) the install belongs to; for agent_deployment = 'browser' it is the agent's web domain instead. OS user: reference/identity.md. |
+| `metadata` | string | JSON text; how the install was identified: identifier, store_id, heuristic_match_method, heuristic_url, store_error; uid on browser installs (the OS user key). auth_method and model_host_raw are the raw sign-in method and model provider the agent saved locally; prefer model_host over model_host_raw. |
 | `configuration` | string | JSON text; always '{}'. |
 | `installations` | string | JSON text {installations: [{name, path, version}, …]}; '{}' when agent_deployment = 'browser'. |
 | `created_at` | timestamp | Row created (UTC). |

@@ -19,7 +19,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `workspace_folder` | string | Workspace path inside the sandbox. |
 | `friendly_name` | string | Display name. |
 | `os_version` | string | Guest OS version. |
-| `account_metadata` | string | JSON text; OS users inside the sandbox, same shape as devices.account_metadata. Resolves the OS user of installs whose sandbox_id is set (reference/identity.md); show the username, never a raw uid/SID. |
+| `account_metadata` | string | JSON text; OS users inside the sandbox, same shape as devices.account_metadata. |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |
 | `last_seen_at` | timestamp | Most recent check-in that observed this row (UTC). |
