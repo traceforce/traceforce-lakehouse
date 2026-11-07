@@ -28,7 +28,7 @@ How to attribute an event or finding to a person, a device, a corporate account 
   `model_host`, and 'unknown' = no reason recorded. The console shows one reason per device per
   agent, the first of: cloud (aws_bedrock, then gcp_vertex, then unknown host) > api_key >
   usage_billed > plan_not_shared > no_account_found > no_sign_in > org_not_found >
-  account_unreadable > not_supported > gateway. Skip 'unknown': a device with no other reason
+  account_unreadable > not_supported. Skip 'unknown': a device with no other reason
   gets none.
 - **OS user of an install** = the `username` under the install's OS uid/SID in `account_metadata`
   (`sandboxes.account_metadata` when `sandbox_id` is set, else `devices.account_metadata`):
