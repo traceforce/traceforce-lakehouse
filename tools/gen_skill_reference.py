@@ -24,7 +24,7 @@ UNIQUE = {
     "devices": ["(org_id, coalesce(device_uuid, device_native_id)): one row per device; a Windows device keyed by GUID may share its serial with others"],
     "sandboxes": ["(org_id, parent_device_id, sandbox_native_id)"],
     "agent_accounts": ["(org_id, device_id, sandbox_id, agent_type, agent_email, agent_org_id), NULLs compared as equal: the same email can have one row per device, per agent, per vendor org"],
-    "agent_instances": ["(org_id, device_id, sandbox_id, tenant, agent_type, agent_deployment): one install per form factor, one per OS user (browser: one per device per web domain, latest OS user in metadata.uid)"],
+    "agent_instances": ["(org_id, device_id, sandbox_id, tenant, agent_type, agent_deployment): one install per form factor and OS user (browser: per web domain)"],
     "agent_instances_accounts": ["(org_id, device_id, sandbox_id, agent_instance_id, agent_account_id)"],
     "device_owner_mappings": ["(org_id, device_native_id): at most one owner per serial"],
     "agent_catalog": ["agent_type", "agent_name", "website"],
@@ -68,8 +68,8 @@ COMMON = {
 }
 
 # Link lifecycle, shared by agent_instances_accounts and mcp_server_agent_instances.
-LINK_LAST_SEEN = ("Most recent scan that reported this link (UTC). A scan sets it to the same value as the install's "
-                  "agent_instances.last_seen_at, so a live link with an older last_seen_at than its install was not in the install's latest scan.")
+LINK_LAST_SEEN = ("Most recent scan that reported this link (UTC); older than the install's last_seen_at = "
+                  "not in the install's latest scan.")
 LINK_DELETED = ("Soft delete. NULL = live. An unreported link stays live until its last_seen_at is 2 weeks behind its device's "
                 "(or sandbox's) last_seen_at, then is set. A later report clears it and refreshes last_seen_at.")
 TABLES = {
@@ -80,13 +80,13 @@ TABLES = {
                "device_uuid": "Windows per-install GUID; NULL on macOS/Linux. Prefer it over the serial for the device join when present.",
                "friendly_name": "Human-readable name (e.g. Jane's MacBook Pro).", "platform": "darwin / windows / linux.",
                "architecture": "CPU architecture (arm64, amd64).", "os_version": "OS version string.", "chip_model": "Chip model when reported.",
-               "account_metadata": "JSON text keyed by OS uid/SID; each value is {username, home_directory}. Resolves the OS user of installs with no sandbox_id (reference/identity.md); show the username, never a raw uid/SID."}),
+               "account_metadata": "JSON text keyed by OS uid/SID; each value is {username, home_directory}. OS user of an install: reference/identity.md."}),
     "sandboxes": dict(
         purpose="Devcontainers / cloud VMs an agent ran in.",
         joins=["sandboxes.parent_device_id = devices.id", "agent_events.sandbox_native_id = sandboxes.sandbox_native_id (reserved; NULL in events today)"],
         notes={"parent_device_id": "→ devices.id of the host.", "sandbox_native_id": "Sandbox identifier; join key to agent_events.sandbox_native_id.",
                "runtime_type": "Sandbox runtime as text ('devcontainer' / 'unspecified').", "workspace_folder": "Workspace path inside the sandbox.", "friendly_name": "Display name.",
-               "os_version": "Guest OS version.", "account_metadata": "JSON text; OS users inside the sandbox, same shape as devices.account_metadata. Resolves the OS user of installs whose sandbox_id is set (reference/identity.md); show the username, never a raw uid/SID."}),
+               "os_version": "Guest OS version.", "account_metadata": "JSON text; OS users inside the sandbox, same shape as devices.account_metadata."}),
     "agent_accounts": dict(
         purpose="One row per signed-in account: (device, agent, email, vendor org).",
         joins=["agent_accounts.device_id = devices.id AND agent_accounts.agent_type = agent_events.agent_type AND lower(agent_accounts.agent_email) = lower(agent_events.user_email) (enrichment of an event with plan / vendor org; the person is already user_email)",
@@ -100,12 +100,12 @@ TABLES = {
                "security_settings": "JSON text; vendor security settings observed for the account.",
                "models_configuration": "JSON text; models configured for the account."}),
     "agent_instances": dict(
-        purpose="Installs: one row per device, agent and form factor, one per OS user (browser: one per device per web domain, latest OS user in metadata.uid). Includes agents that never produce an account (GitHub Copilot).",
+        purpose="Installs: one row per device, agent, form factor and OS user (browser: per web domain). Includes agents that never produce an account.",
         joins=["agent_instances.device_id = devices.id AND agent_instances.agent_type = agent_events.agent_type",
                "agent_instances_accounts links an install to the accounts signed in through it"],
-        notes={"metadata": "JSON text; how the install was identified: identifier, store_id, heuristic_match_method, heuristic_url, store_error; uid on browser installs (the latest OS user seen). auth_method and model_host_raw are the raw sign-in method and model provider the agent saved locally; prefer model_host over model_host_raw.",
+        notes={"metadata": "JSON text; how the install was identified: identifier, store_id, heuristic_match_method, heuristic_url, store_error; uid on browser installs (the OS user key). auth_method and model_host_raw are the raw sign-in method and model provider the agent saved locally; prefer model_host over model_host_raw.",
                "agent_type": "Which agent product.", "agent_deployment": "Form factor of this install, as text ('desktop_app' / 'vscode_extension' / 'cli' / 'browser' / 'ai_browser' / 'service' / 'unknown').",
-               "tenant": "OS-level user (uid on macOS/Linux, SID on Windows) the install belongs to; resolve to a username per reference/identity.md. For agent_deployment = 'browser' it is the agent's web domain instead: never resolve it; the OS user is metadata.uid, unknown when that key is absent.",
+               "tenant": "OS-level user (uid on macOS/Linux, SID on Windows) the install belongs to; for agent_deployment = 'browser' it is the agent's web domain instead. OS user: reference/identity.md.",
                "unknown_plan_reason": "Why the install's plan is unknown, as text ('not_supported' / 'no_account_found' / 'plan_not_shared' / 'api_key' / 'account_unreadable' / 'org_not_found' / 'no_sign_in' / 'cloud' / 'usage_billed' / 'gateway'); never NULL, 'unknown' = no reason reported. Meaningful only where the install's plan is unknown: reference/identity.md.",
                "model_host": "Cloud platform serving the agent's models, as text ('aws_bedrock' / 'gcp_vertex' / 'unknown'); never NULL. Filled only for filesystem installs; browser installs are always 'unknown'.",
                "agent_catalog_id": "→ agent_catalog.id (FK); may be NULL — join agent_catalog on agent_type instead.", "configuration": "JSON text; always '{}'.",
@@ -114,7 +114,7 @@ TABLES = {
         purpose="Junction: which account is signed in through which install.",
         joins=["agent_instance_id → agent_instances.id", "agent_account_id → agent_accounts.id",
                "A link is live when its deleted_at IS NULL and both parents are live: agent_instances.deleted_at IS NULL AND agent_accounts.deleted_at IS NULL"],
-        notes={"agent_instance_id": "→ agent_instances.id", "agent_account_id": "→ agent_accounts.id", "last_seen_at": LINK_LAST_SEEN + " Not for agent_deployment = 'browser': each browser profile scans separately but shares the install, so an older last_seen_at does not mean the link is stale.",
+        notes={"agent_instance_id": "→ agent_instances.id", "agent_account_id": "→ agent_accounts.id", "last_seen_at": LINK_LAST_SEEN + " Not for agent_deployment = 'browser', whose profiles scan separately into one install.",
                "deleted_at": LINK_DELETED + " Set at once when the install turns cloud or api_key."}),
     "device_owner_mappings": dict(
         purpose="Device owner from your MDM.",
@@ -191,7 +191,7 @@ TABLES = {
                "account: agent_account_id when set; else mcp_server_agent_instances → agent_instances_accounts → agent_accounts, taking the greatest agent_accounts.last_seen_at when several match (the console's rule). For a live instance, use only live links to live installs and live accounts.",
                "mcp_server_id → mcp_servers.id", "mcp_server_type → mcp_catalog.mcp_server_type or org_mcp_catalog.mcp_server_type (product name)",
                "mcp_server_agent_instances links a filesystem MCP to the install it is configured in; browser connectors have no link"],
-        notes={"metadata": "JSON text; detection details for filesystem MCPs: matched_pattern, auth_matched_pattern, config_type, uid, version, agent_identity (same labels as agent_type), agent_deployment. uid is the OS user whose config the latest scan matched first (shared files, including the system-wide Codex config, list only the first user); absent on browser and remote-connector MCPs.",
+        notes={"metadata": "JSON text; detection details for filesystem MCPs: matched_pattern, auth_matched_pattern, config_type, uid, version, agent_identity (same labels as agent_type), agent_deployment. uid is the OS user key of the matched config: reference/identity.md.",
                "agent_account_id": "→ agent_accounts.id (browser connectors); NULL for filesystem MCPs — see Joins.", "mcp_server_id": "→ mcp_servers.id (org rollup).",
                "mcp_server_type": "Integer product code; LEFT JOIN the catalogs for the name (0 = unknown, no catalog row).",
                "mcp_server_location": "Where it was found: the config file path (e.g. mcp.json) for filesystem MCPs, the agent's web domain (e.g. .claude.ai) for browser connectors.",

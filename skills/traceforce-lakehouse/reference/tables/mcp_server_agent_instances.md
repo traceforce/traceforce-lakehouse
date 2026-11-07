@@ -20,5 +20,5 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `sandbox_id` | string | → sandboxes.id; NULL when the row is about the host device itself. |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |
-| `last_seen_at` | timestamp | Most recent scan that reported this link (UTC). A scan sets it to the same value as the install's agent_instances.last_seen_at, so a live link with an older last_seen_at than its install was not in the install's latest scan. |
+| `last_seen_at` | timestamp | Most recent scan that reported this link (UTC); older than the install's last_seen_at = not in the install's latest scan. |
 | `deleted_at` | timestamp | Soft delete. NULL = live. An unreported link stays live until its last_seen_at is 2 weeks behind its device's (or sandbox's) last_seen_at, then is set. A later report clears it and refreshes last_seen_at. |
