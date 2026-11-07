@@ -69,8 +69,7 @@ COMMON = {
 
 # Link lifecycle, shared by agent_instances_accounts and mcp_server_agent_instances.
 LINK_LAST_SEEN = ("Most recent scan that reported this link (UTC). A scan sets it to the same value as the install's "
-                  "agent_instances.last_seen_at, so a live link with an older last_seen_at than its install was not in the install's latest scan. "
-                  "Not for agent_deployment = 'browser': each browser profile scans separately but shares the install, so an older last_seen_at does not mean the link is stale.")
+                  "agent_instances.last_seen_at, so a live link with an older last_seen_at than its install was not in the install's latest scan.")
 LINK_DELETED = ("Soft delete. NULL = live. An unreported link stays live until its last_seen_at is 2 weeks behind its device's "
                 "(or sandbox's) last_seen_at, then is set. A later report clears it and refreshes last_seen_at.")
 TABLES = {
@@ -115,7 +114,7 @@ TABLES = {
         purpose="Junction: which account is signed in through which install.",
         joins=["agent_instance_id → agent_instances.id", "agent_account_id → agent_accounts.id",
                "A link is live when its deleted_at IS NULL and both parents are live: agent_instances.deleted_at IS NULL AND agent_accounts.deleted_at IS NULL"],
-        notes={"agent_instance_id": "→ agent_instances.id", "agent_account_id": "→ agent_accounts.id", "last_seen_at": LINK_LAST_SEEN,
+        notes={"agent_instance_id": "→ agent_instances.id", "agent_account_id": "→ agent_accounts.id", "last_seen_at": LINK_LAST_SEEN + " Not for agent_deployment = 'browser': each browser profile scans separately but shares the install, so an older last_seen_at does not mean the link is stale.",
                "deleted_at": LINK_DELETED + " Set at once when the install turns cloud or api_key."}),
     "device_owner_mappings": dict(
         purpose="Device owner from your MDM.",
