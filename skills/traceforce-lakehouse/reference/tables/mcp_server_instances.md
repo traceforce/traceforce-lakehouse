@@ -7,7 +7,7 @@ Joins:
 - account: agent_account_id when set; else mcp_server_agent_instances → agent_instances_accounts → agent_accounts, taking the greatest agent_accounts.last_seen_at when several match (the console's rule). For a live instance, use only live links to live installs and live accounts.
 - mcp_server_id → mcp_servers.id
 - mcp_server_type → mcp_catalog.mcp_server_type or org_mcp_catalog.mcp_server_type (product name)
-- mcp_server_agent_instances links to the install it is configured in
+- mcp_server_agent_instances links a filesystem MCP to the install it is configured in; browser connectors have no link
 
 Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 - (org_id, device_id, sandbox_id, agent_account_id, mcp_server_location, mcp_native_id, project_path): the same server name can appear once per project path
@@ -31,7 +31,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `agent_type` | string | Agent it is configured for. |
 | `project_path` | string | Project/workspace path the MCP is scoped to; NULL for global-scope configs and browser connectors. |
 | `linked_plans` | string | JSON array of AgentPlanType text the instance is reachable through — its direct account plus junction-linked installs (e.g. ["personal","enterprise"]). NULL or '[]' when it has neither a direct account nor an active junction link. Attribute an instance to agents as agent_type x each element: CROSS JOIN UNNEST(CAST(json_parse(linked_plans) AS array(varchar))) AS t(plan). |
-| `metadata` | string | JSON text; detection details for filesystem MCPs: matched_pattern, auth_matched_pattern, config_type, uid, version, agent_deployment. |
+| `metadata` | string | JSON text; detection details for filesystem MCPs: matched_pattern, auth_matched_pattern, config_type, uid, version, agent_identity (same labels as agent_type), agent_deployment. uid is the OS user whose config the latest scan matched first (shared files, including the system-wide Codex config, list only the first user); absent on browser and remote-connector MCPs. |
 | `security_findings` | string | JSON text; TraceForce's security observations for this instance. |
 | `tools` | string | JSON object: '{}' until tools are discovered; '{"tools": [...]}' once they are ('[]' when none). Elements (json_extract(tools, '$.tools')) carry name, description, tool_status ('enabled' / 'disabled'), hitl_setting ('allow_unsupervised' / 'always_ask' / 'blocked') and permission_type ('read' / 'write' / 'delete'); 'unknown' when unset. |
 | `created_at` | timestamp | Row created (UTC). |

@@ -32,7 +32,8 @@ SELECT
   f.id, f.kind, FORMAT_TIMESTAMP('%F %H:%M:%E6S', f.`at`) AS `at`, CAST(DATE(f.`at`) AS STRING) AS day, f.status,
   f.category, f.type, f.outcome, substr(f.detail, 1, 600) AS detail, f.message_external_id, f.tool_use_id, it.criticality,
   lower(a.agent_email) AS person,
-  coalesce(REGEXP_REPLACE(lower(ct.agent_name), r'[^a-z0-9]+', '_'), ev.agent) AS agent,
+  coalesce(CASE WHEN REGEXP_CONTAINS(a.agent_type, r'^[0-9]*$') THEN NULL ELSE lower(a.agent_type) END,
+           REGEXP_REPLACE(lower(ct.agent_name), r'[^a-z0-9]+', '_'), ev.agent) AS agent,
   c.conversation_external_id AS session_id, c.name AS session_name,
   coalesce(d.friendly_name, d.device_native_id) AS device
 FROM f

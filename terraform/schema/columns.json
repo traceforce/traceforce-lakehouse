@@ -299,7 +299,9 @@
       "updated_at:timestamp",
       "last_seen_at:timestamp",
       "last_active_at:timestamp",
-      "deleted_at:timestamp"
+      "deleted_at:timestamp",
+      "unknown_plan_reason:string",
+      "model_host:string"
     ],
     "agent_instances_accounts": [
       "id:string",

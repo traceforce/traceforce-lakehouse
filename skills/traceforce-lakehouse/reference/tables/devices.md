@@ -19,7 +19,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `architecture` | string | CPU architecture (arm64, amd64). |
 | `os_version` | string | OS version string. |
 | `chip_model` | string | Chip model when reported. |
-| `account_metadata` | string | JSON text keyed by OS uid/SID; each value is {username, home_directory}. Resolve agent_instances.tenant with json_extract_scalar(account_metadata, '$["<tenant>"].username'). |
+| `account_metadata` | string | JSON text keyed by OS uid/SID; each value is {username, home_directory}. Resolves the OS user of installs with no sandbox_id (reference/identity.md); show the username, never a raw uid/SID. |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |
 | `last_seen_at` | timestamp | Most recent check-in that observed this row (UTC). |

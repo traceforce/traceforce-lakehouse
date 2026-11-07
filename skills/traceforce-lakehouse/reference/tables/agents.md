@@ -17,7 +17,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `org_id` | string | Your TraceForce org id. Constant within this lakehouse. |
 | `agent_catalog_id` | string | → agent_catalog.id (FK); may be NULL, join agent_catalog on agent_type instead. |
 | `agent_type` | string | Which agent product. |
-| `plan` | string | Account plan as text, same vocabulary as agent_accounts.plan; 'unknown' for installs with no signed-in account. |
+| `plan` | string | Account plan as text, same vocabulary as agent_accounts.plan; 'unknown' = no account or plan not known; why: reference/identity.md. |
 | `active_users` | int | Distinct active devices (not users) with this agent and plan; 0 or NULL when none. |
 | `total_incidents` | int | Count of open agent_issues rows for this agent and plan (not deduped by type); 0 or NULL when none are open. |
 | `active_issues` | int | Count of distinct open issue types; 0 or NULL when none are open. |
