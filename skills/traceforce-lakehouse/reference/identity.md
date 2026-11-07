@@ -26,9 +26,10 @@ How to attribute an event or finding to a person, a device, a corporate account 
 - **Why a plan is unknown** (the console's "Unspecified"): `agent_instances.unknown_plan_reason`,
   meaningful only on installs whose unit row above has plan 'unknown'; 'cloud' pairs with
   `model_host`, and 'unknown' = no reason recorded. The console shows one reason per device per
-  agent, the first of: cloud > api_key > usage_billed > plan_not_shared > no_account_found >
-  no_sign_in > org_not_found > account_unreadable > not_supported > gateway. Skip 'unknown': a
-  device with no other reason gets none.
+  agent, the first of: cloud (aws_bedrock, then gcp_vertex, then unknown host) > api_key >
+  usage_billed > plan_not_shared > no_account_found > no_sign_in > org_not_found >
+  account_unreadable > not_supported > gateway. Skip 'unknown': a device with no other reason
+  gets none.
 - **OS user of an install** = the `username` in `account_metadata` under the install's OS uid/SID.
   The key is `tenant`, except for `agent_deployment = 'browser'`, whose `tenant` is a web domain:
   there it is `json_extract_scalar(i.metadata, '$.uid')` (the latest OS user seen), and when that
