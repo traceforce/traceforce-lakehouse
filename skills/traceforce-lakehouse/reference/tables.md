@@ -16,7 +16,7 @@ One file per table under `tables/`; read only the ones a question needs.
 | `devices` | One row per device TraceForce has seen (laptops, workstations) | `tables/devices.md` |
 | `sandboxes` | Devcontainers / cloud VMs an agent ran in | `tables/sandboxes.md` |
 | `agent_accounts` | One row per signed-in account: (device, agent, email, vendor org) | `tables/agent_accounts.md` |
-| `agent_instances` | Installs: one row per (device, agent, deployment form factor, OS user) | `tables/agent_instances.md` |
+| `agent_instances` | Installs: one row per device, agent and form factor, one per OS user (browser: one per device per web domain, latest OS user in metadata.uid) | `tables/agent_instances.md` |
 | `agent_instances_accounts` | Junction: which account is signed in through which install | `tables/agent_instances_accounts.md` |
 | `device_owner_mappings` | Device owner from your MDM | `tables/device_owner_mappings.md` |
 | `agent_catalog` | Global reference: agent_type → product name, one row per known agent type | `tables/agent_catalog.md` |

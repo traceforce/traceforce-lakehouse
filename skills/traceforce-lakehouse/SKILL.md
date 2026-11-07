@@ -80,6 +80,7 @@ example SQL is Athena/Trino. Translate to GoogleSQL:
 - `SHOW TABLES` / `DESCRIBE` don't exist -> `SELECT table_name FROM traceforce_lakehouse.INFORMATION_SCHEMA.TABLES`; `SELECT column_name, data_type FROM traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<t>'`.
 - `__TABLES__.row_count` is 0 for every table here (Iceberg); count rows with `count(*)`.
 - `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `CROSS JOIN UNNEST(JSON_VALUE_ARRAY(x)) AS elem` (unnesting a JSON array of strings).
+- A lookup by a per-row JSON key, `json_extract_scalar(x, '$["' || key || '"].username')` -> `JSON_VALUE(PARSE_JSON(x)[key], '$.username')`.
 
 ## Azure (Snowflake)
 
@@ -110,6 +111,7 @@ example SQL is Athena/Trino. Translate to Snowflake SQL, quoting this module's n
 - `current_timestamp - interval '7' day` -> `DATEADD('day', -7, CURRENT_TIMESTAMP())`; `date_format(...)` -> `TO_CHAR(...)`.
 - `SHOW TABLES` -> `SHOW TABLES IN SCHEMA "traceforce"`; `DESCRIBE <table>` -> `DESCRIBE TABLE "<table>"`.
 - `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `, LATERAL FLATTEN(input => PARSE_JSON(x)) AS elem` (the value is `elem.VALUE`).
+- A lookup by a per-row JSON key, `json_extract_scalar(x, '$["' || key || '"].username')` -> `GET(PARSE_JSON(x), key):"username"::string` (e.g. `x` = `d."account_metadata"`, `key` = `i."tenant"`, or `PARSE_JSON(i."metadata"):"uid"::string` for browser rows).
 - Ingest/mirror run history: `SELECT NAME, STATE, SCHEDULED_TIME, ERROR_MESSAGE FROM TABLE(INFORMATION_SCHEMA.TASK_HISTORY(SCHEDULED_TIME_RANGE_START => DATEADD('day', -1, CURRENT_TIMESTAMP())))`; the reader role holds `MONITOR` on the Tasks for this.
 
 ## Workflow
@@ -136,7 +138,7 @@ example SQL is Athena/Trino. Translate to Snowflake SQL, quoting this module's n
 - `reference/tables.md`: index of the metadata tables, one file each under `reference/tables/`
   (purpose, joins, source uniqueness, columns).
 - `reference/joins.md`: the joins that are not obvious from the schema.
-- `reference/identity.md`: attributing an event or finding to a person, device and account.
+- `reference/identity.md`: attributing an event or finding to a person, device, account and OS user; why an agent's plan is unknown.
 - `reference/redaction.md`: what the stored content columns hold, and where the matched value lives.
 - `reference/enforcement.md`: telling an actual block/reject from a warn, per agent.
 

@@ -2,8 +2,9 @@
 -- The page groups them into incidents (one per session) and ranks those by severity: the criticality of each
 -- finding's issue type, pinned to applicable_to = 'instance' because issue_types can also have a 'global' row.
 -- Person is the conversation's signed-in account (no deleted_at filter: a signed-out account still owns its
--- past findings). Agent is that account's catalog entry (by agent_type) as a key like 'claude_code'; older
--- lakehouses leave agent_type empty, so it falls back to the agent the session's events name, else NULL.
+-- past findings). Agent is that account's agent_type as a key like 'claude_code'; when agent_type is empty (older
+-- lakehouses) or a number (an agent newer than the exporter), it falls back to the catalog name as a key, then
+-- to the agent the session's events name, else NULL.
 WITH f AS (
   SELECT id, 'sensitive_data' AS kind, conversation_id, device_id, message_timestamp AS at, finding_status AS status,
          category, type, NULL AS outcome,
@@ -36,7 +37,8 @@ SELECT
   f.id, f.kind, cast(f.at AS varchar) AS at, cast(date(f.at) AS varchar) AS day, f.status,
   f.category, f.type, f.outcome, substr(f.detail, 1, 600) AS detail, f.message_external_id, f.tool_use_id, it.criticality,
   lower(a.agent_email) AS person,
-  coalesce(regexp_replace(lower(ct.agent_name), '[^a-z0-9]+', '_'), ev.agent) AS agent,
+  coalesce(CASE WHEN regexp_like(a.agent_type, '^[0-9]*$') THEN NULL ELSE lower(a.agent_type) END,
+           regexp_replace(lower(ct.agent_name), '[^a-z0-9]+', '_'), ev.agent) AS agent,
   c.conversation_external_id AS session_id, c.name AS session_name,
   coalesce(d.friendly_name, d.device_native_id) AS device
 FROM f

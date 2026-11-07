@@ -49,7 +49,7 @@ Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glu
 The producer decodes integer proto-enum columns to human-readable text at export time: it calls
 the proto enum's `String()`, strips the enum-name prefix, and lowercases the result (e.g.
 `SENSITIVE_DATA_CATEGORY_CREDENTIALS` -> `credentials`). Array enum columns are decoded
-element-wise into a JSON text array (e.g. `["remote","local"]`). These columns are therefore
+element-wise into a JSON text array (e.g. `["remote","local_process"]`). These columns are therefore
 `string` in the mirror, not integers.
 
 Decoded columns (`[]` = JSON text array):
@@ -59,7 +59,7 @@ Decoded columns (`[]` = JSON text array):
 - `prompt_injection_findings`: `finding_status`
 - `sandboxes`: `runtime_type`
 - `agent_accounts`: `agent_type`, `plan`
-- `agent_instances`: `agent_type`, `agent_deployment`
+- `agent_instances`: `agent_type`, `agent_deployment`, `unknown_plan_reason`, `model_host`
 - `agent_catalog`: `agent_type`
 - `mcp_catalog`: `source_type`, `execution_environment[]`, `authentication_methods[]`
 - `org_mcp_catalog`: `source_type`, `execution_environment[]`, `authentication_methods[]`

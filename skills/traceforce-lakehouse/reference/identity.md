@@ -1,6 +1,6 @@
-# Identity: person, device, account
+# Identity: person, device, account, OS user
 
-How to attribute an event or finding to a person, a device, and a corporate account.
+How to attribute an event or finding to a person, a device, a corporate account and an OS user.
 
 - **Person** = `user_email` on the event, else the device's MDM owner
   (`device_owner_mappings` by `device_native_id`). Only if the device has no MDM owner, fall back
@@ -23,6 +23,43 @@ How to attribute an event or finding to a person, a device, and a corporate acco
   = plan 'unknown'; that is how Copilot appears. Never count agents from `agent_accounts` alone. A
   device's MCP count in the console is `COUNT(DISTINCT mcp_server_type)` over its live
   `mcp_server_instances`.
+- **Why a plan is unknown** (the console calls plan unknown "Unspecified"): `agent_instances.unknown_plan_reason`.
+  A mixed install counts under both its plan and plan unknown. To match the console, take one
+  reason per device per `agent_type` from the live installs on live devices whose unit row above has
+  plan unknown (no live account link, or a linked account with plan 'unknown'). Keep the unit's
+  LEFT JOIN: cloud and api_key installs are unlinked from their account, and not_supported /
+  no_account_found installs never had a link. Skip `unknown_plan_reason = 'unknown'`: those
+  devices get no reason, so the counts can sum to less than the plan 'unknown' `active_users`.
+  Rank cloud > api_key > usage_billed > plan_not_shared > no_account_found > no_sign_in >
+  org_not_found > account_unreadable > not_supported > gateway; among equal reasons prefer
+  `model_host` 'aws_bedrock', then 'gcp_vertex', then 'unknown'. Label cloud by its `model_host`:
+  cloud_aws_bedrock / cloud_gcp_vertex / cloud.
+
+  ```sql
+  SELECT agent_type, reason, count(*) AS devices FROM (
+    SELECT i.agent_type, i.device_id,
+           min_by(CASE WHEN i.unknown_plan_reason = 'cloud' AND i.model_host <> 'unknown'
+                       THEN 'cloud_' || i.model_host ELSE i.unknown_plan_reason END,
+                  array_position(ARRAY['cloud', 'api_key', 'usage_billed', 'plan_not_shared',
+                    'no_account_found', 'no_sign_in', 'org_not_found', 'account_unreadable',
+                    'not_supported', 'gateway'], i.unknown_plan_reason) * 10
+                  + array_position(ARRAY['aws_bedrock', 'gcp_vertex', 'unknown'], i.model_host)) AS reason
+    FROM agent_instances i
+    JOIN devices d ON d.id = i.device_id AND d.deleted_at IS NULL
+    LEFT JOIN (<the unit above>) l ON l.agent_instance_id = i.id
+    WHERE i.deleted_at IS NULL AND coalesce(l.plan, 'unknown') = 'unknown'
+      AND i.unknown_plan_reason <> 'unknown'
+    GROUP BY 1, 2) t
+  GROUP BY 1, 2
+  ```
+- **OS user of an install** = the `username` in `account_metadata` under the install's OS uid/SID.
+  The key is `tenant`, except for `agent_deployment = 'browser'`, whose `tenant` is a web domain:
+  there it is `json_extract_scalar(i.metadata, '$.uid')` (the latest OS user seen), and when that
+  is absent the OS user is unknown; never resolve a browser row's `tenant`. The map is
+  `sandboxes.account_metadata` when `sandbox_id` is set, else `devices.account_metadata`:
+  `json_extract_scalar(CASE WHEN i.sandbox_id IS NOT NULL THEN s.account_metadata ELSE
+  d.account_metadata END, '$["' || uid || '"].username')`, with `uid` the key above. Show the
+  username, never the raw uid/SID.
 - **Live inventory** = `deleted_at IS NULL` on devices, accounts, installs, MCP instances and the
   links between them (`agent_instances_accounts`, `mcp_server_agent_instances`); a link also
   needs both parents live.
