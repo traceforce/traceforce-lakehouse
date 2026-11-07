@@ -37,7 +37,8 @@ How to attribute an event or finding to a person, a device, a corporate account 
   `json_extract_scalar(i.metadata, '$.uid')` (the latest OS user seen), and when that is absent the
   OS user is unknown (never use `tenant`). Show the username, never the raw uid/SID.
 - **OS user of an MCP server instance** = its `metadata.uid`, resolved like an install's; a shared
-  config lists only the first OS user. Browser and remote connectors have no uid: take
+  config lists only the first OS user. Browser connectors (rows with `agent_account_id` set; no
+  `uid` key in `metadata`) have no uid: take
   `agent_account_id` -> its live `agent_instances_accounts` links -> each linked install's OS user
   (list them all).
 - **Live inventory** = `deleted_at IS NULL` on devices, accounts, installs, MCP instances and the

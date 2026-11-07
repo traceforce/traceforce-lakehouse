@@ -69,9 +69,10 @@ COMMON = {
 
 # Link lifecycle, shared by agent_instances_accounts and mcp_server_agent_instances.
 LINK_LAST_SEEN = ("Most recent scan that reported this link (UTC); older than the install's last_seen_at = "
-                  "not in the install's latest scan.")
+                  "not in the install's latest scan. Links that predate 2026-11-05 carry that date, not their real last report.")
 LINK_DELETED = ("Soft delete. NULL = live. An unreported link stays live until its last_seen_at is 2 weeks behind its device's "
-                "(or sandbox's) last_seen_at, then is set. A later report clears it and refreshes last_seen_at.")
+                "(or sandbox's) last_seen_at, then is set. A later report clears it and refreshes last_seen_at. "
+                "Also set, to the same timestamp, when its device or sandbox is deleted.")
 TABLES = {
     "devices": dict(
         purpose="One row per device TraceForce has seen (laptops, workstations).",
