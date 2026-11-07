@@ -81,6 +81,7 @@ example SQL is Athena/Trino. Translate to GoogleSQL:
 - `__TABLES__.row_count` is 0 for every table here (Iceberg); count rows with `count(*)`.
 - `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `CROSS JOIN UNNEST(JSON_VALUE_ARRAY(x)) AS elem` (unnesting a JSON array of strings).
 - A lookup by a per-row JSON key, `json_extract_scalar(x, '$["' || key || '"].username')` -> `JSON_VALUE(PARSE_JSON(x)[key], '$.username')`.
+- `min_by(x, y)` -> `ARRAY_AGG(x ORDER BY y LIMIT 1)[OFFSET(0)]`.
 
 ## Azure (Snowflake)
 

@@ -66,6 +66,12 @@ COMMON = {
     "website": "Vendor website.",
     "logo_url": "Logo URL.",
 }
+
+# Link lifecycle, shared by agent_instances_accounts and mcp_server_agent_instances.
+LINK_LAST_SEEN = ("Most recent scan that reported this link (UTC). A scan sets it to the same value as the install's "
+                  "agent_instances.last_seen_at, so a live link with an older last_seen_at than its install was not in the install's latest scan.")
+LINK_DELETED = ("Soft delete. NULL = live. An unreported link stays live until its last_seen_at is 2 weeks behind its device's "
+                "(or sandbox's) last_seen_at, then is set. A later report clears it and refreshes last_seen_at.")
 TABLES = {
     "devices": dict(
         purpose="One row per device TraceForce has seen (laptops, workstations).",
@@ -108,7 +114,8 @@ TABLES = {
         purpose="Junction: which account is signed in through which install.",
         joins=["agent_instance_id → agent_instances.id", "agent_account_id → agent_accounts.id",
                "A link is live when its deleted_at IS NULL and both parents are live: agent_instances.deleted_at IS NULL AND agent_accounts.deleted_at IS NULL"],
-        notes={"agent_instance_id": "→ agent_instances.id", "agent_account_id": "→ agent_accounts.id", "last_seen_at": "Most recent scan that reported this link (UTC)."}),
+        notes={"agent_instance_id": "→ agent_instances.id", "agent_account_id": "→ agent_accounts.id", "last_seen_at": LINK_LAST_SEEN,
+               "deleted_at": LINK_DELETED + " Also set when the install stops using its signed-in account (the install's unknown_plan_reason is 'cloud' or 'api_key'); exclude those installs when counting links that went stale."}),
     "device_owner_mappings": dict(
         purpose="Device owner from your MDM.",
         joins=["device_owner_mappings.device_native_id = agent_events.device_native_id (or = devices.device_native_id)"],
@@ -183,7 +190,7 @@ TABLES = {
         joins=["lower(mcp_server_instances.mcp_native_id) = lower(agent_events.mcp_server_name) AND mcp_server_instances.agent_type = agent_events.agent_type, on the same device via mcp_server_instances.device_id → devices.device_native_id = agent_events.device_native_id. Not a key: the same server name can have several live rows per device (one per project_path or location), so aggregate or SELECT DISTINCT",
                "account: agent_account_id when set; else mcp_server_agent_instances → agent_instances_accounts → agent_accounts, taking the greatest agent_accounts.last_seen_at when several match (the console's rule). For a live instance, use only live links to live installs and live accounts.",
                "mcp_server_id → mcp_servers.id", "mcp_server_type → mcp_catalog.mcp_server_type or org_mcp_catalog.mcp_server_type (product name)",
-               "mcp_server_agent_instances links to the install it is configured in"],
+               "mcp_server_agent_instances links a filesystem MCP to the install it is configured in; browser connectors have no link"],
         notes={"metadata": "JSON text; detection details for filesystem MCPs: matched_pattern, auth_matched_pattern, config_type, uid, version, agent_deployment. uid is the OS user whose config the latest scan matched first (shared files, including the system-wide Codex config, list only the first user); absent on browser and remote-connector MCPs.",
                "agent_account_id": "→ agent_accounts.id (browser connectors); NULL for filesystem MCPs — see Joins.", "mcp_server_id": "→ mcp_servers.id (org rollup).",
                "mcp_server_type": "Integer product code; LEFT JOIN the catalogs for the name (0 = unknown, no catalog row).",
@@ -195,10 +202,10 @@ TABLES = {
                "security_findings": "JSON text; TraceForce's security observations for this instance.",
                "tools": "JSON object: '{}' until tools are discovered; '{\"tools\": [...]}' once they are ('[]' when none). Elements (json_extract(tools, '$.tools')) carry name, description, tool_status ('enabled' / 'disabled'), hitl_setting ('allow_unsupervised' / 'always_ask' / 'blocked') and permission_type ('read' / 'write' / 'delete'); 'unknown' when unset."}),
     "mcp_server_agent_instances": dict(
-        purpose="Junction: which install (agent_instances) an MCP server instance is configured in.",
+        purpose="Junction: which install a filesystem MCP server instance is configured in. That is the one install whose (agent_type, agent_deployment, tenant) equals the MCP row's metadata (agent_identity, agent_deployment, uid). At most one link per instance per scan, so a config shared by several OS users or form factors links only one of them. Browser connectors (agent_account_id set) and remote-connector MCPs have no link: LEFT JOIN it.",
         joins=["agent_instance_id → agent_instances.id", "mcp_server_instance_id → mcp_server_instances.id",
                "A link is live when its deleted_at IS NULL and both parents are live: agent_instances.deleted_at IS NULL AND mcp_server_instances.deleted_at IS NULL"],
-        notes={"agent_instance_id": "→ agent_instances.id", "mcp_server_instance_id": "→ mcp_server_instances.id", "last_seen_at": "Most recent scan that reported this link (UTC)."}),
+        notes={"agent_instance_id": "→ agent_instances.id", "mcp_server_instance_id": "→ mcp_server_instances.id", "last_seen_at": LINK_LAST_SEEN, "deleted_at": LINK_DELETED}),
     "mcp_servers": dict(
         purpose="Org-level rollup per MCP product: counts and scores. One row per product per org.",
         joins=["mcp_catalog_id → mcp_catalog.id; for org-private products resolve by mcp_server_type against both catalogs",

@@ -7,7 +7,7 @@ Joins:
 - account: agent_account_id when set; else mcp_server_agent_instances → agent_instances_accounts → agent_accounts, taking the greatest agent_accounts.last_seen_at when several match (the console's rule). For a live instance, use only live links to live installs and live accounts.
 - mcp_server_id → mcp_servers.id
 - mcp_server_type → mcp_catalog.mcp_server_type or org_mcp_catalog.mcp_server_type (product name)
-- mcp_server_agent_instances links to the install it is configured in
+- mcp_server_agent_instances links a filesystem MCP to the install it is configured in; browser connectors have no link
 
 Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 - (org_id, device_id, sandbox_id, agent_account_id, mcp_server_location, mcp_native_id, project_path): the same server name can appear once per project path
