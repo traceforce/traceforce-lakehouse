@@ -27,7 +27,8 @@ How to attribute an event or finding to a person, a device, a corporate account 
   meaningful only on installs whose unit row above has plan 'unknown'; 'cloud' pairs with
   `model_host`, and 'unknown' = no reason recorded. The console shows one reason per device per
   agent, the first of: cloud > api_key > usage_billed > plan_not_shared > no_account_found >
-  no_sign_in > org_not_found > account_unreadable > not_supported > gateway.
+  no_sign_in > org_not_found > account_unreadable > not_supported > gateway. Skip 'unknown': a
+  device with no other reason gets none.
 - **OS user of an install** = the `username` in `account_metadata` under the install's OS uid/SID.
   The key is `tenant`, except for `agent_deployment = 'browser'`, whose `tenant` is a web domain:
   there it is `json_extract_scalar(i.metadata, '$.uid')` (the latest OS user seen), and when that
@@ -35,7 +36,9 @@ How to attribute an event or finding to a person, a device, a corporate account 
   `sandboxes.account_metadata` when `sandbox_id` is set, else `devices.account_metadata`:
   `json_extract_scalar(<map>, '$["' || <key> || '"].username')`. Show the username, never the raw uid/SID.
 - **OS user of an MCP server instance** = its `metadata.uid`, resolved like an install's; a shared
-  config lists only the first OS user, and browser connectors have none.
+  config lists only the first OS user. Browser and remote connectors have no uid: take
+  `agent_account_id` -> its live `agent_instances_accounts` links -> each linked install's OS user
+  (list them all).
 - **Live inventory** = `deleted_at IS NULL` on devices, accounts, installs, MCP instances and the
   links between them (`agent_instances_accounts`, `mcp_server_agent_instances`); a link also
   needs both parents live. A live non-browser link with an older `last_seen_at` than its install
