@@ -30,8 +30,9 @@ How to attribute an event or finding to a person, a device, a corporate account 
   LEFT JOIN: cloud and api_key installs are unlinked from their account, and not_supported /
   no_account_found installs never had a link. Keep only the ten reasons ranked below: devices
   with only 'unknown' (or a newer value) get no reason, so the counts can sum to less than the
-  plan 'unknown' `active_users`. Rank cloud > api_key > usage_billed > plan_not_shared >
-  no_account_found > no_sign_in > org_not_found > account_unreadable > not_supported > gateway;
+  `active_users` of the `agents` row with plan 'unknown'. Rank cloud > api_key > usage_billed >
+  plan_not_shared > no_account_found > no_sign_in > org_not_found > account_unreadable >
+  not_supported > gateway;
   among equal reasons prefer `model_host` 'aws_bedrock', then 'gcp_vertex', then 'unknown'. Label
   cloud by its `model_host`: cloud_aws_bedrock / cloud_gcp_vertex / cloud.
 
@@ -66,8 +67,10 @@ How to attribute an event or finding to a person, a device, a corporate account 
   '$.uid')` resolved the same way (map chosen by the MCP row's own `sandbox_id`); it equals the
   `tenant` of its `mcp_server_agent_instances` install. A shared config lists only the first OS
   user, so other users of it are not counted. Browser connectors and remote-connector MCPs have
-  no uid and no link: take `agent_account_id` → live `agent_instances_accounts` → the install,
-  then the install rule above.
+  no uid and no link: take `agent_account_id` → its live `agent_instances_accounts` links → each
+  linked install, then the install rule above. An account linked to several installs gives one OS
+  user per install: list them all. For current use, drop links not in their install's latest scan
+  (`last_seen_at` rule under Live inventory).
 - **Live inventory** = `deleted_at IS NULL` on devices, accounts, installs, MCP instances and the
   links between them (`agent_instances_accounts`, `mcp_server_agent_instances`); a link also
   needs both parents live. A live link with an older `last_seen_at` than its install was not in
