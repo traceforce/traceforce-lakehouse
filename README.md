@@ -279,12 +279,6 @@ APIs — in practice **project Owner**.
    output "reader_role_name" { value = module.traceforce_lakehouse.reader_role_name }
    ```
 
-   Upgrading from 1.5.0 or earlier, where this module was at `//terraform/azure`: change
-   `source` to `//terraform/azure/snowflake` as above, not just `?ref=` (the old path has no
-   module from 1.6.0, so `terraform plan` stops with "Unsupported argument"). Then run
-   `terraform init -upgrade`. Your resources keep their addresses; check that `terraform plan`
-   destroys nothing before you apply.
-
 2. `terraform init && terraform apply`. The very first time this module deploys against a given
    Snowflake account + Azure tenant pair, expect this apply to get partway through and then stop
    on an error naming a consent URL: Snowflake creates its own Azure AD service principal to
