@@ -220,6 +220,12 @@ claude = ",".join([
 w(f"raw/telemetry/agent=AGENT_IDENTITY_CLAUDE_CODE/dt=@D0@/SERIAL-1/{ACCT}/sess-8/"
   f"@D0@_130000.000_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa_logs.json",
   '{"resourceLogs":[{"resource":{"attributes":[]},"scopeLogs":[{"logRecords":[%s]}]}]}' % claude)
+# Copilot bills in AI credits: a priced model with no reported cost stays unpriced (input still uncached)
+w(f"raw/telemetry/agent=AGENT_IDENTITY_GITHUB_COPILOT/dt=@D0@/SERIAL-3/{ACCT}/sess-9/"
+  f"@D0@_130000.000_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb_logs.json",
+  '{"resourceLogs":[{"resource":{"attributes":[]},"scopeLogs":[{"logRecords":[%s]}]}]}'
+  % tok("gpt-golden", "chat", kv('"gen_ai.usage.input_tokens"', '{"intValue":"1000"}'),
+        kv('"gen_ai.usage.cache_read.input_tokens"', '{"intValue":"600"}'), op="chat"))
 
 # ---- 4. Mirror snapshots: agents (string, int, double, boolean, timestamp) --------------------
 AG = ["id", "org_id", "agent_catalog_id", "agent_type", "plan", "active_users", "total_incidents",

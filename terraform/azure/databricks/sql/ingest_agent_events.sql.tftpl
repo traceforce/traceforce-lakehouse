@@ -239,7 +239,9 @@ BEGIN
     priced AS (
     SELECT f.*,
       coalesce(f.reported_cost_usd,
-        CASE WHEN f.operation IS DISTINCT FROM 'invoke_agent' AND f.input_tokens IS NOT NULL THEN
+        -- Copilot bills in AI credits, not list price: its cost is reported or NULL, never estimated.
+        CASE WHEN f.operation IS DISTINCT FROM 'invoke_agent' AND f.agent_type != 'github_copilot'
+             AND f.input_tokens IS NOT NULL THEN
           (f.input_tokens * p.input_usd_per_mtok
            + coalesce(f.cache_read_tokens, 0) * coalesce(p.cache_read_usd_per_mtok, p.input_usd_per_mtok)
            + coalesce(f.cache_write_tokens, 0) * coalesce(p.cache_write_usd_per_mtok, p.input_usd_per_mtok)
