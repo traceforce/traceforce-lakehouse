@@ -18,10 +18,11 @@ locals {
   target = snowflake_iceberg_table.agent_events.fully_qualified_name
   raw    = snowflake_external_table.raw_telemetry.fully_qualified_name
   cols   = join(", ", [for c in module.schema.agent_events : "\"${c.name}\""])
-  # cols is quoted lowercase for the Iceberg table; select_cols is unquoted for flat's aliases.
+  # cols is quoted lowercase for the Iceberg table; select_cols is unquoted for priced's aliases.
   # Same order, so the positional INSERT holds.
   select_cols   = join(", ", [for c in module.schema.agent_events : c.name])
   lookback_days = var.lookback_days
+  prices        = snowflake_iceberg_table.export["llm_model_prices"].fully_qualified_name
 })};
       END;
     $$

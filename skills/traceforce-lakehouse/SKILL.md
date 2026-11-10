@@ -199,6 +199,8 @@ covers flagged operations.
 - Some agents report no tokens or no cost (NULL columns): check `count(input_tokens)` and
   `count(cost_usd)` per `agent_type` and `service_name` before comparing them, and sum tokens
   where `operation IS DISTINCT FROM 'invoke_agent'` (those spans roll up their child spans' tokens).
+- Rows ingested before module 1.7.0 have no cost estimate, and their `input_tokens` may include
+  cached input.
 - Findings link to the logs only when the event's `session_id` equals the conversation's
   external id; findings without a matching conversation exist.
 - Copilot tool calls: `tool_call_id` and `tool_name` come from the span; count

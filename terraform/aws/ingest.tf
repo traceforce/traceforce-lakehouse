@@ -16,6 +16,7 @@ locals {
     target = local.agent_events_fqn
     raw    = "\"${aws_glue_catalog_database.lakehouse.name}\".\"raw_telemetry\""
     cols   = join(", ", [for c in local.agent_events_schema : c.name])
+    prices = "\"s3tablescatalog/${aws_s3tables_table_bucket.lakehouse.name}\".\"${aws_s3tables_namespace.tf.namespace}\".\"llm_model_prices\""
   })
 
   # Athena's .sync integration surfaces a FAILED query as States.TaskFailed whatever the

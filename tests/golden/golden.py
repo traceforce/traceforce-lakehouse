@@ -37,6 +37,22 @@ MIRRORS = {t: [(c.split(":")[0], c.split(":")[1], c.split(":")[0] == "id")
 OTHER_MIRRORS = [t for t in MIRRORS if t != MIRROR_TABLE]
 MIRROR = MIRRORS[MIRROR_TABLE]
 
+# llm_model_prices, read by the ingest to estimate cost (USD per million tokens). The runners
+# create it with these rows instead of mirroring a snapshot.
+PRICES_TABLE = "llm_model_prices"
+PRICES = [(c.split(":")[0], c.split(":")[1], c.split(":")[0] == "id") for c in SCHEMA["export_tables"][PRICES_TABLE]]
+PRICE_ROWS = [
+    {"id": "p1", "model_key": "gpt-golden", "input_usd_per_mtok": 2.0, "cache_read_usd_per_mtok": 0.2,
+     "cache_write_usd_per_mtok": 2.5, "output_usd_per_mtok": 10.0},
+    {"id": "p2", "model_key": "gpt-golden-nocache", "input_usd_per_mtok": 1.0, "cache_read_usd_per_mtok": None,
+     "cache_write_usd_per_mtok": None, "output_usd_per_mtok": 4.0},
+]
+
+
+def price_values(literal):
+    """VALUES rows for PRICE_ROWS in PRICES column order; literal(value, type) renders one value."""
+    return ", ".join("(" + ", ".join(literal(r.get(n), t) for n, t, _ in PRICES) + ")" for r in PRICE_ROWS)
+
 
 def day_tokens(today):
     """{token: value} for days -10..+10 around today."""

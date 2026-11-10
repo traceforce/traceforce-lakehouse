@@ -45,10 +45,10 @@ a span with no decision row is a gap, not an unapproved call. Cursor: only `post
 | `containment_enforcement` | string | TraceForce containment policy mode in force on the tool call (`warn` or `block`), not the outcome; NULL when no policy applied. |
 | `error_type` | string | Error class/type on error rows (e.g. `permission_denied`, `403`); NULL otherwise. |
 | `model` | string | The model requested for the turn; selector values such as `default` or `auto` mean auto-select, not a model name. |
-| `input_tokens` | long | Input tokens for the request; NULL when the agent reports no token counts. |
+| `input_tokens` | long | Uncached input tokens for the request (cache reads and writes are not included); NULL when the agent reports no token counts. |
 | `output_tokens` | long | Output tokens for the request; NULL when the agent reports no token counts. |
 | `cache_read_tokens` | long | Cache-read tokens for the request; NULL when the agent reports no token counts. |
-| `cost_usd` | double | Turn cost in USD as reported by the agent; NULL when the agent reports none. |
+| `cost_usd` | double | Request cost in USD: the agent's own figure, else an estimate at public list price from `llm_model_prices` (exact `model` match). Not an invoice: discounts, plan allowances and priority pricing are not reflected. NULL when the agent reports none and no estimate applies (`invoke_agent` rows, agents billed in credits, models without a list price). |
 | `content_input` | string | Prompt as a JSON message array; masked per matched value when the org redacts. Large. |
 | `content_output` | string | Response as a JSON message array; masked per matched value when the org redacts. Large. |
 | `service_name` | string | The emitting service's name (OTLP resource attribute); may name the collector rather than the agent. One agent can have rows from more than one source (for example its web chat history and its app's own telemetry); service_name tells them apart. |

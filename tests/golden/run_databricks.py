@@ -179,7 +179,7 @@ def main():
     # Rendered by the module's own render_sql, as ingest.tf does; only the tables, the root and
     # the fixture's lookback are the test's.
     rendered = render_sql({"agent_events_table": f"{schema}.agent_events",
-                           "mirror_tables": {t: f"{schema}.{t}" for t in g.MIRRORS},
+                           "mirror_tables": {t: f"{schema}.{t}" for t in (*g.MIRRORS, g.PRICES_TABLE)},
                            "runs_table": f"{schema}._ingest_runs",
                            "run_log_since": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
                            "logs_root": root, "lookback_days": g.LOOKBACK_DAYS})
@@ -206,6 +206,10 @@ def main():
         sql(f"CREATE SCHEMA {schema}", "schema")
         for table, cols in (("agent_events", g.AGENT_EVENTS), *g.MIRRORS.items(), ("_ingest_runs", None)):
             sql(deployed_ddl(table, cols, schema), f"create {table}")
+        sql(deployed_ddl(g.PRICES_TABLE, g.PRICES, schema), f"create {g.PRICES_TABLE}")
+        sql(f"INSERT INTO {schema}.{g.PRICES_TABLE} VALUES " + g.price_values(
+            lambda v, t: "NULL" if v is None else (f"'{v}'" if t == "string" else f"CAST({v} AS DOUBLE)")),
+            f"insert {g.PRICES_TABLE}")
         t0 = time.time()
         sql(ingest, "ingest", "ingest-1")
         print(f"ingest: {time.time() - t0:.1f}s")
@@ -325,6 +329,7 @@ def main():
         g.MIRROR_TABLE: ("true", "newest snapshot has no rows to merge; the mirror keeps its older rows"),
         g.LONG_TABLE: ("true", f"newest snapshot is from {tokens['@D-7-@']}"),
         g.STALE_TABLE: ("true", "no snapshot in the last 8 days"),
+        g.PRICES_TABLE: ("false", None),  # seeded, never mirrored: no run logged
     }
     got_fresh = {r["table_name"]: (r["stale"], r["reason"]) for r in freshness}
     if len(freshness) != len(got_fresh) or got_fresh != want_fresh:

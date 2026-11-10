@@ -538,6 +538,18 @@
       "created_at:timestamp",
       "updated_at:timestamp"
     ],
+    "llm_model_prices": [
+      "id:string",
+      "model_key:string",
+      "provider:string",
+      "mode:string",
+      "input_usd_per_mtok:double",
+      "cache_read_usd_per_mtok:double",
+      "cache_write_usd_per_mtok:double",
+      "output_usd_per_mtok:double",
+      "created_at:timestamp",
+      "updated_at:timestamp"
+    ],
     "agents": [
       "id:string",
       "org_id:string",

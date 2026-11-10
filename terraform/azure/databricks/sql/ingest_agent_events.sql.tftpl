@@ -205,11 +205,24 @@ BEGIN
       a['traceforce.containment_enforcement']                                  AS containment_enforcement,
       coalesce(a['error.type'], a['error_type'])                               AS error_type,
       a['gen_ai.request.model']                                                AS model,
-      try_cast(a['gen_ai.usage.input_tokens'] AS BIGINT)                       AS input_tokens,
+      -- input_tokens is uncached input for every agent. Claude's own input_tokens already is;
+      -- GenAI semconv input (Codex, Copilot) includes cache reads and writes, so they are subtracted.
+      CASE WHEN a['input_tokens'] IS NOT NULL
+           THEN try_cast(a['gen_ai.usage.input_tokens'] AS BIGINT)
+           ELSE try_cast(a['gen_ai.usage.input_tokens'] AS BIGINT)
+                - coalesce(try_cast(coalesce(a['gen_ai.usage.cache_read.input_tokens'],
+                                             a['cached_token_count']) AS BIGINT), 0)
+                - coalesce(try_cast(coalesce(a['gen_ai.usage.cache_write.input_tokens'],
+                                             a['gen_ai.usage.cache_creation.input_tokens'],
+                                             a['cache_write_token_count']) AS BIGINT), 0)
+      END                                                                      AS input_tokens,
       try_cast(a['gen_ai.usage.output_tokens'] AS BIGINT)                      AS output_tokens,
-      try_cast(coalesce(a['cache_read_tokens'], a['gen_ai.usage.cache_read.input_tokens']) AS BIGINT)
-                                                                               AS cache_read_tokens,
-      try_cast(a['cost_usd'] AS DOUBLE)                                        AS cost_usd,
+      try_cast(coalesce(a['cache_read_tokens'], a['gen_ai.usage.cache_read.input_tokens'],
+                        a['cached_token_count']) AS BIGINT)                    AS cache_read_tokens,
+      try_cast(coalesce(a['cache_creation_tokens'], a['gen_ai.usage.cache_write.input_tokens'],
+                        a['gen_ai.usage.cache_creation.input_tokens'],
+                        a['cache_write_token_count']) AS BIGINT)               AS cache_write_tokens,
+      try_cast(a['cost_usd'] AS DOUBLE)                                        AS reported_cost_usd,
       a['gen_ai.input.messages']                                               AS content_input,
       a['gen_ai.output.messages']                                              AS content_output,
       res['service.name']                                                      AS service_name,
@@ -222,8 +235,24 @@ BEGIN
       to_json(res)                                                             AS resource_json,
       now_utc                                                                  AS ingested_at
     FROM maps
+    ),
+    -- cost_usd: the agent's own figure, else an estimate at list price from llm_model_prices
+    -- (exact model match). invoke_agent repeats its children's usage, so it is never priced.
+    priced AS (
+    SELECT f.*,
+      coalesce(f.reported_cost_usd,
+        -- Copilot bills in AI credits, not list price: its cost is reported or NULL, never estimated.
+        CASE WHEN f.operation IS DISTINCT FROM 'invoke_agent' AND f.agent_type != 'github_copilot'
+             AND f.input_tokens IS NOT NULL THEN
+          (f.input_tokens * p.input_usd_per_mtok
+           + coalesce(f.cache_read_tokens, 0) * coalesce(p.cache_read_usd_per_mtok, p.input_usd_per_mtok)
+           + coalesce(f.cache_write_tokens, 0) * coalesce(p.cache_write_usd_per_mtok, p.input_usd_per_mtok)
+           + coalesce(f.output_tokens, 0) * p.output_usd_per_mtok) / 1e6
+        END)                                                                   AS cost_usd
+    FROM flat f
+    LEFT JOIN ${prices} p ON p.model_key = f.model
     )
-    SELECT ${select_cols} FROM flat
+    SELECT ${select_cols} FROM priced
     WHERE ts IS NOT NULL; -- a record with no time and a filename without one is dropped, never given a fabricated time
     GET DIAGNOSTICS rows_inserted = ROW_COUNT;
   END run;

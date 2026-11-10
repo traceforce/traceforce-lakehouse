@@ -40,7 +40,8 @@ Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glu
   milliseconds: it parses timestamps with `from_iso8601_timestamp`, which drops the rest.
 - Rows: exactly the contract columns (`export_tables` in `terraform/schema/columns.json`, the one
   column list every cloud module reads), `WHERE org_id = $org` for tenant tables; whole table for
-  `agent_catalog`, `mcp_catalog`, `mcp_categories` and `issue_types` (global, no `org_id` column).
+  `agent_catalog`, `mcp_catalog`, `mcp_categories`, `issue_types` and `llm_model_prices` (global, no
+  `org_id` column).
   Soft-deleted rows (`deleted_at` set) are included; consumers filter.
 - Columns outside the contract are never exported, so adding a column to TraceForce's database
   never changes the snapshot. Exposing it in Iceberg means adding it to the contract on both
@@ -121,7 +122,7 @@ mismatch fails the run for that table and is reported to TraceForce; the previou
 | Group | Tables |
 |---|---|
 | Identity | devices, sandboxes, agent_accounts, agent_instances, agent_instances_accounts, device_owner_mappings, device_component_versions |
-| Agents | agent_catalog (global), agents |
+| Agents | agent_catalog (global), agents, llm_model_prices (global) |
 | Findings + bridge to logs | sensitive_data_findings, connector_containment_findings, prompt_injection_findings, agent_conversations, agent_conversation_files |
 | MCP | mcp_server_instances, mcp_server_agent_instances, mcp_servers, mcp_catalog (global), org_mcp_catalog, mcp_categories (global) |
 | Issues | agent_issues, mcp_server_issues, issue_type_controls, issue_types (global) |

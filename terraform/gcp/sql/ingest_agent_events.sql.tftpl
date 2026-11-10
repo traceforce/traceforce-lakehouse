@@ -103,11 +103,26 @@ flat AS (
     JSON_VALUE(a, '$."traceforce.containment_enforcement"')                AS containment_enforcement,
     COALESCE(JSON_VALUE(a, '$."error.type"'), JSON_VALUE(a, '$."error_type"')) AS error_type,
     JSON_VALUE(a, '$."gen_ai.request.model"')                             AS model,
-    SAFE_CAST(JSON_VALUE(a, '$."gen_ai.usage.input_tokens"') AS INT64)     AS input_tokens,
+    -- input_tokens is uncached input for every agent. Claude's own input_tokens already is; GenAI
+    -- semconv input (Codex, Copilot) includes cache reads and writes, so they are subtracted.
+    CASE WHEN JSON_VALUE(a, '$."input_tokens"') IS NOT NULL
+         THEN SAFE_CAST(JSON_VALUE(a, '$."gen_ai.usage.input_tokens"') AS INT64)
+         ELSE SAFE_CAST(JSON_VALUE(a, '$."gen_ai.usage.input_tokens"') AS INT64)
+              - COALESCE(SAFE_CAST(COALESCE(JSON_VALUE(a, '$."gen_ai.usage.cache_read.input_tokens"'),
+                                            JSON_VALUE(a, '$."cached_token_count"')) AS INT64), 0)
+              - COALESCE(SAFE_CAST(COALESCE(JSON_VALUE(a, '$."gen_ai.usage.cache_write.input_tokens"'),
+                                            JSON_VALUE(a, '$."gen_ai.usage.cache_creation.input_tokens"'),
+                                            JSON_VALUE(a, '$."cache_write_token_count"')) AS INT64), 0)
+    END                                                                    AS input_tokens,
     SAFE_CAST(JSON_VALUE(a, '$."gen_ai.usage.output_tokens"') AS INT64)    AS output_tokens,
     SAFE_CAST(COALESCE(JSON_VALUE(a, '$."cache_read_tokens"'),
-                       JSON_VALUE(a, '$."gen_ai.usage.cache_read.input_tokens"')) AS INT64) AS cache_read_tokens,
-    SAFE_CAST(JSON_VALUE(a, '$."cost_usd"') AS FLOAT64)                    AS cost_usd,
+                       JSON_VALUE(a, '$."gen_ai.usage.cache_read.input_tokens"'),
+                       JSON_VALUE(a, '$."cached_token_count"')) AS INT64)    AS cache_read_tokens,
+    SAFE_CAST(COALESCE(JSON_VALUE(a, '$."cache_creation_tokens"'),
+                       JSON_VALUE(a, '$."gen_ai.usage.cache_write.input_tokens"'),
+                       JSON_VALUE(a, '$."gen_ai.usage.cache_creation.input_tokens"'),
+                       JSON_VALUE(a, '$."cache_write_token_count"')) AS INT64) AS cache_write_tokens,
+    SAFE_CAST(JSON_VALUE(a, '$."cost_usd"') AS FLOAT64)                    AS reported_cost_usd,
     JSON_VALUE(a, '$."gen_ai.input.messages"')                            AS content_input,
     JSON_VALUE(a, '$."gen_ai.output.messages"')                           AS content_output,
     JSON_VALUE(res, '$."service.name"')                                    AS service_name,
@@ -117,6 +132,22 @@ flat AS (
     TO_JSON_STRING(res)                                                    AS resource_json,
     CURRENT_TIMESTAMP()                                                    AS ingested_at
   FROM records
+),
+-- cost_usd: the agent's own figure, else an estimate at list price from llm_model_prices
+-- (exact model match). invoke_agent repeats its children's usage, so it is never priced.
+priced AS (
+  SELECT f.*,
+    COALESCE(f.reported_cost_usd,
+      -- Copilot bills in AI credits, not list price: its cost is reported or NULL, never estimated.
+      CASE WHEN f.operation IS DISTINCT FROM 'invoke_agent' AND f.agent_type != 'github_copilot'
+           AND f.input_tokens IS NOT NULL THEN
+        (f.input_tokens * p.input_usd_per_mtok
+         + COALESCE(f.cache_read_tokens, 0) * COALESCE(p.cache_read_usd_per_mtok, p.input_usd_per_mtok)
+         + COALESCE(f.cache_write_tokens, 0) * COALESCE(p.cache_write_usd_per_mtok, p.input_usd_per_mtok)
+         + COALESCE(f.output_tokens, 0) * p.output_usd_per_mtok) / 1e6
+      END)                                                                 AS cost_usd
+  FROM flat f
+  LEFT JOIN `${dataset}`.llm_model_prices p ON p.model_key = f.model
 )
-SELECT ${cols} FROM flat
+SELECT ${cols} FROM priced
 WHERE ts IS NOT NULL
