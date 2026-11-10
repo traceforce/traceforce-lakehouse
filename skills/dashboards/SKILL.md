@@ -1,7 +1,7 @@
 ---
 name: dashboards
-description: "Open the TraceForce lakehouse dashboards (AI agent usage & spend, incident triage) in the browser: checks access to the lakehouse first and says exactly what to fix, then starts the local dashboards server and opens it. Use when someone asks to open, start, launch or show the TraceForce dashboards. AWS (Athena) and GCP (BigQuery) lakehouses."
-argument-hint: "[--cloud aws|gcp|gcp,aws] [--port N]"
+description: "Open the TraceForce lakehouse dashboards (AI agent usage & spend, incident triage) in the browser: checks access to the lakehouse first and says exactly what to fix, then starts the local dashboards server and opens it. Use when someone asks to open, start, launch or show the TraceForce dashboards. AWS (Athena), GCP (BigQuery) and Azure Databricks lakehouses."
+argument-hint: "[--cloud aws|gcp|databricks|gcp,aws] [--port N]"
 allowed-tools: Bash(node ${CLAUDE_PLUGIN_ROOT}/examples/dashboards/serve.mjs *)
 ---
 
@@ -9,15 +9,18 @@ allowed-tools: Bash(node ${CLAUDE_PLUGIN_ROOT}/examples/dashboards/serve.mjs *)
 
 The server is `${CLAUDE_PLUGIN_ROOT}/examples/dashboards/serve.mjs` (Node 18+, no packages). It queries
 the lakehouse live: through Athena with the user's AWS credentials (`--cloud aws`, the default), or
-through BigQuery with their gcloud sign-in (`--cloud gcp`), or both merged into one view (`--cloud gcp,aws`,
-which checks both sign-ins). Do the three steps in order, and stop at the
+through BigQuery with their gcloud sign-in (`--cloud gcp`), through Databricks SQL with their Azure or
+Databricks sign-in (`--cloud databricks`), or several merged into one view (`--cloud gcp,aws`, which checks
+each sign-in). Do the three steps in order, and stop at the
 first failure.
 
 Pick the cloud from what the user said or passed in `$ARGUMENTS` ("GCP", "BigQuery", "Google" →
-`--cloud gcp`; "AWS", "Athena" → `--cloud aws`; both → `--cloud gcp,aws`). Don't infer it from which CLIs or credentials are
-present: a machine often has both. If nothing names it, ask whether their lakehouse is on AWS or GCP.
-Pass the same `--cloud` to both commands below. Azure (Snowflake) isn't supported by the dashboards
-yet; say so if asked.
+`--cloud gcp`; "AWS", "Athena" → `--cloud aws`; "Databricks", or "Azure" with Databricks →
+`--cloud databricks`; several → for example `--cloud gcp,aws`). Don't infer it from which CLIs or
+credentials are present: a machine often has several. If nothing names it, ask whether their lakehouse is
+on AWS, GCP or Azure Databricks. Pass the same `--cloud` to both commands below. Azure (Snowflake) isn't
+supported by the dashboards yet; say so if asked (for "Azure" alone, ask whether it's Databricks or
+Snowflake).
 
 ## 1. Check access
 
@@ -31,9 +34,10 @@ It prints a `✓` line per check that passed. On a problem it prints one `✗` l
 indented under it, the fix, and exits 2. Then:
 
 - Show the user the `✗` line and the fix as printed, and stop. Don't start the server.
-- Don't try to fix it yourself. Signing in (`aws sso login`, `gcloud auth login`) opens a browser and
-  needs the user: suggest they type the command from the fix here with a `!` prefix (for example
-  `! aws sso login --profile <name>` or `! gcloud auth login`), then run this command again.
+- Don't try to fix it yourself. Signing in (`aws sso login`, `gcloud auth login`, `az login`,
+  `databricks auth login`) opens a browser and needs the user: suggest they type the command from the fix
+  here with a `!` prefix (for example `! aws sso login --profile <name>`, `! gcloud auth login` or
+  `! az login`), then run this command again.
 - AWS: if the fix is about AWS_PROFILE or AWS_REGION, say they can set it in their shell before
   starting Claude Code, or tell you which profile and region to use, and then run step 1 again with
   those set, for example `AWS_PROFILE=x AWS_REGION=y node ...`. If they do, use the same
@@ -42,6 +46,12 @@ indented under it, the fix, and exits 2. Then:
   the project id, and then run step 1 again with `TRACEFORCE_LAKEHOUSE_PROJECT=<id> node ...`. If they
   do, use the same variable in step 2. A permissions fix (dataViewer, connectionUser, jobUser) needs
   an admin of their GCP project; don't try to grant it.
+- Databricks: if the fix is about `DATABRICKS_HOST` or `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID`, they can set
+  them in their shell before starting Claude Code, or tell you the values (the lakehouse module's
+  `databricks_workspace_url` and `query_warehouse_id` outputs), and then run step 1 again with
+  `DATABRICKS_HOST=x TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID=y node ...`. If they do, use the same variables in
+  step 2. A permissions fix (being listed as a reader, the Databricks SQL access entitlement) needs an
+  admin of their Databricks workspace; don't try to grant it.
 
 If `node` itself isn't found, tell the user the dashboards need Node 18 or later, and stop.
 

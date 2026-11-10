@@ -83,5 +83,6 @@ unattributed person, or for all agents in `recent_sessions.sql`).
 ## Other clouds
 
 The SQL in `queries/` is Athena (Trino); `queries/bigquery/` has the same queries in GoogleSQL, used
-with `--cloud gcp`. Keep the two in step: same columns, same meaning. The page reads the same JSON
+with `--cloud gcp`, and `queries/databricks/` in Databricks SQL, used with `--cloud databricks`. Keep
+them in step: same columns, same meaning. The page reads the same JSON
 either way. Snowflake isn't supported yet.

@@ -1,0 +1,67 @@
+-- One row per table the module loads: whether its data is stale, and why. Read by the hourly
+-- freshness alert (alerts.tf), and by readers (their schema-level SELECT covers it).
+-- Rows come from the module's own table list, not from the run log, so a table that has never
+-- logged a run still has a row. "Now" is UTC without the session time zone: Databricks keeps the
+-- time zone of the session that created the view (Terraform's, at apply; not necessarily UTC), and
+-- casting current_timestamp() to compare with the UTC TIMESTAMP_NTZ columns would shift by it.
+-- Stale when (reason: the first that holds):
+--   every table   no run logged in 5 hours (agent_events, hourly ingest: the next run starts up
+--                 to 1 h after the last one ends and may run up to its 4 h timeout, e.g. a
+--                 lookback_days catch-up) or 2 days (mirrors, daily);
+--                 a table with no run yet only once the run log is that old, so a new deployment
+--                 isn't stale before its first runs
+--   mirrors       no snapshot in the run's 8-day window; the newest snapshot is more than 2 days
+--                 old (one missed day is allowed: the producer writes ~11:00 UTC, the mirror runs
+--                 12:30); the newest snapshot wasn't merged while the mirror has rows (it has no
+--                 rows with an id, so the mirror keeps older rows that may be gone at TraceForce)
+-- newest_upload_at is information only and never makes agent_events stale: no uploads also means
+-- no agent activity.
+WITH clock AS (
+  SELECT timestampadd(MICROSECOND, unix_micros(current_timestamp()), TIMESTAMP_NTZ '1970-01-01 00:00:00') AS now_utc
+),
+tables AS (
+  SELECT * FROM VALUES
+    ('agent_events', 5)%{ for t in mirror_tables },
+    ('${t}', 48)%{ endfor }
+    AS v(table_name, max_hours)
+),
+-- snapshot_dt: the newer of the listed and the merged snapshot's dates. A snapshot that lands
+-- between the run's listing and its read is merged but not listed; it still counts as present.
+last_run AS (
+  SELECT *,
+         greatest(listed_dt, try_cast(regexp_extract(merged_path, 'dt=([0-9]{4}-[0-9]{2}-[0-9]{2})/[^/]+$', 1) AS DATE)) AS snapshot_dt
+  FROM ${runs_table}
+  QUALIFY row_number() OVER (PARTITION BY table_name ORDER BY finished_at DESC) = 1
+),
+checked AS (
+  SELECT
+    t.table_name,
+    r.finished_at AS last_run_at,
+    r.listed_dt,
+    r.listed_at,
+    r.mirror_rows,
+    r.newest_upload_at,
+    CASE
+      WHEN coalesce(r.finished_at, TIMESTAMP_NTZ '${run_log_since}') < timestampadd(HOUR, -t.max_hours, c.now_utc)
+        THEN CASE WHEN t.table_name = 'agent_events' THEN 'no ingest run in the last 5 hours'
+                  ELSE 'no mirror run in the last 2 days' END
+      WHEN r.finished_at IS NULL OR t.table_name = 'agent_events' THEN NULL
+      WHEN r.snapshot_dt IS NULL THEN 'no snapshot in the last 8 days'
+      WHEN r.snapshot_dt < date_sub(to_date(c.now_utc), 2)
+        THEN concat('newest snapshot is from ', CAST(r.snapshot_dt AS STRING))
+      -- Compare only dt=<date>/<file name>: it sorts by time and has no character that
+      -- _metadata.file_path (merged_path) encodes and the binaryFile path (listed_path) doesn't.
+      -- A snapshot that landed after the listing is newer than the listed one, not missing.
+      WHEN r.mirror_rows > 0
+           AND (NOT r.merged
+                OR coalesce(regexp_extract(r.merged_path, 'dt=[^/]+/[^/]+$', 0), '')
+                   < regexp_extract(r.listed_path, 'dt=[^/]+/[^/]+$', 0))
+        THEN 'newest snapshot has no rows to merge; the mirror keeps its older rows'
+    END AS reason
+  FROM tables t
+  CROSS JOIN clock c
+  LEFT JOIN last_run r ON r.table_name = t.table_name
+)
+SELECT table_name, last_run_at, listed_dt, listed_at, mirror_rows, newest_upload_at,
+       reason IS NOT NULL AS stale, reason
+FROM checked

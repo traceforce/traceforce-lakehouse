@@ -3,7 +3,7 @@
 Query your AI-agent activity (Claude Code, Claude, Cursor, GitHub Copilot, ChatGPT) and
 TraceForce findings in plain English, with SQL, or on ready-made dashboards. Everything runs in
 your own cloud: one Terraform module sets up Iceberg tables, loaded hourly, on **AWS (Athena)**,
-**GCP (BigQuery)** or **Azure (Snowflake)**.
+**GCP (BigQuery)**, **Azure (Snowflake)** or **Azure (Databricks)**.
 
 ## Examples
 
@@ -12,7 +12,7 @@ In Claude Code:
 | command | what it does |
 |---|---|
 | `/traceforce-lakehouse:traceforce-lakehouse` | Answers questions about agent activity in plain English, read-only, and drills down into specific prompts and tool calls. |
-| `/traceforce-lakehouse:dashboards` | Opens the usage-and-spend and incident-triage dashboards in your browser. AWS and GCP. |
+| `/traceforce-lakehouse:dashboards` | Opens the usage-and-spend and incident-triage dashboards in your browser. AWS, GCP and Azure (Databricks). |
 
 ## What is in the lake
 
@@ -34,7 +34,7 @@ flowchart LR
     bucket[("Logs bucket<br/>S3 / GCS / Blob Storage")]
     load["Scheduled load<br/>hourly ingest + daily mirror"]
     tables[("Iceberg tables<br/>agent_events + metadata tables")]
-    engine["Query engine<br/>Athena / BigQuery / Snowflake"]
+    engine["Query engine<br/>Athena / BigQuery / Snowflake / Databricks"]
     bucket --> load --> tables --> engine
   end
 
@@ -88,7 +88,7 @@ IAM resources in that account; deploy in the bucket's region.
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws?ref=1.5.0"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws?ref=1.6.0"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
@@ -148,7 +148,7 @@ APIs — in practice **project Owner**.
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform/gcp?ref=1.5.0"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform/gcp?ref=1.6.0"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
@@ -256,7 +256,7 @@ APIs — in practice **project Owner**.
    }
 
    module "traceforce_lakehouse" {
-     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure?ref=1.5.0"
+     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure/snowflake?ref=1.6.0"
 
      # Must be globally unique across all of Azure (storage account names share one namespace
      # account-wide) and stable for the life of the deployment: changing it later destroys and
@@ -330,26 +330,145 @@ The first load runs within the hour and covers the last few days.
 
 </details>
 
+<details>
+<summary><b>Azure (Databricks)</b></summary>
+
+**Before you start:**
+
+- The logs storage account's resource group (not shown in TraceForce Settings), and a globally
+  unique 3-24 character lowercase name for the storage account the module creates for the
+  Iceberg data. The logs storage account must be ADLS Gen2 (hierarchical namespace enabled).
+- A name for the Databricks workspace the module creates (Premium, serverless) in the logs
+  resource group and region. `terraform destroy` deletes this workspace and everything in it.
+- A service principal (Entra app registration with a client secret) for `terraform apply`, with
+  **Contributor** and **Role Based Access Control Administrator** (or **User Access
+  Administrator**) on the logs resource group, and `Storage Blob Data Contributor` on the state
+  container. Set its `ARM_*` variables in the environment, not in `main.tf`. Don't use it to query.
+- The `Microsoft.Databricks` resource provider registered in the subscription.
+- One lakehouse per Azure region and per resource group.
+
+1. Create a root configuration. Keep the state in your own state storage account, never the
+   logs storage account.
+
+   ```hcl
+   terraform {
+     required_version = ">= 1.5"
+     backend "azurerm" {
+       subscription_id      = "00000000-0000-0000-0000-000000000000" # az account show --query id -o tsv
+       tenant_id            = "00000000-0000-0000-0000-000000000000" # az account show --query tenantId -o tsv
+       resource_group_name  = "acme-terraform-rg"
+       storage_account_name = "acmetfstate"
+       container_name       = "tfstate"
+       key                  = "traceforce-lakehouse-databricks/terraform.tfstate"
+       use_azuread_auth     = true
+     }
+     required_providers {
+       azurerm = {
+         source  = "hashicorp/azurerm"
+         version = ">= 4.9.0, < 5.0.0"
+       }
+       azapi = {
+         source  = "Azure/azapi"
+         version = ">= 2.13.0, < 3.0.0"
+       }
+       databricks = {
+         source  = "databricks/databricks"
+         version = ">= 1.141.0, < 2.0.0"
+       }
+     }
+   }
+
+   provider "azurerm" {
+     subscription_id = "00000000-0000-0000-0000-000000000000" # az account show --query id -o tsv
+     tenant_id       = "00000000-0000-0000-0000-000000000000" # az account show --query tenantId -o tsv
+     features {}
+   }
+
+   # Creates the serverless workspace (azurerm has no setting for it). Same subscription and tenant.
+   provider "azapi" {
+     subscription_id = "00000000-0000-0000-0000-000000000000" # az account show --query id -o tsv
+     tenant_id       = "00000000-0000-0000-0000-000000000000" # az account show --query tenantId -o tsv
+   }
+
+   # The workspace the module creates. Signs in with the same Azure identity as azurerm (the ARM_* variables).
+   provider "databricks" {
+     host                        = module.traceforce_lakehouse.databricks_workspace_url
+     azure_workspace_resource_id = module.traceforce_lakehouse.databricks_workspace_id
+   }
+
+   module "traceforce_lakehouse" {
+     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure/databricks?ref=1.6.0"
+
+     # Must be globally unique across all of Azure (storage account names share one namespace
+     # account-wide) and stable for the life of the deployment: changing it later destroys and
+     # recreates the storage account, deleting the Iceberg table files.
+     iceberg_storage_account_name = "acmetraceforcelakehouse"
+
+     # The Premium workspace this module creates in logs_resource_group_name. Stable for the life of
+     # the deployment: changing it later replaces the workspace and everything in it.
+     databricks_workspace_name = "acme-traceforce-lakehouse"
+
+     logs_storage_account_name = "acmetraceforcelogs" # ADLS Gen2 (hierarchical namespace enabled)
+     logs_resource_group_name  = "acme-logs-rg"
+     logs_container_name       = "logs"
+     logs_prefix               = "traceforce" # "" if TraceForce writes at the container root
+
+     # ingest_warehouse_size    = "Small"                  # default 2X-Small; bump for a lookback_days catch-up
+     # query_warehouse_size     = "Small"                  # default 2X-Small; bump if ad-hoc queries feel slow
+     # query_max_num_clusters   = 2                        # default 1; raise if queries queue behind each other
+     # databricks_account_id    = "00000000-0000-0000-0000-000000000000" # optional; unset = read from the workspace (Public Beta data source). Account console, top-right menu.
+     # alarm_notification_email = "jdoe@acme.com"          # get notified when a scheduled job fails or data goes stale
+     # reader_user_names              = ["jdoe@acme.com"]    # read-only access: users (email)
+     # reader_group_names             = ["security-team"]    # ... account groups
+     # reader_service_principal_names = ["<application id>"] # ... service principals, e.g. a read-only identity for Claude Code
+     # reader_can_view_jobs           = true                 # also let readers see the jobs' run history (default false)
+     # lookback_days            = 7                        # default 3; raise only for a manual catch-up, then set it back
+   }
+
+   output "databricks_workspace_url" { value = module.traceforce_lakehouse.databricks_workspace_url }
+   output "databricks_workspace_id" { value = module.traceforce_lakehouse.databricks_workspace_id }
+   output "query_warehouse_id" { value = module.traceforce_lakehouse.query_warehouse_id }
+   ```
+
+2. `terraform init && terraform apply`, as the service principal. If the first apply stops
+   while creating the SQL warehouses, run `terraform apply` again; don't destroy first.
+
+3. The service principal is the workspace's only admin. Someone with **Contributor** or **Owner**
+   on the subscription clicks **Launch Workspace** on the workspace in the Azure portal to become
+   an admin too.
+
+4. Grant query access. In the workspace, under Settings › Identity and access, add each reader
+   with **Databricks SQL access**. Then list them in step 1's `reader_*` inputs and apply again as
+   the service principal. Access can take about 5 minutes.
+
+5. Install the skill in your coding agent (Claude Code: the two `/plugin` commands above; other
+   agents: see [`AGENTS.md`](AGENTS.md)). Set `DATABRICKS_HOST` and `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID`
+   to the `databricks_workspace_url` and `query_warehouse_id` outputs, then `az login` as the
+   reader. Tables live in `traceforce_lakehouse.traceforce`.
+
+The first load runs within the hour and covers the last few days; the metadata tables fill at the
+daily mirror, 12:30 UTC.
+
+</details>
+
 ## How it works
 
 Everything runs in your own cloud: the tables, the hourly load and the queries. **Athena over
-Iceberg in AWS (S3)**, **BigQuery over Iceberg in GCP (GCS)**, or **Snowflake over Iceberg in
-Azure (Blob Storage)**. Your lakehouse is set up on one of them. On AWS and GCP, compute is
-serverless and native to the same account as your logs, so there are no servers to run and
-nothing to upgrade. Azure is the exception: it runs on Snowflake, so you need an existing
-Snowflake account and warehouse credits of your own.
+Iceberg in AWS (S3)**, **BigQuery over Iceberg in GCP (GCS)**, **Snowflake over Iceberg in
+Azure (Blob Storage)**, or **Databricks over Iceberg in Azure (ADLS Gen2)**. Your lakehouse is
+set up on one of them.
 
 The daily metadata snapshots (findings, catalogs, and more) are written into your bucket or
 container by TraceForce's storage role, under the grant you already gave it.
 
 Query results never leave your cloud. They go to a bucket this module owns on AWS, and to
-BigQuery- or Snowflake-managed result storage on GCP and Azure. TraceForce can read none of
-them.
+BigQuery-, Snowflake- or Databricks-managed result storage on GCP and Azure. TraceForce can
+read none of them.
 
 ## Is it working
 
-- Freshness: `SELECT max(ingested_at), max(upload_ts) FROM agent_events` (on Azure, quoted:
-  `SELECT max("ingested_at"), max("upload_ts") FROM "agent_events"`). More than two hours
+- Freshness: `SELECT max(ingested_at), max(upload_ts) FROM agent_events` (on Azure (Snowflake),
+  quoted: `SELECT max("ingested_at"), max("upload_ts") FROM "agent_events"`). More than two hours
   behind the newest object in your bucket means a run is failing or the schedule is disabled;
   if neither, contact TraceForce.
 - **AWS:** the CloudWatch alarm `traceforce-lakehouse-runs-failed` raises on any failed
@@ -360,12 +479,18 @@ them.
   re-running it loads nothing twice. Until scout's first upload lands, the hourly ingest fails
   with "Cannot query hive partitioned data ... without any associated files"; that is expected on
   a new deployment and clears on its own once the first object arrives.
-- **Azure:** `SELECT * FROM TABLE("traceforce_lakehouse".INFORMATION_SCHEMA.TASK_HISTORY(DATABASE_NAME => '"traceforce_lakehouse"', SCHEMA_NAME => '"traceforce"', ERROR_ONLY => TRUE, RESULT_LIMIT => 10000))`
+- **Azure (Snowflake):** `SELECT * FROM TABLE("traceforce_lakehouse".INFORMATION_SCHEMA.TASK_HISTORY(DATABASE_NAME => '"traceforce_lakehouse"', SCHEMA_NAME => '"traceforce"', ERROR_ONLY => TRUE, RESULT_LIMIT => 10000))`
   in Snowsight (with a warehouse active) shows every failed scheduled Task of the last 7 days (the
   hourly ingest, or any of the daily export mirrors) with Snowflake's own error message; set
   `alarm_notification_email` to also get emailed. The metadata mirrors are each a MERGE, so
   re-running one loads nothing twice, and one
   table failing never blocks the others (they're independent Tasks).
+- **Azure (Databricks):** `SELECT * FROM traceforce_lakehouse.traceforce.freshness` on the
+  `traceforce-lakehouse` warehouse shows one row per table, whether it's stale and why. Failed
+  scheduled runs show in the workspace's Jobs & Pipelines: `traceforce-lakehouse-ingest` (hourly)
+  and `traceforce-lakehouse-mirror` (daily, one task per metadata table), with Databricks' own
+  error message; set `alarm_notification_email` to also get emailed when a job fails or data goes
+  stale.
 
 ## More
 

@@ -1,0 +1,149 @@
+-- Make one TraceForce metadata table's Iceberg mirror equal its newest daily snapshot: upsert its
+-- rows and delete rows no longer in it (hard-deleted at TraceForce), in ONE MERGE, so readers
+-- never see a half-updated mirror (as GCP's single MERGE).
+-- "Newest" = the lexically greatest snapshot path within the last 7 days of dt folders, today
+-- included (paths embed the date and the time of day, so a same-day retry wins). dt is bounded on
+-- both ends so a future-dated folder cannot win. The folders are listed ONCE: the newest path is
+-- pinned in a variable and only that file is read afterwards. Snapshots are never overwritten,
+-- so a snapshot that lands mid-run can't make the upsert and the delete use different files.
+-- Guard: nothing changes unless the newest snapshot has at least one row with an id; with no
+-- snapshot in the window, or a broken newest file, the delete must not empty the mirror. Known
+-- consequence: a table that genuinely dropped to zero rows keeps its stale rows until one row
+-- exists again.
+-- The snapshot is read with every column as a string, then cast: int/long/double/boolean with
+-- try_cast (NULL when the text doesn't fit, as on AWS); timestamps with traceforce_iso_to_ntz
+-- (below: ISO 8601 date-time or date, offset applied, UTC when there is none). A malformed line
+-- fails the run (FAILFAST), as on AWS, rather than dropping the row. One compound statement, dates
+-- in UTC; read_files() needs a constant path, so paths are bound with EXECUTE IMMEDIATE ... USING.
+-- Every completed run, changes or not, ends by logging one row to ${runs_table} for the freshness
+-- view: the newest snapshot file in the window (from a listing, so a zero-line file counts), the
+-- snapshot merged, and the mirror's row count. A failed run logs nothing (the job emails instead).
+-- :run_id is the job's run ID (the task parameter run_id = {{job.run_id}}, ingest.tf).
+BEGIN
+  -- "Now" in UTC without the session time zone: convert_timezone() round-trips through the
+  -- session's local time, which shifts instants in a daylight-saving overlap.
+  DECLARE now_utc TIMESTAMP_NTZ DEFAULT timestampadd(MICROSECOND, unix_micros(current_timestamp()), TIMESTAMP_NTZ '1970-01-01 00:00:00');
+  DECLARE today DATE DEFAULT to_date(now_utc);
+  DECLARE days STRING DEFAULT array_join(
+    transform(sequence(0, 7), i -> date_format(date_sub(today, i), 'yyyy-MM-dd')), ',');
+  DECLARE newest STRING;
+  -- for the run log
+  DECLARE listed STRING;
+  DECLARE listed_at TIMESTAMP_NTZ;
+  DECLARE listed_files BIGINT DEFAULT 0;
+  DECLARE merged BOOLEAN DEFAULT false;
+  DECLARE rows_merged BIGINT;
+  -- One set of read_files() options for the listing and the read, so both parse files alike.
+  DECLARE read_opts STRING DEFAULT
+    'format => "json", mode => "FAILFAST", schema => "${join(", ", [for c in columns : "`${c.name}` STRING"])}"';
+
+  -- Export timestamp text to UTC TIMESTAMP_NTZ, through epoch microseconds, not the session time
+  -- zone. Postgres writes one of three forms (the producer accepts these column types): timestamptz
+  -- with its offset, timestamp without one (read as UTC), or a date (midnight UTC). Anything else is
+  -- NULL, as AWS's TRY does. Temporary: it ends with this statement.
+  CREATE OR REPLACE TEMPORARY FUNCTION traceforce_iso_to_ntz(s STRING) RETURNS TIMESTAMP_NTZ RETURN
+    timestampadd(MICROSECOND, unix_micros(try_to_timestamp(CASE
+      WHEN s RLIKE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN s || 'T00:00:00Z'
+      WHEN s NOT RLIKE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T' THEN NULL
+      WHEN s RLIKE '(Z|[+-][0-9]{2}(:?[0-9]{2})?)$' THEN s
+      ELSE s || 'Z' END)), TIMESTAMP_NTZ '1970-01-01 00:00:00');
+
+  -- A snapshot path the job uses must be source_root + dt=<date>/<file name>: the listing and the
+  -- read both start from source_root, and the date is read from what follows it (run log).
+  -- Anything else fails the run before the mirror changes. Temporary: it ends with this statement.
+  CREATE OR REPLACE TEMPORARY FUNCTION traceforce_snapshot_path_ok(p STRING) RETURNS BOOLEAN RETURN
+    startswith(p, '${source_root}')
+    AND substr(p, length('${source_root}') + 1) RLIKE '^dt=[0-9]{4}-[0-9]{2}-[0-9]{2}/[^/]+$';
+
+  -- No folder yet (a new deployment before the first snapshot): nothing to read, so the run
+  -- succeeds without changes. Any other error fails the run.
+  run: BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN
+      DECLARE c STRING;
+      GET DIAGNOSTICS CONDITION 1 c = CONDITION_IDENTIFIER;
+      IF c IS DISTINCT FROM 'CF_PATH_DOES_NOT_EXIST_FOR_READ_FILES' THEN RESIGNAL; END IF;
+    END;
+
+    -- For the run log: the newest snapshot file in the window, zero-line ones included, from the
+    -- folder listing alone (binaryFile with only path and modificationTime used reads no file
+    -- content). The read below sees rows, not files, so it can't tell "today's snapshot is empty"
+    -- from "no snapshot today". The schema must be given and match exactly: without it an empty
+    -- window fails (UNRESOLVED_COLUMN) instead of giving NULL; any other fails once files exist.
+    -- Only .jsonl.gz files, so a stray file can't count as the newest snapshot.
+    EXECUTE IMMEDIATE
+      'SELECT max(path),
+              timestampadd(MICROSECOND, unix_micros(max_by(modificationTime, path)), TIMESTAMP_NTZ "1970-01-01 00:00:00"),
+              count(*)
+       FROM read_files(?, format => "binaryFile",
+                       schema => "path STRING NOT NULL, modificationTime TIMESTAMP NOT NULL, length BIGINT NOT NULL, content BINARY")
+       WHERE path LIKE "%.jsonl.gz"'
+      INTO listed, listed_at, listed_files
+      USING '${source_root}dt={' || days || '}/';
+    IF listed IS NOT NULL AND NOT traceforce_snapshot_path_ok(listed) THEN
+      SIGNAL SQLSTATE '22000' SET MESSAGE_TEXT = concat('unexpected snapshot path: ', listed);
+    END IF;
+
+    -- The one listing: the newest snapshot file that has rows. When the folder exists but no
+    -- file matches the window (no snapshot for 8 days), read_files() can't resolve _metadata and
+    -- raises UNRESOLVED_COLUMN: caught for this statement only, newest stays NULL and the run
+    -- succeeds without changes, as AWS does. Any other error still fails the run.
+    list: BEGIN
+      DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN
+        DECLARE c STRING;
+        GET DIAGNOSTICS CONDITION 1 c = CONDITION_IDENTIFIER;
+        IF c IS NULL OR c NOT LIKE 'UNRESOLVED_COLUMN%' THEN RESIGNAL; END IF;
+      END;
+      EXECUTE IMMEDIATE
+        'SELECT max(_metadata.file_path) FROM read_files(?, ' || read_opts || ')'
+        INTO newest
+        USING '${source_root}dt={' || days || '}/';
+    END list;
+    IF newest IS NULL THEN
+      LEAVE run;
+    END IF;
+    IF NOT traceforce_snapshot_path_ok(newest) THEN
+      SIGNAL SQLSTATE '22000' SET MESSAGE_TEXT = concat('unexpected snapshot path: ', newest);
+    END IF;
+
+    EXECUTE IMMEDIATE
+      'CREATE OR REPLACE TEMPORARY VIEW traceforce_mirror_src AS
+       SELECT * FROM read_files(?, ' || read_opts || ')'
+      USING newest;
+
+    IF (SELECT count(*) FROM traceforce_mirror_src WHERE id IS NOT NULL) > 0 THEN
+      MERGE INTO ${target} t
+      USING (
+        SELECT
+    %{ for c in columns ~}
+          %{ if c.type == "timestamp" }traceforce_iso_to_ntz(`${c.name}`)%{ else }%{ if c.type == "string" }`${c.name}`%{ else }try_cast(`${c.name}` AS ${c.type == "long" ? "BIGINT" : upper(c.type)})%{ endif }%{ endif } AS `${c.name}`%{ if c.name != columns[length(columns) - 1].name },%{ endif }
+    %{ endfor ~}
+        FROM traceforce_mirror_src
+        WHERE id IS NOT NULL
+      ) s
+      ON t.id = s.id
+      WHEN MATCHED THEN UPDATE SET
+    %{ for c in columns ~}
+    %{ if c.name != "id" ~}
+        `${c.name}` = s.`${c.name}`%{ if c.name != columns[length(columns) - 1].name },%{ endif }
+    %{ endif ~}
+    %{ endfor ~}
+      WHEN NOT MATCHED THEN INSERT (${join(", ", [for c in columns : "`${c.name}`"])})
+        VALUES (${join(", ", [for c in columns : "s.`${c.name}`"])})
+      WHEN NOT MATCHED BY SOURCE THEN DELETE;
+      -- every matched row is rewritten, unchanged or not, so this is rows written, not rows changed
+      GET DIAGNOSTICS rows_merged = ROW_COUNT;
+      SET merged = true;
+    END IF;
+  END run;
+
+  -- listed_dt: the dt= right after source_root (listed was checked above), so a dt= in
+  -- logs_prefix can't stand in for the snapshot's date.
+  INSERT INTO ${runs_table} (table_name, run_id, started_at, finished_at, listed_path, listed_dt,
+                             listed_at, listed_files, merged, merged_path, rows_merged, mirror_rows)
+  SELECT '${table}', :run_id, now_utc,
+         timestampadd(MICROSECOND, unix_micros(current_timestamp()), TIMESTAMP_NTZ '1970-01-01 00:00:00'),
+         listed, try_cast(regexp_extract(substr(listed, length('${source_root}') + 1),
+                                 '^dt=([0-9]{4}-[0-9]{2}-[0-9]{2})/', 1) AS DATE),
+         listed_at, listed_files, merged, newest, rows_merged,
+         (SELECT count(*) FROM ${target});
+END

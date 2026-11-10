@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// Serve the TraceForce lakehouse dashboards, querying the lakehouse live: Athena on AWS, BigQuery on GCP.
+// Serve the TraceForce lakehouse dashboards, querying the lakehouse live: Athena on AWS, BigQuery on GCP,
+// Databricks SQL on Azure Databricks.
 //
 //   node serve.mjs              # check AWS access, then serve http://localhost:8765
 //   node serve.mjs --cloud gcp  # the same for a GCP (BigQuery) lakehouse (default: --cloud aws)
+//   node serve.mjs --cloud databricks  # the same for an Azure Databricks lakehouse
 //   node serve.mjs --cloud gcp,aws  # both lakehouses, merged into one view (see "Several lakes" below)
 //   node serve.mjs --open       # ...and open it in the browser
 //   node serve.mjs --check      # only check access: exit 0, or exit 2 with what to fix
@@ -10,7 +12,8 @@
 //
 // Before serving, it checks that the cloud's CLI is installed, you're signed in, and your identity can
 // query the lakehouse (AWS: a region is set and the Athena workgroup is usable; GCP: a project is set and
-// the traceforce_lakehouse dataset is queryable), and stops with the fix if not. If the port already has a
+// the traceforce_lakehouse dataset is queryable; Databricks: the workspace and query warehouse are set and
+// a small query on the lakehouse succeeds), and stops with the fix if not. If the port already has a
 // dashboards server, it reuses that one (and opens it with --open) instead of failing.
 //
 // Every folder here with an api.mjs is a dashboard, served at /<folder>/ and listed on the home page.
@@ -19,9 +22,10 @@
 //   order                optional number: lower comes first on the home page (then by folder name)
 //   params               { name: { pattern, timestamp?, emptyIsNull? } }: the values its pages may send
 //   routes               { name: async (query, { run, runAll, arg }) => json }, served at /<folder>/api/<name>
-// run("x", params) runs the folder's queries/x.sql (Athena) or queries/bigquery/x.sql (BigQuery) through
-// the skill's athena_query.sh or bq_query.sh, with each {{param}} placeholder replaced by the checked value
-// as a SQL literal, and resolves to its rows.
+// run("x", params) runs the folder's queries/x.sql (Athena), queries/bigquery/x.sql (BigQuery) or
+// queries/databricks/x.sql (Databricks) through the skill's athena_query.sh, bq_query.sh or
+// databricks_query.sh, with each {{param}} placeholder replaced by the checked value as a SQL literal, and
+// resolves to its rows.
 //
 // Several lakes: every query runs on each, and the rows are concatenated (the routes merge what needs it,
 // such as freshness, findings by id, or a session's parts). A session can be in more than one lake: copied
@@ -33,7 +37,9 @@
 //
 // Needs Node 18 or later, and the same credentials as the query script: on AWS, the AWS credentials and
 // region of athena_query.sh; on GCP, the gcloud sign-in and project of bq_query.sh
-// (TRACEFORCE_LAKEHOUSE_PROJECT, else the gcloud default project). Nothing is written to disk here:
+// (TRACEFORCE_LAKEHOUSE_PROJECT, else the gcloud default project); on Azure Databricks, python3 and the
+// settings and sign-in of databricks_query.sh (DATABRICKS_HOST, TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID, and
+// az login, a Databricks CLI login or a service principal's DATABRICKS_CLIENT_ID/SECRET). Nothing is written to disk here:
 // results go straight to the page. (Athena itself keeps each result in the workgroup's S3 result location,
 // and BigQuery in its own temporary result tables, as they do for every query.) The server listens on
 // 127.0.0.1 only and runs only the SQL files in each dashboard's queries/. The pages send values, never SQL.
@@ -64,20 +70,33 @@ const WORKGROUP = "traceforce-lakehouse";
 const DATASET = "traceforce_lakehouse";
 
 // The lakehouse's cloud picks the query script, the folder of SQL in its dialect, how a string literal is
-// quoted (GoogleSQL has backslash escapes, not doubled quotes), the access check, its events table and the
-// query listing its recent session ids.
+// quoted (GoogleSQL and Databricks SQL have backslash escapes, not doubled quotes: on Databricks 'it''s'
+// reads as two literals joined, "its"), how a timestamp literal is written (on Databricks TIMESTAMP_NTZ:
+// a TIMESTAMP literal is read in the session's time zone, and inside a daylight-saving gap it moves an
+// hour), the access check, its events table and the query listing its recent session ids.
 const ENGINES = {
   aws: { script: "athena_query.sh", queries: "queries", check: checkAws,
-    quote: v => "'" + v.replaceAll("'", "''") + "'", events: "agent_events",
+    quote: v => "'" + v.replaceAll("'", "''") + "'", timestamp: "TIMESTAMP ", events: "agent_events",
     sessionSpans: "SELECT session_id, cast(min(ts) AS varchar) AS t0, cast(max(ts) AS varchar) AS t1 FROM agent_events " +
       "WHERE session_id IS NOT NULL AND ts >= date_add('day', -92, current_date) GROUP BY session_id" },
   gcp: { script: "bq_query.sh", queries: join("queries", "bigquery"), check: checkGcp,
-    quote: v => "'" + v.replace(/[\\']/g, "\\$&") + "'", events: `${DATASET}.agent_events`,
+    quote: v => "'" + v.replace(/[\\']/g, "\\$&") + "'", timestamp: "TIMESTAMP ", events: `${DATASET}.agent_events`,
     sessionSpans: "SELECT session_id, FORMAT_TIMESTAMP('%F %H:%M:%E6S', min(ts)) AS t0, FORMAT_TIMESTAMP('%F %H:%M:%E6S', max(ts)) AS t1 " +
       `FROM ${DATASET}.agent_events WHERE session_id IS NOT NULL AND ts >= TIMESTAMP(DATE_SUB(CURRENT_DATE(), INTERVAL 92 DAY)) GROUP BY session_id` },
+  databricks: { script: "databricks_query.sh", queries: join("queries", "databricks"), check: checkDatabricks,
+    // databricks_query.sh refuses these characters anywhere in a statement; a session id from another lake
+    // (the duplicate-session skip list) can hold them, so they're written as \uXXXX escapes.
+    quote: v => "'" + v.replace(/[\\']/g, "\\$&")
+      .replace(/[\x0b\x0c\x1c-\x1e\x85\u2028\u2029]/g, c => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0")) + "'",
+    timestamp: "TIMESTAMP_NTZ ", events: `${DATASET}.traceforce.agent_events`,
+    // ts is UTC; the UTC date, not current_date(), which follows the session time zone.
+    sessionSpans: "SELECT session_id, CAST(min(ts) AS STRING) AS t0, CAST(max(ts) AS STRING) AS t1 " +
+      `FROM ${DATASET}.traceforce.agent_events WHERE session_id IS NOT NULL AND ts >= CAST(date_sub(to_date(` +
+      "timestampadd(MICROSECOND, unix_micros(current_timestamp()), TIMESTAMP_NTZ '1970-01-01 00:00:00')), 92) AS TIMESTAMP_NTZ) " +
+      "GROUP BY session_id" },
 };
 const CLOUDS = option("--cloud", "aws").split(",");
-for (const c of CLOUDS) if (!Object.hasOwn(ENGINES, c)) fail(`Unknown cloud "${c}"`, "Use --cloud aws (Athena), --cloud gcp (BigQuery), or both: --cloud gcp,aws.");
+for (const c of CLOUDS) if (!Object.hasOwn(ENGINES, c)) fail(`Unknown cloud "${c}"`, "Use --cloud aws (Athena), --cloud gcp (BigQuery), --cloud databricks (Azure Databricks), or several: --cloud gcp,aws.");
 if (new Set(CLOUDS).size !== CLOUDS.length) fail(`--cloud lists a cloud twice`, "List each cloud once, for example --cloud gcp,aws.");
 const CLOUD = CLOUDS.join(",");
 
@@ -110,7 +129,11 @@ function parseCsv(text) {
 function query(cloud, label, sql) {
   const tag = CLOUDS.length > 1 ? `${label} (${cloud})` : label;
   return new Promise((resolve, reject) => {
-    execFile(join(SCRIPTS, ENGINES[cloud].script), [sql], { env: { ...process.env, TRACEFORCE_LAKEHOUSE_MAX_ROWS: "0" },
+    // TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT: the Databricks script cancels a statement after 300 s by default;
+    // give it nearly the 600 s this waits, so it ends with Databricks' message rather than being killed.
+    // (The Athena and BigQuery scripts set no time limit of their own.)
+    execFile(join(SCRIPTS, ENGINES[cloud].script), [sql], { env: { ...process.env, TRACEFORCE_LAKEHOUSE_MAX_ROWS: "0",
+      TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT: "590" },
       timeout: 600_000, maxBuffer: 1 << 30 }, (err, stdout, stderr) => {
       for (const line of stderr.split("\n").filter(Boolean)) console.error(`  ${tag}: ${line}`);
       if (err) {
@@ -151,7 +174,7 @@ function helpers(dir, params) {
     if (spec.emptyIsNull && value === "") return "NULL";
     if (!spec.pattern.test(value)) throw new BadRequest(`invalid ${name}`);
     const quoted = engine.quote(value);
-    return spec.timestamp ? "TIMESTAMP " + quoted : quoted;
+    return spec.timestamp ? engine.timestamp + quoted : quoted;
   }
   // The query on every lake, with the rows concatenated in lake order.
   async function run(name, values = {}) {
@@ -163,9 +186,9 @@ function helpers(dir, params) {
       if (sql.includes("{{")) throw new BadRequest(`${name}.sql needs a parameter that wasn't given`);
       if (skips[i] && skips[i].length) {
         const q = engine.quote;
-        const held = skips[i].map(x => `(session_id = ${q(x.session_id)} AND ts BETWEEN TIMESTAMP ${q(x.t0)} AND TIMESTAMP ${q(x.t1)})`);
+        const held = skips[i].map(x => `(session_id = ${q(x.session_id)} AND ts BETWEEN ${engine.timestamp}${q(x.t0)} AND ${engine.timestamp}${q(x.t1)})`);
         const kept = `(SELECT * FROM ${engine.events} WHERE session_id IS NULL OR NOT (${held.join(" OR ")}))`;
-        sql = sql.replace(/\b(?:traceforce_lakehouse\.)?agent_events\b/g, kept);
+        sql = sql.replace(/\b(?:traceforce_lakehouse\.(?:traceforce\.)?)?agent_events\b/g, kept);
       }
       return query(cloud, name + ".sql", sql);
     }));
@@ -300,6 +323,46 @@ async function checkGcp() {
     fail("Couldn't reach BigQuery", e.split("\n").pop());
   }
   console.error(`✓ Lakehouse dataset "${DATASET}" is queryable`);
+}
+
+async function checkDatabricks() {
+  if (Number(process.versions.node.split(".")[0]) < 18) fail(`Node ${process.versions.node} is too old`, "Install Node 18 or later.");
+
+  if ((await cli("python3", ["--version"])).missing)
+    fail("python3 isn't installed", "The Databricks query script needs it: install Python 3.8 or later.");
+  const host = (process.env.DATABRICKS_HOST || "").trim();
+  if (!host)
+    fail("DATABRICKS_HOST isn't set", "Set it to the lakehouse module's databricks_workspace_url output, for example:\nexport DATABRICKS_HOST=adb-<id>.<n>.azuredatabricks.net");
+  if (!(process.env.TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID || "").trim())
+    fail("TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID isn't set", "Set it to the lakehouse module's query_warehouse_id output (the warehouse readers use), for example:\nexport TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID=<id>");
+  const site = "https://" + host.replace(/^https?:\/\//i, "").split(/[/?#]/)[0];
+
+  // One small query, through the same script the dashboards use, names the identity and proves it can
+  // read the lakehouse. It may start the query warehouse.
+  const probe = await new Promise(resolve => execFile(join(SCRIPTS, "databricks_query.sh"),
+    [`SELECT current_user() AS who, (SELECT count(*) FROM (SELECT 1 FROM ${DATASET}.traceforce.agent_events LIMIT 1)) AS readable`],
+    { timeout: 300_000 }, (err, stdout, stderr) => resolve({ ok: !err, stdout, stderr: (stderr || (err && err.message) || "").trim() })));
+  if (!probe.ok) {
+    const e = probe.stderr;
+    // The script prints its error first; lines it adds after it (a cancelled statement) start with "-- ".
+    const first = e.split("\n").find(l => l.trim() && !l.startsWith("-- ")) || e;
+    if (/check DATABRICKS_CLIENT_ID/.test(e))
+      fail("Databricks refused the service principal's credentials", "Check DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET: the service principal's application ID and a Databricks OAuth secret generated for it in Databricks (not an Entra client secret).");
+    if (/authentication failed|no sign-in found/.test(e))
+      fail("You're not signed in to Databricks", `Sign in: az login (in the tenant of the workspace)\nor: databricks auth login --host ${site}\nor set DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET for a reader service principal.`);
+    if (/check TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID/.test(e))
+      fail(`No warehouse "${process.env.TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID}" in workspace ${site}`, "Set TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID to the lakehouse module's query_warehouse_id output.");
+    if (/permission denied|reader inputs|PERMISSION_DENIED|INSUFFICIENT_PERMISSIONS/.test(e))
+      fail("You can't read the lakehouse", "Ask your admin to list you in the lakehouse module's reader inputs (reader_user_names, reader_group_names or reader_service_principal_names) and give you the Databricks SQL access entitlement.");
+    if (/TABLE_OR_VIEW_NOT_FOUND|SCHEMA_NOT_FOUND|NO_SUCH_CATALOG/.test(e))
+      fail(`No "${DATASET}" lakehouse in workspace ${site}`, "Point DATABRICKS_HOST and TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID at the same lakehouse deployment (the module's databricks_workspace_url and query_warehouse_id outputs). If they already are, ask your admin to list you as a reader.");
+    if (/cannot reach|unexpected reply/.test(e))
+      fail(`Couldn't reach the Databricks workspace ${site}`, `Check DATABRICKS_HOST: ${first.replace(/ \(check DATABRICKS_HOST\)$/, "")}`);
+    fail("Databricks refused the query", first);
+  }
+  const who = parseCsv(probe.stdout)[0]?.who || "an unknown identity";
+  console.error(`✓ Signed in to Databricks as ${who} (workspace ${site})`);
+  console.error(`✓ Lakehouse catalog "${DATASET}" is queryable on warehouse ${process.env.TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID.trim()}`);
 }
 
 // ---------- browser ----------

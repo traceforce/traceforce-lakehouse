@@ -2,7 +2,7 @@
 """Generate the skill's schema reference from the canonical column lists.
 
 Single source of truth for column names/types is terraform/schema/columns.json, consumed by the
-three cloud modules (terraform/aws, terraform/gcp, terraform/azure) and this script. This script adds meaning: per-column
+cloud modules (terraform/aws, terraform/gcp, terraform/azure/snowflake, terraform/azure/databricks) and this script. This script adds meaning: per-column
 notes and join rules, and writes skills/traceforce-lakehouse/reference/*.md. Re-run after editing
 columns.json; commit the output.
 
@@ -382,8 +382,8 @@ EVENT_NOTES = {
     "service_name": "The emitting service's name (OTLP resource attribute); may name the collector rather than the agent. One agent can have rows from more than one source (for example its web chat history and its app's own telemetry); service_name tells them apart.",
     "service_version": "Version string of the emitter — the agent, or the collector when it emits on the agent's behalf.",
     "os_type": "Operating system of the device; NULL when not reported.",
-    "attrs_json": "Every other record attribute as JSON text: json_extract_scalar(attrs_json, '$[\"cursor.version\"]'). The decision source lives here: $.source. Where present, $[\"traceforce.record.id\"] with any trailing '#meta' removed is the same in every copy of a record; dedupe on that, preferring a copy without '#meta' (a '#meta' copy has no file text), then the newest upload_ts.",
-    "resource_json": "Every resource attribute as JSON text.",
+    "attrs_json": "Every other record attribute as JSON text: json_extract_scalar(attrs_json, '$[\"cursor.version\"]'). The decision source lives here: $.source. Where present, $[\"traceforce.record.id\"] with any trailing '#meta' removed is the same in every copy of a record; dedupe on that, preferring a copy without '#meta' (a '#meta' copy has no file text), then the newest upload_ts. Read it with JSON functions, not as text: its escaping, key order and number format differ by cloud.",
+    "resource_json": "Every resource attribute as JSON text. Read it with JSON functions, not as text: its escaping, key order and number format differ by cloud.",
     "ingested_at": "When the row was loaded, UTC.",
 }
 
