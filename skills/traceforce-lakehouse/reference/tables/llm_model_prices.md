@@ -8,7 +8,7 @@ Joins:
 | column | type | meaning |
 |---|---|---|
 | `id` | string | Primary key (uuid as text). |
-| `model_key` | string | Model id as the price map names it; matches agent_events.model for most OpenAI and Anthropic models. |
+| `model_key` | string | Model id as the price map names it. |
 | `provider` | string | The price map's provider (e.g. 'openai', 'anthropic', 'bedrock'). |
 | `mode` | string | 'chat', 'responses' or 'completion'. |
 | `input_usd_per_mtok` | double | Uncached input price. |

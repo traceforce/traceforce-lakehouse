@@ -204,11 +204,8 @@ SELECT
   CAST(now() AT TIME ZONE 'UTC' AS timestamp(6))                         AS ingested_at
 FROM records
 ),
--- cost_usd: the agent's own cost when it reports one (Claude, Copilot), else an estimate
--- at public list price from llm_model_prices (USD per million tokens), matched on the exact
--- model id: uncached input, cache read, cache write and output, each at its own price (a
--- missing cache price falls back to the input price). invoke_agent rows repeat their child
--- calls and are never priced. No token counts or no price for the model: NULL.
+-- cost_usd: the agent's own figure, else an estimate at list price from llm_model_prices
+-- (exact model match). invoke_agent repeats its children's usage, so it is never priced.
 priced AS (
   SELECT f.*,
     COALESCE(f.reported_cost_usd,
