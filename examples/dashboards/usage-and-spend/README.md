@@ -27,7 +27,7 @@ Prompt text leaves the lake only for the session you open.
 
 - **Filters** for the last 7, 30 or 90 days (UTC, ending today),
   agent and user. Every panel follows them.
-- **Totals**: reported cost, active users, sessions, prompts, tool calls, tokens and cache share.
+- **Totals**: cost, active users, sessions, prompts, tool calls, tokens and cache share.
 - **Daily cost by agent**, **daily sessions by agent**, **top users by cost**, **cost by model**,
   and a **per-agent table**. Each chart has a table view.
 - **Recent sessions**: before you pick a user, the 30 most recent sessions across everyone for the
@@ -52,7 +52,7 @@ Prompt text leaves the lake only for the session you open.
   **Prompts** are distinct `prompt_id` / `generation_id`. **Tool calls** are distinct
   `tool_call_id`s on `execute_tool` rows, plus Copilot's id-less tool spans.
 - **Cost** is the agent's own figure, else an estimate at list price (`llm_model_prices`);
-  **tokens** are what each agent reports. The *Reported cost* card names the agents it excludes.
+  **input tokens** exclude cache. The *Cost* card names the agents it excludes.
   `invoke_agent` spans are skipped so tokens aren't counted twice.
 - The agent comes from the `agent` column (`AGENT_IDENTITY_*`), so the queries work whether
   `agent_type` is stored as text or as the older integer code.

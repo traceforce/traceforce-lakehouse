@@ -28,6 +28,7 @@ UNIQUE = {
     "agent_instances_accounts": ["(org_id, device_id, sandbox_id, agent_instance_id, agent_account_id)"],
     "device_owner_mappings": ["(org_id, device_native_id): at most one owner per serial"],
     "agent_catalog": ["agent_type", "agent_name", "website"],
+    "llm_model_prices": ["model_key"],
     "sensitive_data_findings": ["(org_id, conversation_id, message_external_id, file_id, part_index, start_offset, end_offset, start_line, end_line, rule_id): one row per match location"],
     "connector_containment_findings": ["(org_id, conversation_id, tool_use_id): one row per tool call"],
     "prompt_injection_findings": ["(org_id, conversation_id, message_external_id, description), NULLs compared as equal: one row per flagged message per distinct description"],

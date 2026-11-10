@@ -95,7 +95,7 @@
 
   <footer>
     <p>Source: <code>agent_events</code> in the TraceForce lakehouse, with <code>device_owner_mappings</code> to attribute events with no email to the device's owner. Days are UTC. The date range ends today (UTC).</p>
-    <p>Cost is the agent's own figure, else an estimate at list price; tokens are what each agent reports. The Reported cost card names the agents it excludes. Prompts are per-turn ids, which some agents don't emit.</p>
+    <p>Cost is the agent's own figure, else an estimate at list price; input tokens exclude cache. The Cost card names the agents it excludes. Prompts are per-turn ids, which some agents don't emit.</p>
   </footer>
 </main>
 <script src="../shared/dashboard.js"></script>
@@ -157,8 +157,8 @@
     const inTok = nsum(rows, "input_tokens"), outTok = nsum(rows, "output_tokens"), cache = nsum(rows, "cache_read_tokens");
     const noCost = shownAgents.filter(a => rows.some(r => r.agent === a) && !rows.some(r => r.agent === a && r.cost_usd != null));
     const kpis = [
-      { hero: true, label: "Reported cost", value: usd(cost),
-        note: noCost.length ? "Excludes " + noCost.map(agentName).join(", ") + " (no cost reported)" : `Last ${state.days} days` },
+      { hero: true, label: "Cost", value: usd(cost),
+        note: noCost.length ? "Excludes " + noCost.map(agentName).join(", ") + " (no cost)" : `Last ${state.days} days` },
       { label: "Active users", value: num(people), note: rows.some(r => !r.person) ? "Includes unattributed" : "" },
       { label: "Sessions", value: num(nsum(rows, "sessions") || 0) },
       { label: "Prompts", value: num(nsum(rows, "prompts") || 0) },
@@ -183,7 +183,7 @@
     });
     $("cost-sub").textContent = costAgents.length ? "USD per UTC day" : "";
     legend($("cost-legend"), costSeries.length > 1 ? costAgents : []);
-    stackedColumns($("cost-chart"), dayList, costSeries, v => "$" + compact(v), v => usd(v, true), "No reported cost in this selection");
+    stackedColumns($("cost-chart"), dayList, costSeries, v => "$" + compact(v), v => usd(v, true), "No cost in this selection");
     table($("cost-table"), ["Day"].concat(costSeries.map(s => s.label), ["Total"]),
       dayList.slice().reverse().map(d => {
         const i = idx.get(d);
@@ -243,7 +243,7 @@
       label: m, value: o.cost, display: usd(o.cost),
       tip: [{ value: usd(o.cost, true), label: "cost" }, { value: numExact(o.requests), label: "requests" },
             { value: num(o.tokens), label: "tokens in + out" }],
-    })), "No reported cost in this selection");
+    })), "No cost in this selection");
     const modelsHost = $("models-chart");
     if (state.person) modelsHost.prepend(el("div", { class: "sub" }, "All users: model rows aren't broken down per user"));
     table($("models-table"), ["Model", "Cost", "Requests", "Tokens in + out", "Agents"],

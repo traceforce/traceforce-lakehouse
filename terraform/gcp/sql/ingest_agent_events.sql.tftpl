@@ -103,7 +103,8 @@ flat AS (
     JSON_VALUE(a, '$."traceforce.containment_enforcement"')                AS containment_enforcement,
     COALESCE(JSON_VALUE(a, '$."error.type"'), JSON_VALUE(a, '$."error_type"')) AS error_type,
     JSON_VALUE(a, '$."gen_ai.request.model"')                             AS model,
-    -- input_tokens is UNCACHED input for every agent (see the AWS template).
+    -- input_tokens is uncached input for every agent. Claude's own input_tokens already is; GenAI
+    -- semconv input (Codex, Copilot) includes cache reads and writes, so they are subtracted.
     CASE WHEN JSON_VALUE(a, '$."input_tokens"') IS NOT NULL
          THEN SAFE_CAST(JSON_VALUE(a, '$."gen_ai.usage.input_tokens"') AS INT64)
          ELSE SAFE_CAST(JSON_VALUE(a, '$."gen_ai.usage.input_tokens"') AS INT64)
@@ -132,7 +133,8 @@ flat AS (
     CURRENT_TIMESTAMP()                                                    AS ingested_at
   FROM records
 ),
--- cost_usd: reported, else estimated from llm_model_prices (see the AWS template).
+-- cost_usd: the agent's own figure, else an estimate at list price from llm_model_prices
+-- (exact model match). invoke_agent repeats its children's usage, so it is never priced.
 priced AS (
   SELECT f.*,
     COALESCE(f.reported_cost_usd,

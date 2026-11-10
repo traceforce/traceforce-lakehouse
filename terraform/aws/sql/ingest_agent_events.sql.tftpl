@@ -169,9 +169,8 @@ SELECT
   element_at(a, 'traceforce.containment_enforcement')                    AS containment_enforcement,
   COALESCE(element_at(a, 'error.type'), element_at(a, 'error_type'))     AS error_type,
   element_at(a, 'gen_ai.request.model')                                  AS model,
-  -- input_tokens is UNCACHED input for every agent. Claude reports it that way (raw
-  -- input_tokens, with cache read/creation separate); the GenAI semconv agents (Codex,
-  -- Copilot) include cache in gen_ai.usage.input_tokens, so it is taken out here.
+  -- input_tokens is uncached input for every agent. Claude's own input_tokens already is; GenAI
+  -- semconv input (Codex, Copilot) includes cache reads and writes, so they are subtracted.
   CASE WHEN element_at(a, 'input_tokens') IS NOT NULL
        THEN TRY_CAST(element_at(a, 'gen_ai.usage.input_tokens') AS BIGINT)
        ELSE TRY_CAST(element_at(a, 'gen_ai.usage.input_tokens') AS BIGINT)
@@ -185,7 +184,6 @@ SELECT
   TRY_CAST(COALESCE(element_at(a, 'cache_read_tokens'),
                     element_at(a, 'gen_ai.usage.cache_read.input_tokens'),
                     element_at(a, 'cached_token_count')) AS BIGINT)      AS cache_read_tokens,
-  -- not a column (attrs_json keeps it); used only to price the row below
   TRY_CAST(COALESCE(element_at(a, 'cache_creation_tokens'),
                     element_at(a, 'gen_ai.usage.cache_write.input_tokens'),
                     element_at(a, 'gen_ai.usage.cache_creation.input_tokens'),

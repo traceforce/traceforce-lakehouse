@@ -5,6 +5,9 @@ Global reference: public list prices per model (USD per million tokens), from th
 Joins:
 - llm_model_prices.model_key = agent_events.model (exact match; the ingest joins the same way)
 
+Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
+- model_key
+
 | column | type | meaning |
 |---|---|---|
 | `id` | string | Primary key (uuid as text). |
