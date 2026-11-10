@@ -213,12 +213,14 @@ BEGIN
                 - coalesce(try_cast(coalesce(a['gen_ai.usage.cache_read.input_tokens'],
                                              a['cached_token_count']) AS BIGINT), 0)
                 - coalesce(try_cast(coalesce(a['gen_ai.usage.cache_write.input_tokens'],
+                                             a['gen_ai.usage.cache_creation.input_tokens'],
                                              a['cache_write_token_count']) AS BIGINT), 0)
       END                                                                      AS input_tokens,
       try_cast(a['gen_ai.usage.output_tokens'] AS BIGINT)                      AS output_tokens,
       try_cast(coalesce(a['cache_read_tokens'], a['gen_ai.usage.cache_read.input_tokens'],
                         a['cached_token_count']) AS BIGINT)                    AS cache_read_tokens,
       try_cast(coalesce(a['cache_creation_tokens'], a['gen_ai.usage.cache_write.input_tokens'],
+                                                    a['gen_ai.usage.cache_creation.input_tokens'],
                         a['cache_write_token_count']) AS BIGINT)               AS cache_write_tokens,
       try_cast(a['cost_usd'] AS DOUBLE)                                        AS reported_cost_usd,
       a['gen_ai.input.messages']                                               AS content_input,

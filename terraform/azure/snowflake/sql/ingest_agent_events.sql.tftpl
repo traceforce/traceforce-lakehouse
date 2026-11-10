@@ -252,6 +252,7 @@ SELECT
             - COALESCE(TRY_TO_NUMBER(COALESCE(am.a['gen_ai.usage.cache_read.input_tokens']::string,
                                               am.a['cached_token_count']::string), 18, 0), 0)
             - COALESCE(TRY_TO_NUMBER(COALESCE(am.a['gen_ai.usage.cache_write.input_tokens']::string,
+                                              am.a['gen_ai.usage.cache_creation.input_tokens']::string,
                                               am.a['cache_write_token_count']::string), 18, 0), 0)
   END                                                                   AS input_tokens,
   TRY_TO_NUMBER(am.a['gen_ai.usage.output_tokens']::string, 18, 0)     AS output_tokens,
@@ -260,6 +261,7 @@ SELECT
                          am.a['cached_token_count']::string), 18, 0)   AS cache_read_tokens,
   TRY_TO_NUMBER(COALESCE(am.a['cache_creation_tokens']::string,
                          am.a['gen_ai.usage.cache_write.input_tokens']::string,
+                         am.a['gen_ai.usage.cache_creation.input_tokens']::string,
                          am.a['cache_write_token_count']::string), 18, 0) AS cache_write_tokens,
   TRY_CAST(am.a['cost_usd']::string AS DOUBLE)                          AS reported_cost_usd,
   am.a['gen_ai.input.messages']::string                                 AS content_input,

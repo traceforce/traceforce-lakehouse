@@ -110,6 +110,7 @@ flat AS (
               - COALESCE(SAFE_CAST(COALESCE(JSON_VALUE(a, '$."gen_ai.usage.cache_read.input_tokens"'),
                                             JSON_VALUE(a, '$."cached_token_count"')) AS INT64), 0)
               - COALESCE(SAFE_CAST(COALESCE(JSON_VALUE(a, '$."gen_ai.usage.cache_write.input_tokens"'),
+                                            JSON_VALUE(a, '$."gen_ai.usage.cache_creation.input_tokens"'),
                                             JSON_VALUE(a, '$."cache_write_token_count"')) AS INT64), 0)
     END                                                                    AS input_tokens,
     SAFE_CAST(JSON_VALUE(a, '$."gen_ai.usage.output_tokens"') AS INT64)    AS output_tokens,
@@ -118,6 +119,7 @@ flat AS (
                        JSON_VALUE(a, '$."cached_token_count"')) AS INT64)    AS cache_read_tokens,
     SAFE_CAST(COALESCE(JSON_VALUE(a, '$."cache_creation_tokens"'),
                        JSON_VALUE(a, '$."gen_ai.usage.cache_write.input_tokens"'),
+                       JSON_VALUE(a, '$."gen_ai.usage.cache_creation.input_tokens"'),
                        JSON_VALUE(a, '$."cache_write_token_count"')) AS INT64) AS cache_write_tokens,
     SAFE_CAST(JSON_VALUE(a, '$."cost_usd"') AS FLOAT64)                    AS reported_cost_usd,
     JSON_VALUE(a, '$."gen_ai.input.messages"')                            AS content_input,

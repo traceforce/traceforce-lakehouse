@@ -178,6 +178,7 @@ SELECT
             - COALESCE(TRY_CAST(COALESCE(element_at(a, 'gen_ai.usage.cache_read.input_tokens'),
                                          element_at(a, 'cached_token_count')) AS BIGINT), 0)
             - COALESCE(TRY_CAST(COALESCE(element_at(a, 'gen_ai.usage.cache_write.input_tokens'),
+                                         element_at(a, 'gen_ai.usage.cache_creation.input_tokens'),
                                          element_at(a, 'cache_write_token_count')) AS BIGINT), 0)
   END                                                                    AS input_tokens,
   TRY_CAST(element_at(a, 'gen_ai.usage.output_tokens') AS BIGINT)        AS output_tokens,
@@ -187,6 +188,7 @@ SELECT
   -- not a column (attrs_json keeps it); used only to price the row below
   TRY_CAST(COALESCE(element_at(a, 'cache_creation_tokens'),
                     element_at(a, 'gen_ai.usage.cache_write.input_tokens'),
+                    element_at(a, 'gen_ai.usage.cache_creation.input_tokens'),
                     element_at(a, 'cache_write_token_count')) AS BIGINT) AS cache_write_tokens,
   TRY_CAST(element_at(a, 'cost_usd') AS DOUBLE)                          AS reported_cost_usd,
   element_at(a, 'gen_ai.input.messages')                                 AS content_input,
