@@ -340,13 +340,10 @@ The first load runs within the hour and covers the last few days.
   Iceberg data. The logs storage account must be ADLS Gen2 (hierarchical namespace enabled).
 - A name for the Databricks workspace the module creates (Premium, serverless) in the logs
   resource group and region. `terraform destroy` deletes this workspace and everything in it.
-- A service principal (Entra app registration with a client secret) to deploy with, used for
-  every `terraform apply`, with **Contributor** and **Role Based Access Control Administrator**
-  (or **User Access Administrator**) on the logs resource group, and `Storage Blob Data
-  Contributor` on the state storage container.
-- Deploying reads its `ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`, `ARM_TENANT_ID` and
-  `ARM_SUBSCRIPTION_ID` from the environment. Keep the secret out of `main.tf`, and don't use it
-  to query: it owns the lakehouse.
+- A service principal (Entra app registration with a client secret) for `terraform apply`, with
+  **Contributor** and **Role Based Access Control Administrator** (or **User Access
+  Administrator**) on the logs resource group, and `Storage Blob Data Contributor` on the state
+  container. Set its `ARM_*` variables in the environment, not in `main.tf`. Don't use it to query.
 - The `Microsoft.Databricks` resource provider registered in the subscription.
 - One lakehouse per Azure region and per resource group.
 
@@ -436,25 +433,18 @@ The first load runs within the hour and covers the last few days.
 2. `terraform init && terraform apply`, as the service principal. If the first apply stops
    while creating the SQL warehouses, run `terraform apply` again; don't destroy first.
 
-3. Open the workspace: the service principal is its only admin. Someone with **Contributor** or
-   **Owner** on the subscription opens the Databricks workspace resource in the Azure portal and
-   clicks **Launch Workspace**, which makes them a workspace admin. Opening the workspace URL
-   directly doesn't.
+3. The service principal is the workspace's only admin. Someone with **Contributor** or **Owner**
+   on the subscription clicks **Launch Workspace** on the workspace in the Azure portal to become
+   an admin too.
 
-4. Grant query access. In the workspace, add each reader under Settings › Identity and access:
-   **Users**, **Groups** (account groups only) or **Service principals**, with **Databricks SQL
-   access** on. Then list them in step 1's `reader_user_names`, `reader_group_names` or
-   `reader_service_principal_names` and apply again as the service principal. Workspace admins
-   who need the data must be listed too. Readers query as themselves, read-only; access can take
-   about 5 minutes after they're added.
+4. Grant query access. In the workspace, under Settings › Identity and access, add each reader
+   with **Databricks SQL access**. Then list them in step 1's `reader_*` inputs and apply again as
+   the service principal. Access can take about 5 minutes.
 
 5. Install the skill in your coding agent (Claude Code: the two `/plugin` commands above; other
-   agents: see [`AGENTS.md`](AGENTS.md)). Querying needs `DATABRICKS_HOST` and
-   `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID` set to the `databricks_workspace_url` and
-   `query_warehouse_id` outputs, and the reader signed in to the Azure CLI as themselves
-   (`az login`), as a reader who isn't a workspace admin: listing an admin as a reader gives them
-   the data but doesn't make them read-only. Then ask questions. Tables live in
-   `traceforce_lakehouse.traceforce`.
+   agents: see [`AGENTS.md`](AGENTS.md)). Set `DATABRICKS_HOST` and `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID`
+   to the `databricks_workspace_url` and `query_warehouse_id` outputs, then `az login` as the
+   reader. Tables live in `traceforce_lakehouse.traceforce`.
 
 The first load runs within the hour and covers the last few days; the metadata tables fill at the
 daily mirror, 12:30 UTC.
@@ -466,11 +456,7 @@ daily mirror, 12:30 UTC.
 Everything runs in your own cloud: the tables, the hourly load and the queries. **Athena over
 Iceberg in AWS (S3)**, **BigQuery over Iceberg in GCP (GCS)**, **Snowflake over Iceberg in
 Azure (Blob Storage)**, or **Databricks over Iceberg in Azure (ADLS Gen2)**. Your lakehouse is
-set up on one of them. On AWS and GCP, compute is serverless and native to the same account as
-your logs, so there are no servers to run and nothing to upgrade. On Azure (Databricks), the
-module creates a serverless Databricks workspace in your subscription, so there is nothing to run
-either. Azure (Snowflake) is the exception: you need an existing Snowflake account and warehouse
-credits of your own.
+set up on one of them.
 
 The daily metadata snapshots (findings, catalogs, and more) are written into your bucket or
 container by TraceForce's storage role, under the grant you already gave it.
@@ -504,8 +490,7 @@ read none of them.
   scheduled runs show in the workspace's Jobs & Pipelines: `traceforce-lakehouse-ingest` (hourly)
   and `traceforce-lakehouse-mirror` (daily, one task per metadata table), with Databricks' own
   error message; set `alarm_notification_email` to also get emailed when a job fails or data goes
-  stale. The metadata mirrors are each a MERGE, so re-running one loads nothing twice, and one
-  table failing never blocks the others.
+  stale.
 
 ## More
 
