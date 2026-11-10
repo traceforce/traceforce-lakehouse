@@ -1,0 +1,240 @@
+-- Flatten raw OTLP-JSON activity objects into the Iceberg table agent_events.
+-- Rendered by Terraform (templatefile) and run on the module's SQL warehouse by a job on a schedule.
+-- One compound statement, no session settings: UTC values are built from epoch arithmetic or a
+-- direct TIMESTAMP_NTZ cast, never through the session time zone, so the result doesn't depend on
+-- the warehouse's time zone.
+-- Idempotent: an object is loaded once, keyed by its full abfss:// path (source_object), decoded:
+-- _metadata.file_path percent-encodes characters such as spaces, which the other clouds keep raw.
+-- Bounded: only the last lookback_days upload-day folders are listed and read (today and the days
+-- before it), plus tomorrow for fast device clocks. read_files() needs a constant path, so the
+-- glob is bound into a temporary view with EXECUTE IMMEDIATE ... USING. No per-agent filter, as
+-- on Snowflake: one INSERT covers all agents per run.
+-- Each line of an object is one document, as on AWS (scout writes one line per object).
+-- One row per log record / span. Attribute values keep their OTLP encoding for arrays and
+-- kvlists; scalars are decoded to text. Attribute maps are built with sorted keys (first value
+-- wins on a duplicate key), so the JSON text matches AWS's CAST(MAP AS JSON).
+-- Every completed run ends by logging one row to ${runs_table} for the freshness view: the rows
+-- inserted, and the newest upload in the window with the number of files there (information only:
+-- no uploads also means no agent activity). A failed run logs nothing (the job emails instead).
+-- The 00:57 UTC run also deletes log rows older than 60 days (Databricks keeps job run history as
+-- long); the scheduled mirror runs at 12:30, so the delete doesn't race its inserts.
+-- :run_id is the job's run ID (the task parameter run_id = {{job.run_id}}, ingest.tf).
+BEGIN
+  -- "Now" in UTC without the session time zone: convert_timezone() round-trips through the
+  -- session's local time, which shifts instants in a daylight-saving overlap.
+  DECLARE now_utc TIMESTAMP_NTZ DEFAULT timestampadd(MICROSECOND, unix_micros(current_timestamp()), TIMESTAMP_NTZ '1970-01-01 00:00:00');
+  DECLARE today DATE DEFAULT to_date(now_utc);
+  DECLARE days STRING DEFAULT array_join(
+    transform(sequence(-1, ${lookback_days} - 1), i -> date_format(date_sub(today, i), 'yyyyMMdd')), ',');
+  -- for the run log
+  DECLARE newest_upload_at TIMESTAMP_NTZ;
+  DECLARE upload_files BIGINT DEFAULT 0;
+  DECLARE rows_inserted BIGINT;
+
+  -- OTLP nanoseconds (JSON text) to UTC TIMESTAMP_NTZ, for every time field: 0 (OTLP's
+  -- "unknown") and non-numbers become NULL; rounds to the nearest microsecond, as AWS's
+  -- timestamp(6) cast does. Temporary: it ends with this statement.
+  CREATE OR REPLACE TEMPORARY FUNCTION traceforce_ns_to_ntz(ns STRING) RETURNS TIMESTAMP_NTZ RETURN
+    timestampadd(MICROSECOND, CAST(
+      (CAST(nullif(try_cast(ns AS BIGINT), 0) AS DECIMAL(20, 0)) + 500) DIV 1000 AS BIGINT),
+      TIMESTAMP_NTZ '1970-01-01 00:00:00');
+
+  -- No folder yet (a new deployment before the first upload or snapshot): nothing to read, so
+  -- the run succeeds without changes. Any other error fails the run.
+  run: BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN
+      DECLARE c STRING;
+      GET DIAGNOSTICS CONDITION 1 c = CONDITION_IDENTIFIER;
+      IF c IS DISTINCT FROM 'CF_PATH_DOES_NOT_EXIST_FOR_READ_FILES' THEN RESIGNAL; END IF;
+    END;
+
+    -- For the run log: the newest upload in the window, from the folder listing alone (binaryFile
+    -- with only modificationTime used reads no file content; it lists the nested upload folders).
+    -- The schema must be given and match exactly (see the mirror script).
+    EXECUTE IMMEDIATE
+      'SELECT timestampadd(MICROSECOND, unix_micros(max(modificationTime)), TIMESTAMP_NTZ "1970-01-01 00:00:00"),
+              count(*)
+       FROM read_files(?, format => "binaryFile",
+                       schema => "path STRING NOT NULL, modificationTime TIMESTAMP NOT NULL, length BIGINT NOT NULL, content BINARY")'
+      INTO newest_upload_at, upload_files
+      USING '${raw_root}agent=*/dt={' || days || '}/';
+
+    EXECUTE IMMEDIATE
+      'CREATE OR REPLACE TEMPORARY VIEW traceforce_ingest_src AS
+       SELECT url_decode(replace(_metadata.file_path, "+", "%2B")) AS src_path, value AS doc
+       FROM read_files(?, format => "text")'
+      USING '${raw_root}agent=*/dt={' || days || '}/';
+
+    INSERT INTO ${target} (${cols})
+    WITH objects AS (
+      SELECT r.src_path, r.doc
+      FROM traceforce_ingest_src r
+      LEFT ANTI JOIN (
+        SELECT source_object FROM ${target}
+        -- upload_ts is minted on the same clock as the dt= folder, so one extra day of margin makes
+        -- this bound safe; NULL upload_ts rows are always checked. Same as AWS/Snowflake.
+        WHERE upload_ts >= CAST(date_sub(today, ${lookback_days}) AS TIMESTAMP_NTZ) OR upload_ts IS NULL
+      ) t ON t.source_object = r.src_path
+    ),
+    parts AS (
+      SELECT src_path, split(src_path, '/') AS seg,
+        -- the agent folder directly under the telemetry root, as the read glob and AWS's partition
+        -- see it: a logs_prefix may contain agent=, and an email folder may contain =, so neither
+        -- the first agent= in the path nor read_files() partition discovery is reliable
+        regexp_extract(substr(src_path, length('${raw_root}') + 1), '^agent=([^/]+)/', 1) AS agent,
+        -- a non-JSON line yields NULL here and no rows below, never an error
+        CASE WHEN get_json_object(doc, '$.resourceLogs') IS NOT NULL THEN 'log' ELSE 'span' END AS signal,
+        from_json(coalesce(get_json_object(doc, '$.resourceLogs'), get_json_object(doc, '$.resourceSpans')),
+                  'array<string>') AS blocks
+      FROM objects
+    ),
+    blk AS (
+      SELECT p.src_path, p.agent, p.signal,
+        element_at(p.seg, -1) AS fname,
+        element_at(p.seg, -2) AS path_session_raw,
+        element_at(p.seg, -3) AS path_account,
+        element_at(p.seg, -4) AS path_serial,
+        -- upload time from the filename: <YYYYMMDD_HHMMSS.mmm>_<uuid>_... (minted by our exporter,
+        -- UTC); cast straight to TIMESTAMP_NTZ, NULL if it isn't a valid time
+        try_cast(regexp_replace(
+          regexp_extract(element_at(p.seg, -1), '^([0-9]{8}_[0-9]{6}\\.[0-9]{3})_', 1),
+          '^([0-9]{4})([0-9]{2})([0-9]{2})_([0-9]{2})([0-9]{2})([0-9]{2})', '$1-$2-$3 $4:$5:$6')
+          AS TIMESTAMP_NTZ) AS upload_ts,
+        coalesce(from_json(get_json_object(b, '$.resource.attributes'), 'array<string>'),
+                 CAST(array() AS ARRAY<STRING>)) AS res_arr, -- none -> {} as on AWS
+        from_json(coalesce(get_json_object(b, '$.scopeLogs'), get_json_object(b, '$.scopeSpans')),
+                  'array<string>') AS scopes
+      FROM parts p
+      LATERAL VIEW explode(coalesce(p.blocks, array())) bx AS b
+    ),
+    records AS (
+      SELECT bl.*, rec,
+        coalesce(from_json(get_json_object(rec, '$.attributes'), 'array<string>'),
+                 CAST(array() AS ARRAY<STRING>)) AS rec_arr
+      FROM blk bl
+      LATERAL VIEW explode(coalesce(bl.scopes, array())) sx AS s
+      LATERAL VIEW explode(coalesce(from_json(coalesce(get_json_object(s, '$.logRecords'),
+                                                       get_json_object(s, '$.spans')), 'array<string>'),
+                                    array())) rx AS rec
+    ),
+    maps AS (
+      SELECT r.*,
+  %{ for m in [{ name = "res", arr = "res_arr" }, { name = "a", arr = "rec_arr" }] ~}
+        -- ${m.arr} -> map: keys sorted, first value wins on a duplicate key. Pass 1 pairs each
+        -- distinct key with its first value's JSON; pass 2 decodes it: scalars to text, arrays as
+        -- their OTLP JSON ([] when empty), kvlists one level into a JSON object, else NULL.
+        map_from_entries(transform(
+          transform(
+            array_sort(array_distinct(transform(filter(${m.arr}, e -> get_json_object(e, '$.key') IS NOT NULL),
+                                                e -> get_json_object(e, '$.key')))),
+            k -> named_struct('k', k, 'v', get_json_object(
+                   element_at(filter(${m.arr}, e -> get_json_object(e, '$.key') = k), 1), '$.value'))),
+          x -> named_struct('key', x.k, 'value', coalesce(
+            get_json_object(x.v, '$.stringValue'), get_json_object(x.v, '$.intValue'),
+            get_json_object(x.v, '$.doubleValue'), get_json_object(x.v, '$.boolValue'),
+            -- an empty OTLP array is encoded as arrayValue:{} (no values); keep it as []
+            CASE WHEN get_json_object(x.v, '$.arrayValue') IS NOT NULL
+                 THEN coalesce(get_json_object(x.v, '$.arrayValue.values'), '[]') END,
+            -- kvlist (Cursor tool args are one): one level into a JSON object, keys sorted, first
+            -- value wins; nested values keep their OTLP JSON; empty -> {}
+            CASE WHEN get_json_object(x.v, '$.kvlistValue') IS NOT NULL THEN coalesce(to_json(map_from_entries(
+              transform(
+                transform(
+                  array_sort(array_distinct(transform(
+                    filter(from_json(get_json_object(x.v, '$.kvlistValue.values'), 'array<string>'),
+                           e2 -> get_json_object(e2, '$.key') IS NOT NULL),
+                    e2 -> get_json_object(e2, '$.key')))),
+                  k2 -> named_struct('k', k2, 'v', get_json_object(element_at(filter(
+                    from_json(get_json_object(x.v, '$.kvlistValue.values'), 'array<string>'),
+                    e2 -> get_json_object(e2, '$.key') = k2), 1), '$.value'))),
+                y -> named_struct('key', y.k, 'value', coalesce(
+                  get_json_object(y.v, '$.stringValue'), get_json_object(y.v, '$.intValue'),
+                  get_json_object(y.v, '$.doubleValue'), get_json_object(y.v, '$.boolValue'),
+                  y.v))))), '{}') END)))) AS ${m.name}%{ if m.name == "res" },%{ endif }
+  %{ endfor ~}
+      FROM records r
+    ),
+    flat AS (
+    SELECT
+      agent,
+      lower(regexp_replace(agent, '^AGENT_IDENTITY_', ''))                     AS agent_type,
+      coalesce(res['traceforce.device.native_id'], path_serial)              AS device_native_id,
+      res['traceforce.device.uuid']                                            AS device_uuid,
+      res['traceforce.sandbox.native_id']                                      AS sandbox_native_id,
+      CASE WHEN path_account = 'unknown-account' THEN NULL
+           ELSE regexp_replace(path_account, '_[0-9a-f-]{36}$', '') END        AS path_email,
+      nullif(regexp_extract(path_account, '_([0-9a-f-]{36})$', 1), '')         AS path_org,
+      CASE WHEN path_session_raw = 'unknown-session' THEN NULL
+           ELSE path_session_raw END                                           AS path_session,
+      upload_ts,
+      src_path                                                                 AS source_object,
+      signal,
+      a['user.email']                                                          AS user_email,
+      a['organization.id']                                                     AS agent_org_id,
+      a['user.id']                                                             AS user_id,
+      coalesce(a['gen_ai.conversation.id'], a['session.id'], res['session.id'],
+               CASE WHEN path_session_raw = 'unknown-session' THEN NULL ELSE path_session_raw END)
+                                                                               AS session_id,
+      res['session.id']                                                        AS resource_session_id,
+      -- ts is required: record time, else start time (spans), else observed time, else the upload
+      -- time from the filename. Each field is converted on its own, so a 0 falls through.
+      coalesce(traceforce_ns_to_ntz(get_json_object(rec, '$.timeUnixNano')),
+               traceforce_ns_to_ntz(get_json_object(rec, '$.startTimeUnixNano')),
+               traceforce_ns_to_ntz(get_json_object(rec, '$.observedTimeUnixNano')),
+               upload_ts)                                                      AS ts,
+      traceforce_ns_to_ntz(get_json_object(rec, '$.endTimeUnixNano'))          AS end_ts,
+      a['event.name']                                                          AS event_name,
+      CASE WHEN signal = 'span' THEN get_json_object(rec, '$.name') END        AS span_name,
+      a['gen_ai.operation.name']                                               AS operation,
+      a['prompt.id']                                                           AS prompt_id,
+      a['generation.id']                                                       AS generation_id,
+      a['gen_ai.tool.name']                                                    AS tool_name,
+      a['gen_ai.tool.type']                                                    AS tool_type,
+      a['gen_ai.tool.call.id']                                                 AS tool_call_id,
+      coalesce(a['mcp.server.name'],
+               -- Claude family connection events carry the server under a bare key
+               CASE WHEN a['event.name'] = 'mcp_server_connection' THEN a['server_name'] END,
+               get_json_object(a['gen_ai.tool.call.arguments'], '$.mcp_server_name'),
+               get_json_object(a['tool_parameters'], '$.mcp_server_name'),
+               a['github.copilot.tool.parameters.mcp_server_name'])            AS mcp_server_name,
+      a['gen_ai.tool.call.arguments']                                          AS tool_args,
+      a['gen_ai.tool.call.result']                                             AS tool_result,
+      coalesce(a['decision'], a['github.copilot.permission.result'],
+               a['hook.result.permission'])                                    AS decision,
+      a['traceforce.sd_enforcement']                                           AS sd_enforcement,
+      a['traceforce.containment_enforcement']                                  AS containment_enforcement,
+      coalesce(a['error.type'], a['error_type'])                               AS error_type,
+      a['gen_ai.request.model']                                                AS model,
+      try_cast(a['gen_ai.usage.input_tokens'] AS BIGINT)                       AS input_tokens,
+      try_cast(a['gen_ai.usage.output_tokens'] AS BIGINT)                      AS output_tokens,
+      try_cast(coalesce(a['cache_read_tokens'], a['gen_ai.usage.cache_read.input_tokens']) AS BIGINT)
+                                                                               AS cache_read_tokens,
+      try_cast(a['cost_usd'] AS DOUBLE)                                        AS cost_usd,
+      a['gen_ai.input.messages']                                               AS content_input,
+      a['gen_ai.output.messages']                                              AS content_output,
+      res['service.name']                                                      AS service_name,
+      res['service.version']                                                   AS service_version,
+      res['os.type']                                                           AS os_type,
+      -- everything else, minus the four big content keys already in their own columns
+      to_json(map_filter(a, (k, v) -> k NOT IN
+        ('gen_ai.input.messages', 'gen_ai.output.messages',
+         'gen_ai.tool.call.arguments', 'gen_ai.tool.call.result')))           AS attrs_json,
+      to_json(res)                                                             AS resource_json,
+      now_utc                                                                  AS ingested_at
+    FROM maps
+    )
+    SELECT ${select_cols} FROM flat
+    WHERE ts IS NOT NULL; -- a record with no time and a filename without one is dropped, never given a fabricated time
+    GET DIAGNOSTICS rows_inserted = ROW_COUNT;
+  END run;
+
+  INSERT INTO ${runs_table} (table_name, run_id, started_at, finished_at, newest_upload_at,
+                             upload_files, rows_inserted)
+  VALUES ('agent_events', :run_id, now_utc,
+          timestampadd(MICROSECOND, unix_micros(current_timestamp()), TIMESTAMP_NTZ '1970-01-01 00:00:00'),
+          newest_upload_at, upload_files, rows_inserted);
+
+  IF hour(now_utc) = 0 THEN
+    DELETE FROM ${runs_table} WHERE finished_at < timestampadd(DAY, -60, now_utc);
+  END IF;
+END

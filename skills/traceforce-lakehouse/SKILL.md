@@ -1,6 +1,6 @@
 ---
 name: traceforce-lakehouse
-description: "Query the TraceForce lakehouse (Athena over Iceberg in AWS, BigQuery over Iceberg in GCP, or Snowflake over Iceberg in Azure) to answer questions about AI-agent activity from agents such as Claude Code, Claude, Cursor, GitHub Copilot and ChatGPT: prompts, tool calls, MCP servers, tokens and cost, sensitive-data, containment and prompt-injection findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena, BigQuery, Snowflake or SQL over TraceForce data. Read-only. Not for the TraceForce REST API or console."
+description: "Query the TraceForce lakehouse (Athena over Iceberg in AWS, BigQuery over Iceberg in GCP, or Snowflake or Databricks over Iceberg in Azure) to answer questions about AI-agent activity from agents such as Claude Code, Claude, Cursor, GitHub Copilot and ChatGPT: prompts, tool calls, MCP servers, tokens and cost, sensitive-data, containment and prompt-injection findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena, BigQuery, Snowflake, Databricks or SQL over TraceForce data. Read-only. Not for the TraceForce REST API or console."
 ---
 
 # TraceForce lakehouse
@@ -35,15 +35,18 @@ description: "Query the TraceForce lakehouse (Athena over Iceberg in AWS, BigQue
 ## Run a query
 
 First pick the engine. The lakehouse is set up on **one** cloud and your task names it (the
-TraceForce setup prompt says "on AWS (Athena)", "on GCP (BigQuery)" or "on Azure (Snowflake)"):
+TraceForce setup prompt says "on AWS (Athena)", "on GCP (BigQuery)", "on Azure (Snowflake)" or
+"on Azure (Databricks)"):
 - **AWS / Athena** → `athena_query.sh` (below).
 - **GCP / BigQuery** → `bq_query.sh` (see "GCP (BigQuery)" below).
 - **Azure / Snowflake** → `snowflake_query.sh` (see "Azure (Snowflake)" below).
+- **Azure / Databricks** → `databricks_query.sh` (see "Azure (Databricks)" below).
 
 Do not infer the cloud from which credentials are present — a machine often has both. If the
 task doesn't name one, ask.
 
-Use the bundled script; do not reimplement it with raw `aws athena` / `bq` / Snowflake connector calls.
+Use the bundled script; do not reimplement it with raw `aws athena` / `bq` / Snowflake connector /
+Databricks API calls.
 
 ```bash
 "${CLAUDE_SKILL_DIR}/scripts/athena_query.sh" "SELECT agent, count(*) FROM agent_events WHERE ts > current_timestamp - interval '7' day GROUP BY 1"
@@ -114,6 +117,45 @@ example SQL is Athena/Trino. Translate to Snowflake SQL, quoting this module's n
 - A lookup by a per-row JSON key, `json_extract_scalar(x, '$["' || key || '"].username')` -> `GET(PARSE_JSON(x), key):"username"::string` (e.g. `key` = `i."tenant"`).
 - Ingest/mirror run history: `SELECT NAME, STATE, SCHEDULED_TIME, ERROR_MESSAGE FROM TABLE(INFORMATION_SCHEMA.TASK_HISTORY(SCHEDULED_TIME_RANGE_START => DATEADD('day', -1, CURRENT_TIMESTAMP())))`; the reader role holds `MONITOR` on the Tasks for this.
 
+## Azure (Databricks)
+
+Read-only here is enforced by Unity Catalog grants together with the script: the script runs
+only a single `SELECT`/`WITH`/`SHOW`/`DESCRIBE`/`EXPLAIN` statement and refuses write keywords,
+`CALL` and `EXECUTE IMMEDIATE`; a reader listed in the module's reader inputs holds only `SELECT`.
+Query as such a reader, not as a workspace admin or the identity that deployed the module.
+
+```bash
+"${CLAUDE_SKILL_DIR}/scripts/databricks_query.sh" "SELECT agent, count(*) FROM agent_events WHERE ts > timestampadd(MICROSECOND, unix_micros(current_timestamp()), TIMESTAMP_NTZ '1970-01-01 00:00:00') - INTERVAL 7 DAYS GROUP BY 1"
+```
+
+Needs python3, `DATABRICKS_HOST` (the module's `databricks_workspace_url`) and
+`TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID` (its `query_warehouse_id`), and either the Azure CLI signed in
+(`az login`), the Databricks CLI signed in (`databricks auth login --host <workspace URL>`) or
+`DATABRICKS_CLIENT_ID` and `DATABRICKS_CLIENT_SECRET` for a read-only service principal (its
+Databricks OAuth secret, generated in Databricks; not an Entra client secret).
+`DATABRICKS_CLIENT_ID`/`SECRET` are also the Databricks Terraform provider's names; make sure they
+hold the read-only principal, not the deploy one. A missing setting, an expired login or a
+permission error is an environment problem, not empty data; the script says which. Never ask the
+user to paste a token or secret. Unqualified table names resolve in
+`traceforce_lakehouse.traceforce`.
+
+How current the data is: `SELECT * FROM freshness` has one row per table. For a table the answer
+uses whose `stale` is true, still answer, and say the data may be stale, with its `reason` and
+`listed_dt` (the newest snapshot's date). `newest_upload_at` is the newest upload from any device:
+state it like `max(ingested_at)` (no activity and stopped uploads look the same).
+
+Whether the last ingest and mirror runs succeeded, with each failed task's error:
+`"${CLAUDE_SKILL_DIR}/scripts/databricks_query.sh" --runs` (the last 5 runs of each job; `--runs 20`
+for more). Readers see the jobs only when the module sets `reader_can_view_jobs = true` (off by
+default); when `--runs` says so, use the `freshness` view instead.
+
+The reference/* schema (columns, joins, identity, redaction, enforcement) is identical, but its
+example SQL is Athena/Trino. Translate to Databricks SQL:
+- `json_extract_scalar(x, '$.gen_ai.tool.name')` -> `get_json_object(x, '$["gen_ai.tool.name"]')` — **bracket-quote dotted keys**, or they read as nested paths and return NULL. The reference's bracket form `$["cursor.version"]` works as written; `json_extract(x, '$.tools')` -> `get_json_object(x, '$.tools')` (JSON text).
+- "Now" and "today" in UTC: `timestampadd(MICROSECOND, unix_micros(current_timestamp()), TIMESTAMP_NTZ '1970-01-01 00:00:00')` and `to_date(` that `)`. `ts` is UTC, but `current_timestamp()` / `current_date()` follow the session time zone, so a window built on them shifts in a non-UTC session. With that "now", `current_timestamp - interval '7' day` -> `<now> - INTERVAL 7 DAYS`; the reference's other interval arithmetic works as written. `date_format(ts, '%Y-%m-%d')` -> `date_format(ts, 'yyyy-MM-dd')` (Java patterns; `%` patterns fail).
+- `SHOW TABLES` and `DESCRIBE <table>` work as written.
+- `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `LATERAL VIEW explode(from_json(x, 'array<string>')) t AS elem` (unnesting a JSON array of strings).
+
 ## Workflow
 
 1. Pick the tables the question needs and read only their files under `reference/tables/`.
@@ -124,7 +166,7 @@ example SQL is Athena/Trino. Translate to Snowflake SQL, quoting this module's n
 4. If a query fails with "column cannot be resolved" or a type error, introspect the schema
    (Athena: `DESCRIBE traceforce.<table>`; BigQuery: `SELECT column_name, data_type FROM
    traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<table>'`; Azure/
-   Snowflake: `DESCRIBE TABLE "<table>"`), fix, rerun.
+   Snowflake: `DESCRIBE TABLE "<table>"`; Azure/Databricks: `DESCRIBE <table>`), fix, rerun.
    A table or column that is missing altogether means the customer's lakehouse module predates
    it: say so (re-applying Terraform with the current module adds it) and answer without it.
    If it returns 0 rows: widen the window, check `deleted_at`, and check that every

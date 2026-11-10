@@ -24,19 +24,22 @@ Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glu
   effective snapshot: a table that genuinely drops to zero rows keeps its stale mirror rows
   until it has a row again (see `terraform/aws/sql/mirror_export_delete.sql.tftpl`; GCP folds the
   same delete into `terraform/gcp/sql/mirror_export.sql.tftpl`; Azure keeps it separate too, in
-  `terraform/azure/sql/mirror_export_delete.sql.tftpl`).
+  `terraform/azure/snowflake/sql/mirror_export_delete.sql.tftpl`).
 
 ## Content
 
 - One JSON object per line, keys = TraceForce's database column names, values as JSON
   encodes them: strings, numbers, booleans, `null`; `timestamptz` as RFC 3339 with offset
-  (`2026-09-14T04:00:12.345678+00:00`); `uuid` as string; `jsonb` objects/arrays and SQL arrays
-  **as JSON text (a string)**, not nested JSON, so the consumer can keep them as one string
-  column. A `jsonb` column holding a bare scalar (none exist today) is exported as that scalar.
-  The consumer parses timestamps with `from_iso8601_timestamp`, so the mirror keeps
-  millisecond precision; TraceForce's database microseconds are truncated.
+  (`2026-09-14T04:00:12.345678+00:00`); the other two types a contract `timestamp` may come from
+  as Postgres writes them: `timestamp` without the offset (`2026-09-14T04:00:12.345678`, read as
+  UTC) and `date` as `2026-09-14` (read as midnight UTC); `uuid` as string; `jsonb`
+  objects/arrays and SQL arrays **as JSON text (a string)**, not nested JSON, so the consumer can
+  keep them as one string column. A `jsonb` column holding a bare scalar (none exist today) is
+  exported as that scalar.
+  The mirrors keep the microseconds on Azure (Snowflake and Databricks) and GCP. AWS keeps
+  milliseconds: it parses timestamps with `from_iso8601_timestamp`, which drops the rest.
 - Rows: exactly the contract columns (`export_tables` in `terraform/schema/columns.json`, the one
-  column list all three cloud modules read), `WHERE org_id = $org` for tenant tables; whole table for
+  column list every cloud module reads), `WHERE org_id = $org` for tenant tables; whole table for
   `agent_catalog`, `mcp_catalog`, `mcp_categories` and `issue_types` (global, no `org_id` column).
   Soft-deleted rows (`deleted_at` set) are included; consumers filter.
 - Columns outside the contract are never exported, so adding a column to TraceForce's database

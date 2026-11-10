@@ -60,7 +60,7 @@ provider "snowflake" {
 }
 
 module "traceforce_lakehouse" {
-  source = "../../terraform/azure" # customers: github.com/traceforce/traceforce-lakehouse//terraform/azure?ref=1.5.0
+  source = "../../../terraform/azure/snowflake" # customers: github.com/traceforce/traceforce-lakehouse//terraform/azure/snowflake?ref=1.6.0
 
   # Must be globally unique across all of Azure (storage account names share one namespace
   # account-wide) and stable for the life of the deployment: changing it later destroys and

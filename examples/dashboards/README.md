@@ -12,10 +12,11 @@ On GCP, the same two dashboards are also in the TraceForce console (Lakehouse in
 BigQuery from your browser with your own Google sign-in, with nothing to install. Set them up in
 Settings › Lakehouse, step 3.
 
-## Run it (AWS / Athena, GCP / BigQuery)
+## Run it (AWS / Athena, GCP / BigQuery, Azure Databricks)
 
 In Claude Code with the `traceforce-lakehouse` plugin installed, type `/traceforce-lakehouse:dashboards` (or ask Claude to
-open the dashboards), adding `--cloud gcp` for a GCP lakehouse. It checks your access, starts the
+open the dashboards), adding `--cloud gcp` for a GCP lakehouse or `--cloud databricks` for an Azure
+Databricks one. It checks your access, starts the
 server in the background and opens your browser, or tells you exactly what to fix. The server stops
 when the Claude Code session ends.
 
@@ -24,12 +25,13 @@ From a terminal:
 ```bash
 node serve.mjs --open              # AWS: check access, start the server, open http://localhost:8765
 node serve.mjs --cloud gcp --open  # the same for a GCP (BigQuery) lakehouse
+node serve.mjs --cloud databricks --open  # the same for an Azure Databricks lakehouse
 node serve.mjs --cloud gcp,aws --open  # both, merged into one view
 ```
 
 | flag | does |
 |---|---|
-| `--cloud aws\|gcp\|gcp,aws` | the lakehouse's cloud: Athena on AWS (default) or BigQuery on GCP, or several merged (see below) |
+| `--cloud aws\|gcp\|databricks\|gcp,aws` | the lakehouse's cloud: Athena on AWS (default), BigQuery on GCP or Databricks SQL on Azure Databricks, or several merged (see below) |
 | `--open` | open the home page in your browser once the server is up |
 | `--check` | only check access, then exit (0 = ready, 2 = something to fix) |
 | `--no-check` | skip the access check |
@@ -43,6 +45,9 @@ Before serving, `serve.mjs` checks, in order:
   the gcloud default project), you're signed in to gcloud, and a dry-run query against the
   `traceforce_lakehouse` dataset succeeds (so your identity can both run query jobs and read the
   tables).
+- **Azure Databricks:** python3 is installed, `DATABRICKS_HOST` and `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID`
+  are set, and a small query on the `traceforce_lakehouse` catalog succeeds, which shows who you're signed
+  in as and that you can read the tables. It may start the query warehouse.
 
 The first check that fails stops it with what's wrong and the fix, for example:
 
@@ -71,9 +76,17 @@ skill's query script, so it needs the same credentials:
   `query_members`) and `roles/bigquery.jobUser` on the project, for example
   `TRACEFORCE_LAKEHOUSE_PROJECT=... node serve.mjs --cloud gcp --open`. Each query may scan at most
   `TRACEFORCE_LAKEHOUSE_MAX_GB` (default 50) GB.
+- **Azure Databricks:** `databricks_query.sh`, with python3, `DATABRICKS_HOST` and
+  `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID` (the module's `databricks_workspace_url` and `query_warehouse_id`
+  outputs), signed in with `az login`, a Databricks CLI login (`databricks auth login --host ...`) or a
+  service principal's `DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET` (a Databricks OAuth secret), as
+  an identity listed in the module's reader inputs with the Databricks SQL access entitlement. Each
+  query's result is limited to 25 MiB, Databricks' limit for results returned with the query; a large
+  organization's 90 days of findings or daily activity can go over it, and the page then says it couldn't
+  load, with Databricks' message.
 
-If a page later says it couldn't load from the lake, the terminal running the server shows Athena's or
-BigQuery's error.
+If a page later says it couldn't load from the lake, the terminal running the server shows Athena's,
+BigQuery's or Databricks' error.
 
 Each page fetches what it shows when it needs it, and keeps it in memory until you reload. A reload
 queries the lake again. Athena itself keeps each query's result in the workgroup's S3 result location,
@@ -101,11 +114,13 @@ shared/dashboard.js        formatting, tooltip, charts, tables, fetching (window
 <dashboard>/api.mjs        its endpoints, and the values its pages may send
 <dashboard>/queries/*.sql  its queries (Athena); {{name}} placeholders are filled in by serve.mjs
 <dashboard>/queries/bigquery/*.sql  the same queries in GoogleSQL, for --cloud gcp
+<dashboard>/queries/databricks/*.sql  the same queries in Databricks SQL, for --cloud databricks
 ```
 
 ## Add a dashboard
 
-Make a folder with an `index.html`, a `queries/` folder (and `queries/bigquery/` for GCP) and an `api.mjs`. The server picks up every
+Make a folder with an `index.html`, a `queries/` folder (and `queries/bigquery/` for GCP,
+`queries/databricks/` for Azure Databricks) and an `api.mjs`. The server picks up every
 folder that has an `api.mjs`, serves it at `/<folder>/` and lists it on the home page.
 
 ```js
@@ -131,6 +146,9 @@ In the page, load `../shared/dashboard.css` and `../shared/dashboard.js`, and fe
 `queries/*.sql` is Athena (Trino) SQL and `queries/bigquery/*.sql` the same queries in GoogleSQL,
 translated as described in the skill's `SKILL.md`. In the GoogleSQL versions, tables are qualified as
 `traceforce_lakehouse.<table>`, and timestamps are formatted as `YYYY-MM-DD HH:MM:SS.ffffff` (as Athena
-prints them) because the pages send them back as `{{since}}`/`{{until}}` values. Snowflake (Azure)
-isn't supported yet: it would need a third set of queries and an entry in `ENGINES` in `serve.mjs`
+prints them) because the pages send them back as `{{since}}`/`{{until}}` values.
+`queries/databricks/*.sql` is the same in Databricks SQL: tables qualified as
+`traceforce_lakehouse.traceforce.<table>`, times kept in UTC whatever the session's time zone, and
+timestamps printed without trailing zeros in the fraction (still a `{{since}}` the pages accept).
+Snowflake (Azure) isn't supported yet: it would need another set of queries and an entry in `ENGINES` in `serve.mjs`
 for `snowflake_query.sh`, which takes the same arguments and prints the same CSV.

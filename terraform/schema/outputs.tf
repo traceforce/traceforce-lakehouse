@@ -1,5 +1,5 @@
-# Canonical lakehouse column lists -- the SINGLE source of truth, shared by the three cloud modules
-# (../aws, ../gcp, ../azure) and tools/gen_skill_reference.py. Edit columns.json only; each module
+# Canonical lakehouse column lists -- the SINGLE source of truth, shared by the cloud modules
+# (../aws, ../gcp, ../azure/snowflake, ../azure/databricks) and tools/gen_skill_reference.py. Edit columns.json only; each module
 # consumes these outputs and applies its own engine type-map (AWS's Iceberg/Glue types, GCP's
 # bq_type, Azure's snowflake_type).
 #
