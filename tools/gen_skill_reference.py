@@ -296,7 +296,7 @@ TABLES = {
                "provider": "The price map's provider (e.g. 'openai', 'anthropic', 'bedrock').", "mode": "'chat', 'responses' or 'completion'.",
                "input_usd_per_mtok": "Uncached input price.", "cache_read_usd_per_mtok": "Cache-read price; NULL when the map has none (the ingest then uses the input price).",
                "cache_write_usd_per_mtok": "Cache-write price; NULL when the map has none (the ingest then uses the input price).",
-               "output_usd_per_mtok": "Output price.", "source": "Always 'litellm'.", "source_ref": "LiteLLM commit the prices were read at ('main' when it could not be resolved)."}),
+               "output_usd_per_mtok": "Output price."}),
     "user_groups": dict(
         purpose="User groups: manual groups of devices, and groups synced from your identity provider (IdP).",
         joins=["Manual groups (user_group_source = 'manual') list devices in user_group_devices; IdP groups list people in user_group_members. Group to devices: reference/joins.md",
@@ -384,7 +384,7 @@ EVENT_NOTES = {
     "input_tokens": "Uncached input tokens for the request, for every agent (cache reads and writes are not in it), except Copilot `invoke_agent` rows, which repeat their children's totals; NULL when the agent reports no token counts.",
     "output_tokens": "Output tokens for the request; NULL when the agent reports no token counts.",
     "cache_read_tokens": "Cache-read tokens for the request; NULL when the agent reports no token counts.",
-    "cost_usd": "Request cost in USD: the agent's own figure when it reports one (Claude Code; GitHub Copilot, from its billed AI credits), else an estimate at the public base list price from `llm_model_prices` (exact `model` match; uncached input, cache read, cache write and output priced separately; long-context surcharges are not applied). Never estimated for GitHub Copilot, which bills in AI credits. NULL on `invoke_agent` rows and when the model has no list price.",
+    "cost_usd": "Request cost in USD: the agent's own figure when it reports one (Claude Code; GitHub Copilot, from its billed AI credits), else an estimate at the public standard list price from `llm_model_prices` (exact `model` match; uncached input, cache read, cache write and output priced separately). Priority/fast and long-context surcharges are not applied, so Codex on priority (fast mode, and by default on some models) is under-estimated. Never estimated for GitHub Copilot, which bills in AI credits. NULL on `invoke_agent` rows and when the model has no list price.",
     "content_input": "Prompt as a JSON message array; masked per matched value when the org redacts. Large.",
     "content_output": "Response as a JSON message array; masked per matched value when the org redacts. Large.",
     "service_name": "The emitting service's name (OTLP resource attribute); may name the collector rather than the agent. One agent can have rows from more than one source (for example its web chat history and its app's own telemetry); service_name tells them apart.",

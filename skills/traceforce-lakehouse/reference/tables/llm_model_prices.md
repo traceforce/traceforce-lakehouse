@@ -15,7 +15,5 @@ Joins:
 | `cache_read_usd_per_mtok` | double | Cache-read price; NULL when the map has none (the ingest then uses the input price). |
 | `cache_write_usd_per_mtok` | double | Cache-write price; NULL when the map has none (the ingest then uses the input price). |
 | `output_usd_per_mtok` | double | Output price. |
-| `source` | string | Always 'litellm'. |
-| `source_ref` | string | LiteLLM commit the prices were read at ('main' when it could not be resolved). |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |

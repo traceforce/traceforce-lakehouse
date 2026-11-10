@@ -547,8 +547,6 @@
       "cache_read_usd_per_mtok:double",
       "cache_write_usd_per_mtok:double",
       "output_usd_per_mtok:double",
-      "source:string",
-      "source_ref:string",
       "created_at:timestamp",
       "updated_at:timestamp"
     ],
