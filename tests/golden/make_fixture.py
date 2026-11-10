@@ -183,11 +183,12 @@ w(f"raw/telemetry/agent=AGENT_IDENTITY_GITHUB_COPILOT/dt=@D0@/SERIAL-3/dev@examp
 # input_tokens is stored UNCACHED for every agent; cost_usd is the reported cost, else tokens x
 # the llm_model_prices row for the exact model id (the runner inserts two: gpt-golden with every
 # price, gpt-golden-nocache without cache prices). Codex-style records count cache inside input.
+tick = iter(range(100))  # each record its own time, so rows never tie on golden.normalise's sort key
 def tok(model, event, *extra, op=None):
     attrs = [kv('"event.name"', S(event)), kv('"gen_ai.request.model"', S(model))]
     if op:
         attrs.append(kv('"gen_ai.operation.name"', S(op)))
-    return '{"timeUnixNano":"1577975700000000000","attributes":[%s]}' % ",".join(attrs + list(extra))
+    return '{"timeUnixNano":"%d000000000","attributes":[%s]}' % (1577975700 + next(tick), ",".join(attrs + list(extra)))
 codex = ",".join([
     # older scout: only Codex's raw cache keys -> input 1000-600-100=300, cost estimated
     tok("gpt-golden", "sse_event", kv('"gen_ai.usage.input_tokens"', '{"intValue":"1000"}'),

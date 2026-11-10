@@ -13,7 +13,7 @@
 -- arrays and kvlists; scalars are decoded to text.
 -- INSERT first: Athena accepts a WITH clause only inside the query that follows INSERT INTO,
 -- never before it. The INSERT column list and the final SELECT are the same rendered list, so
--- they bind positionally in identical order, and a table column with no alias in `flat` fails
+-- they bind positionally in identical order, and a table column with no alias in `priced` fails
 -- loudly at planning time.
 INSERT INTO ${target} (${cols})
 WITH objects AS (

@@ -292,7 +292,7 @@ SELECT f.*,
 FROM flat f
 LEFT JOIN ${prices} p ON p."model_key" = f.model
 )
--- select_cols names flat's columns in the INSERT's order rather than SELECT *: columns.json is
+-- select_cols names priced's columns in the INSERT's order rather than SELECT *: columns.json is
 -- shared by all three clouds, and a positional mapping could shift values silently.
 SELECT ${select_cols} FROM priced
 WHERE ts IS NOT NULL -- a record with no time and a filename without one is dropped, never given a fabricated time

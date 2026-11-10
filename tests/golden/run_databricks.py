@@ -329,6 +329,7 @@ def main():
         g.MIRROR_TABLE: ("true", "newest snapshot has no rows to merge; the mirror keeps its older rows"),
         g.LONG_TABLE: ("true", f"newest snapshot is from {tokens['@D-7-@']}"),
         g.STALE_TABLE: ("true", "no snapshot in the last 8 days"),
+        g.PRICES_TABLE: ("false", None),  # seeded, never mirrored: no run logged
     }
     got_fresh = {r["table_name"]: (r["stale"], r["reason"]) for r in freshness}
     if len(freshness) != len(got_fresh) or got_fresh != want_fresh:
