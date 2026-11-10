@@ -10,7 +10,6 @@ WITH e AS (
   FROM traceforce_lakehouse.traceforce.agent_events ev
   LEFT JOIN traceforce_lakehouse.traceforce.device_owner_mappings m ON m.device_native_id = ev.device_native_id
   WHERE ev.ts >= CAST({{since}} AS TIMESTAMP_NTZ) - INTERVAL 1 DAY AND ev.session_id IS NOT NULL
-    AND ev.model IS DISTINCT FROM 'codex-auto-review' -- Codex's internal approval reviewer, not a user's session
     AND ({{agent}} IS NULL OR lower(replace(ev.agent, 'AGENT_IDENTITY_', '')) = {{agent}})
 )
 SELECT

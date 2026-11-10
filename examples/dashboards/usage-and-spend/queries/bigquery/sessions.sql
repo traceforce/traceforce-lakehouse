@@ -12,7 +12,6 @@ WITH e AS (
   FROM traceforce_lakehouse.agent_events ev
   LEFT JOIN traceforce_lakehouse.device_owner_mappings m ON m.device_native_id = ev.device_native_id
   WHERE ev.ts >= TIMESTAMP(DATE_SUB(CURRENT_DATE(), INTERVAL 91 DAY)) AND ev.session_id IS NOT NULL
-    AND ev.model IS DISTINCT FROM 'codex-auto-review' -- Codex's internal approval reviewer, not a user's session
     AND coalesce(lower(ev.user_email), lower(m.owner_email)) IS NOT DISTINCT FROM {{person}}
 )
 SELECT

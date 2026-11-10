@@ -3,7 +3,7 @@
 WITH e AS (
   SELECT DATE(ev.ts) AS day, lower(replace(ev.agent, 'AGENT_IDENTITY_', '')) AS agent,
          coalesce(ev.device_native_id, 'unknown') AS device_native_id,
-         ev.ts, ev.session_id, ev.model, ev.tool_call_id, ev.signal, ev.operation, ev.input_tokens, ev.output_tokens, ev.cost_usd
+         ev.ts, ev.session_id, ev.tool_call_id, ev.signal, ev.operation, ev.input_tokens, ev.output_tokens, ev.cost_usd
   FROM traceforce_lakehouse.agent_events ev
   LEFT JOIN traceforce_lakehouse.device_owner_mappings m ON m.device_native_id = ev.device_native_id
   WHERE ev.ts >= TIMESTAMP(DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY))
@@ -20,7 +20,7 @@ usage AS (
 sessions AS (
   SELECT day, agent, device_native_id, count(*) AS sessions
   FROM (SELECT DATE(min(ts)) AS day, agent, device_native_id, session_id
-        FROM e WHERE session_id IS NOT NULL AND model IS DISTINCT FROM 'codex-auto-review' GROUP BY agent, device_native_id, session_id)
+        FROM e WHERE session_id IS NOT NULL GROUP BY agent, device_native_id, session_id)
   GROUP BY 1, 2, 3
 )
 SELECT CAST(coalesce(u.day, s.day) AS STRING) AS day, coalesce(u.agent, s.agent) AS agent,

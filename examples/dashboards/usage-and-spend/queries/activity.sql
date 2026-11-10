@@ -6,7 +6,7 @@ WITH e AS (
     date(ev.ts) AS day,
     lower(replace(ev.agent, 'AGENT_IDENTITY_', '')) AS agent,
     coalesce(lower(ev.user_email), lower(m.owner_email)) AS person,
-    ev.ts, ev.session_id, ev.model, ev.prompt_id, ev.generation_id, ev.tool_call_id,
+    ev.ts, ev.session_id, ev.prompt_id, ev.generation_id, ev.tool_call_id,
     ev.signal, ev.operation, ev.input_tokens, ev.output_tokens, ev.cache_read_tokens, ev.cost_usd
   FROM agent_events ev
   LEFT JOIN device_owner_mappings m ON m.device_native_id = ev.device_native_id
@@ -31,7 +31,7 @@ sessions AS (
   SELECT day, agent, person, count(*) AS sessions
   FROM (
     SELECT date(min(ts)) AS day, agent, person, session_id
-    FROM e WHERE session_id IS NOT NULL AND model IS DISTINCT FROM 'codex-auto-review'
+    FROM e WHERE session_id IS NOT NULL
     GROUP BY agent, person, session_id
   )
   GROUP BY 1, 2, 3
