@@ -64,6 +64,7 @@ output "ingest_sql" {
     cols          = join(", ", [for c in local.agent_events_columns : "`${c.name}`"])
     select_cols   = join(", ", [for c in local.agent_events_columns : c.name])
     lookback_days = var.lookback_days
+    prices        = var.mirror_tables["llm_model_prices"]
   })
 }
 

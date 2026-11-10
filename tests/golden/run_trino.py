@@ -111,6 +111,11 @@ def setup_tables(work, tokens):
         stmts.append(f"CREATE TABLE iceberg.lake.{table} ("
                      + ", ".join(f"{n} {TRINO_TYPE[t]}{' NOT NULL' if req else ''}" for n, t, req in cols)
                      + ") WITH (format_version = 2)")
+    stmts.append(f"CREATE TABLE iceberg.lake.{g.PRICES_TABLE} ("
+                 + ", ".join(f"{n} {TRINO_TYPE[t]}{' NOT NULL' if req else ''}" for n, t, req in g.PRICES)
+                 + ") WITH (format_version = 2)")
+    stmts.append(f"INSERT INTO iceberg.lake.{g.PRICES_TABLE} VALUES "
+                 + g.price_values(lambda v, t: "NULL" if v is None else (q(v) if t == "string" else f"DOUBLE '{v}'")))
     # the partitions Athena's projection would expose
     raw = os.path.join(work, "data", "telemetry")
     for a in sorted(os.listdir(raw)):
@@ -133,7 +138,8 @@ def setup_tables(work, tokens):
 def ingest(work, agents):
     sql = g.render("terraform/aws/sql/ingest_agent_events.sql.tftpl", {
         "target": "iceberg.lake.agent_events", "raw": "hive.lake.raw_telemetry",
-        "cols": ", ".join(n for n, _, _ in g.AGENT_EVENTS)})
+        "cols": ", ".join(n for n, _, _ in g.AGENT_EVENTS),
+        "prices": f"iceberg.lake.{g.PRICES_TABLE}"})
     for a in agents:
         trino(work, f"PREPARE ingest FROM\n{sql};\nEXECUTE ingest USING {q(a)}, {g.LOOKBACK_DAYS}, {g.LOOKBACK_DAYS};\n",
               f"ingest {a}")

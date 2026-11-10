@@ -10,6 +10,7 @@ WITH e AS (
   FROM agent_events ev
   LEFT JOIN device_owner_mappings m ON m.device_native_id = ev.device_native_id
   WHERE ev.ts >= date_add('day', -91, current_date) AND ev.session_id IS NOT NULL
+    AND ev.model IS DISTINCT FROM 'codex-auto-review' -- Codex's internal approval reviewer, not a user's session
     AND coalesce(lower(ev.user_email), lower(m.owner_email)) IS NOT DISTINCT FROM {{person}}
 )
 SELECT

@@ -22,6 +22,7 @@ locals {
   # Same order, so the positional INSERT holds.
   select_cols   = join(", ", [for c in module.schema.agent_events : c.name])
   lookback_days = var.lookback_days
+  prices        = snowflake_iceberg_table.export["llm_model_prices"].fully_qualified_name
 })};
       END;
     $$

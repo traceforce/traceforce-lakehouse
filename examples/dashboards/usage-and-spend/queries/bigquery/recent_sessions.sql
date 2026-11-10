@@ -13,6 +13,7 @@ WITH e AS (
   LEFT JOIN traceforce_lakehouse.device_owner_mappings m ON m.device_native_id = ev.device_native_id
   -- A day of slack so a session's events just before its start still count; HAVING drops older starts.
   WHERE ev.ts >= TIMESTAMP_SUB({{since}}, INTERVAL 1 DAY) AND ev.session_id IS NOT NULL
+    AND ev.model IS DISTINCT FROM 'codex-auto-review' -- Codex's internal approval reviewer, not a user's session
     -- The CAST because BigQuery rejects "= NULL" even where it can't match.
     AND ({{agent}} IS NULL OR lower(replace(ev.agent, 'AGENT_IDENTITY_', '')) = CAST({{agent}} AS STRING))
 )

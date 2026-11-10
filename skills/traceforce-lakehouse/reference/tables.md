@@ -31,6 +31,7 @@ One file per table under `tables/`; read only the ones a question needs.
 | `mcp_catalog` | Global reference: MCP products TraceForce knows | `tables/mcp_catalog.md` |
 | `org_mcp_catalog` | Same shape as mcp_catalog, for private/custom MCP servers specific to your org | `tables/org_mcp_catalog.md` |
 | `mcp_categories` | Global reference: MCP product categories (Databases & Data Storage, OS and Local File Systems, Security Tools, ...) | `tables/mcp_categories.md` |
+| `llm_model_prices` | Global reference: public list prices per model (USD per million tokens), from the LiteLLM price map; the ingest uses it to estimate agent_events.cost_usd | `tables/llm_model_prices.md` |
 | `agents` | Org-level rollup per agent and plan: counts and scores | `tables/agents.md` |
 | `agent_issues` | One row per agent issue: an issue type raised on one install, account or cloud agent, open or closed | `tables/agent_issues.md` |
 | `mcp_server_issues` | One row per MCP server issue: an issue type raised on one MCP server instance, open or closed | `tables/mcp_server_issues.md` |

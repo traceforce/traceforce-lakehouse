@@ -11,6 +11,7 @@ WITH e AS (
   LEFT JOIN device_owner_mappings m ON m.device_native_id = ev.device_native_id
   -- A day of slack so a session's events just before its start still count; HAVING drops older starts.
   WHERE ev.ts >= {{since}} - INTERVAL '1' DAY AND ev.session_id IS NOT NULL
+    AND ev.model IS DISTINCT FROM 'codex-auto-review' -- Codex's internal approval reviewer, not a user's session
     AND ({{agent}} IS NULL OR lower(replace(ev.agent, 'AGENT_IDENTITY_', '')) = {{agent}})
 )
 SELECT

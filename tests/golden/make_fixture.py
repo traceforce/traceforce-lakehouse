@@ -179,6 +179,48 @@ w(f"raw/telemetry/agent=AGENT_IDENTITY_GITHUB_COPILOT/dt=@D-3@/SERIAL-3/dev@exam
 w(f"raw/telemetry/agent=AGENT_IDENTITY_GITHUB_COPILOT/dt=@D0@/SERIAL-3/dev@example.com/sess-6/"
   f"@D0@_090000.000_77777777-7777-4777-8777-777777777777_logs.txt", "this is not json\n")
 
+# ---- 3b. Token normalization and cost (today) ------------------------------------------------
+# input_tokens is stored UNCACHED for every agent; cost_usd is the reported cost, else tokens x
+# the llm_model_prices row for the exact model id (the runner inserts two: gpt-golden with every
+# price, gpt-golden-nocache without cache prices). Codex-style records count cache inside input.
+def tok(model, event, *extra, op=None):
+    attrs = [kv('"event.name"', S(event)), kv('"gen_ai.request.model"', S(model))]
+    if op:
+        attrs.append(kv('"gen_ai.operation.name"', S(op)))
+    return '{"timeUnixNano":"1577975700000000000","attributes":[%s]}' % ",".join(attrs + list(extra))
+codex = ",".join([
+    # older scout: only Codex's raw cache keys -> input 1000-600-100=300, cost estimated
+    tok("gpt-golden", "sse_event", kv('"gen_ai.usage.input_tokens"', '{"intValue":"1000"}'),
+        kv('"gen_ai.usage.output_tokens"', '{"intValue":"50"}'),
+        kv('"cached_token_count"', '{"intValue":600}'), kv('"cache_write_token_count"', '{"intValue":100}')),
+    # newer scout: semconv cache keys; no cache prices -> the input price is used
+    tok("gpt-golden-nocache", "sse_event", kv('"gen_ai.usage.input_tokens"', '{"intValue":"500"}'),
+        kv('"gen_ai.usage.output_tokens"', '{"intValue":"10"}'),
+        kv('"gen_ai.usage.cache_read.input_tokens"', '{"intValue":"400"}'),
+        kv('"gen_ai.usage.cache_write.input_tokens"', '{"intValue":"0"}')),
+    # an agent span that repeats its children: never priced
+    tok("gpt-golden", "agent", kv('"gen_ai.usage.input_tokens"', '{"intValue":"100"}'), op="invoke_agent"),
+    # no price for the model: no cost
+    tok("unknown-model", "sse_event", kv('"gen_ai.usage.input_tokens"', '{"intValue":"10"}')),
+])
+w(f"raw/telemetry/agent=AGENT_IDENTITY_CHATGPT_CODEX/dt=@D0@/SERIAL-4/{ACCT}/sess-7/"
+  f"@D0@_130000.000_99999999-9999-4999-8999-999999999999_logs.json",
+  '{"resourceLogs":[{"resource":{"attributes":[]},"scopeLogs":[{"logRecords":[%s]}]}]}' % codex)
+claude_usage = lambda *extra: tok("gpt-golden", "api_request", kv('"input_tokens"', '{"intValue":"7"}'),
+                                  kv('"gen_ai.usage.input_tokens"', '{"intValue":"7"}'),
+                                  kv('"gen_ai.usage.output_tokens"', '{"intValue":"20"}'),
+                                  kv('"cache_read_tokens"', '{"intValue":"9000"}'),
+                                  kv('"cache_creation_tokens"', '{"intValue":"500"}'), *extra)
+claude = ",".join([
+    # Claude-style (raw input_tokens present): input stays 7; its own cost is kept
+    claude_usage(kv('"cost_usd"', '{"doubleValue":0.5}')),
+    # the same without a reported cost: estimated with cache read and creation priced separately
+    claude_usage(),
+])
+w(f"raw/telemetry/agent=AGENT_IDENTITY_CLAUDE_CODE/dt=@D0@/SERIAL-1/{ACCT}/sess-8/"
+  f"@D0@_130000.000_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa_logs.json",
+  '{"resourceLogs":[{"resource":{"attributes":[]},"scopeLogs":[{"logRecords":[%s]}]}]}' % claude)
+
 # ---- 4. Mirror snapshots: agents (string, int, double, boolean, timestamp) --------------------
 AG = ["id", "org_id", "agent_catalog_id", "agent_type", "plan", "active_users", "total_incidents",
       "active_issues", "affected_devices", "base_score", "actual_score", "deployment_types",
