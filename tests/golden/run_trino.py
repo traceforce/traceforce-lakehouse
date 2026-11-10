@@ -193,7 +193,9 @@ def main():
                 mirror(work)
                 malformed_failed = False
             except SystemExit as e:  # must fail on agents' malformed file, not elsewhere
-                malformed_failed = str(e).startswith(f"merge {g.MIRROR_TABLE} failed")
+                if not str(e).startswith(f"merge {g.MIRROR_TABLE} failed"):
+                    raise  # any other failure is a real error, not the expected one
+                malformed_failed = True
             after_malformed = g.normalise(dump(work, g.MIRROR_TABLE, g.MIRROR), g.MIRROR, tokens)
         finally:
             subprocess.run(["docker", "rm", "-f", NAME], capture_output=True)
