@@ -1,0 +1,19 @@
+-- Reprice rows the ingest left with a NULL cost: their model had no price row when they were loaded.
+-- Athena runs one statement per query, so this is its own query, run by the state machine after
+-- every agent's ingest (ingest.tf RepriceAgentEvents). Idempotent: a repriced row no longer matches.
+-- Same predicates and formula as the INSERT's priced CTE (ingest_agent_events.sql.tftpl:207-220).
+-- shortcut: cache-write cost is left out (not a stored column), so repriced rows with cache writes read low; upgrade when agent_events stores cache_write_tokens (a table recreate, RELEASING.md).
+-- shortcut: assumes llm_model_prices.model_key is unique (the INSERT's LEFT JOIN at ingest_agent_events.sql.tftpl:219 assumes it too); max() per column mixes rows silently if not; upgrade if the mirror can hold duplicate keys.
+-- No table alias: Athena's UPDATE takes none, so columns are unqualified. llm_model_prices has none of their names.
+UPDATE ${target}
+SET cost_usd = (
+  SELECT (input_tokens * max(p.input_usd_per_mtok)
+          + COALESCE(cache_read_tokens, 0) * COALESCE(max(p.cache_read_usd_per_mtok), max(p.input_usd_per_mtok))
+          + COALESCE(output_tokens, 0) * max(p.output_usd_per_mtok)) / 1e6
+  FROM ${prices} p
+  WHERE p.model_key = model)
+WHERE cost_usd IS NULL
+  AND input_tokens IS NOT NULL
+  AND operation IS DISTINCT FROM 'invoke_agent'
+  AND agent_type != 'github_copilot'
+  AND EXISTS (SELECT 1 FROM ${prices} p WHERE p.model_key = model)

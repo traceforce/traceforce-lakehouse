@@ -11,12 +11,18 @@ locals {
   sfn_arn  = "arn:aws:states:${local.region}:${local.account_id}:stateMachine:${local.sfn_name}"
 
   agent_events_fqn = "\"s3tablescatalog/${aws_s3tables_table_bucket.lakehouse.name}\".\"${aws_s3tables_namespace.tf.namespace}\".\"agent_events\""
+  prices_fqn       = "\"s3tablescatalog/${aws_s3tables_table_bucket.lakehouse.name}\".\"${aws_s3tables_namespace.tf.namespace}\".\"llm_model_prices\""
 
   ingest_sql = templatefile("${path.module}/sql/ingest_agent_events.sql.tftpl", {
     target = local.agent_events_fqn
     raw    = "\"${aws_glue_catalog_database.lakehouse.name}\".\"raw_telemetry\""
     cols   = join(", ", [for c in local.agent_events_schema : c.name])
-    prices = "\"s3tablescatalog/${aws_s3tables_table_bucket.lakehouse.name}\".\"${aws_s3tables_namespace.tf.namespace}\".\"llm_model_prices\""
+    prices = local.prices_fqn
+  })
+
+  reprice_sql = templatefile("${path.module}/sql/reprice_agent_events.sql.tftpl", {
+    target = local.agent_events_fqn
+    prices = local.prices_fqn
   })
 
   # Athena's .sync integration surfaces a FAILED query as States.TaskFailed whatever the
@@ -155,7 +161,7 @@ locals {
             AgentFailed = { Type = "Pass", End = true }
           }
         }
-        Next = "CountFailures"
+        Next = "RepriceAgentEvents"
       }
       },
       {
@@ -206,6 +212,22 @@ locals {
             }
           }
           Next = "CountFailures"
+        }
+      },
+      {
+        # After every agent's INSERT: price the rows loaded with no price. Not caught, so a failed
+        # reprice fails the execution (the runs_failed alarm); the next hourly run retries it.
+        RepriceAgentEvents = {
+          Type     = "Task"
+          Resource = "arn:aws:states:::athena:startQueryExecution.sync"
+          Parameters = {
+            QueryString           = local.reprice_sql
+            WorkGroup             = aws_athena_workgroup.lakehouse.name
+            QueryExecutionContext = { Database = aws_glue_catalog_database.lakehouse.name }
+          }
+          ResultPath = null
+          Retry      = local.athena_retry
+          Next       = "CountFailures"
         }
       },
       {
