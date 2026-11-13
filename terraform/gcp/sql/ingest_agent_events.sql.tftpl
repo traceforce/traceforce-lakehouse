@@ -150,4 +150,26 @@ priced AS (
   LEFT JOIN `${dataset}`.llm_model_prices p ON p.model_key = f.model
 )
 SELECT ${cols} FROM priced
-WHERE ts IS NOT NULL
+WHERE ts IS NOT NULL;
+
+-- Reprice rows the INSERT left with a NULL cost (their model had no price when they were loaded).
+-- Runs after the INSERT in this script. No price row, no match: safe before llm_model_prices is loaded; idempotent.
+-- shortcut: cache-write cost left out (not a stored column; attrs_json would disagree with the INSERT), so repriced rows with cache writes read low; upgrade when agent_events stores cache_write_tokens (a columns.json change, RELEASING.md).
+-- shortcut: max() per column over model_key merges duplicate keys silently; the INSERT's LEFT JOIN (line 150) does not dedupe either; upgrade if the mirror can hold duplicate model_key rows (it merges on id).
+UPDATE `${target}` AS t
+SET cost_usd = (t.input_tokens * p.input_usd_per_mtok
+                + coalesce(t.cache_read_tokens, 0) * p.cache_read_usd_per_mtok
+                + coalesce(t.output_tokens, 0) * p.output_usd_per_mtok) / 1e6
+FROM (
+  SELECT model_key,
+         max(input_usd_per_mtok) AS input_usd_per_mtok,
+         coalesce(max(cache_read_usd_per_mtok), max(input_usd_per_mtok)) AS cache_read_usd_per_mtok,
+         max(output_usd_per_mtok) AS output_usd_per_mtok
+  FROM `${dataset}`.llm_model_prices
+  GROUP BY model_key
+) AS p
+WHERE p.model_key = t.model
+  AND t.cost_usd IS NULL
+  AND t.input_tokens IS NOT NULL
+  AND t.operation IS DISTINCT FROM 'invoke_agent'
+  AND t.agent_type != 'github_copilot';
