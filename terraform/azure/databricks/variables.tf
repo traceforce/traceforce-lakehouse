@@ -43,6 +43,18 @@ variable "iceberg_storage_account_name" {
   }
 }
 
+# --- The Databricks catalog this module creates ---
+
+variable "catalog_name" {
+  description = "Unity Catalog catalog name. Unique within the region's metastore: two lakehouses in one region under one Databricks account need different names. Pick it once: changing it later replaces the catalog and its grants."
+  type        = string
+  default     = "traceforce_lakehouse"
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9_]{0,62}$", var.catalog_name))
+    error_message = "catalog_name must start with a lowercase letter and contain only lowercase letters, digits and underscores (at most 63 characters)."
+  }
+}
+
 # --- The Databricks workspace this module creates ---
 
 variable "databricks_workspace_name" {
