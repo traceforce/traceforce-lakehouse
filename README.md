@@ -88,7 +88,7 @@ IAM resources in that account; deploy in the bucket's region.
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws?ref=1.7.1"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws?ref=1.7.2"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
@@ -148,7 +148,7 @@ APIs — in practice **project Owner**.
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform/gcp?ref=1.7.1"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform/gcp?ref=1.7.2"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
@@ -263,7 +263,7 @@ APIs — in practice **project Owner**.
    }
 
    module "traceforce_lakehouse" {
-     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure/snowflake?ref=1.7.1"
+     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure/snowflake?ref=1.7.2"
 
      # Must be globally unique across all of Azure (storage account names share one namespace
      # account-wide) and stable for the life of the deployment: changing it later destroys and
@@ -413,7 +413,7 @@ The first load runs within the hour and covers the last few days.
    }
 
    module "traceforce_lakehouse" {
-     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure/databricks?ref=1.7.1"
+     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure/databricks?ref=1.7.2"
 
      # Must be globally unique across all of Azure (storage account names share one namespace
      # account-wide) and stable for the life of the deployment: changing it later destroys and
