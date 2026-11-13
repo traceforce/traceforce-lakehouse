@@ -29,6 +29,9 @@ terraform {
 provider "azurerm" {
   subscription_id = "00000000-0000-0000-0000-000000000000" # az account show --query id -o tsv
   tenant_id       = "00000000-0000-0000-0000-000000000000" # az account show --query tenantId -o tsv
+  # Don't auto-register Azure resource providers: that needs subscription-level rights the
+  # deployer may not have. Register the ones this module needs beforehand (README, "Before you start").
+  resource_provider_registrations = "none"
   features {}
 }
 
@@ -45,7 +48,7 @@ provider "databricks" {
 }
 
 module "traceforce_lakehouse" {
-  source = "../../../terraform/azure/databricks" # customers: github.com/traceforce/traceforce-lakehouse//terraform/azure/databricks?ref=1.7.0
+  source = "../../../terraform/azure/databricks" # customers: github.com/traceforce/traceforce-lakehouse//terraform/azure/databricks?ref=1.7.1
 
   # Must be globally unique across all of Azure (storage account names share one namespace
   # account-wide) and stable for the life of the deployment: changing it later destroys and
@@ -64,6 +67,7 @@ module "traceforce_lakehouse" {
   # ingest_warehouse_size    = "Small"                  # default 2X-Small; bump for a lookback_days catch-up
   # query_warehouse_size     = "Small"                  # default 2X-Small; bump if ad-hoc queries feel slow
   # query_max_num_clusters   = 2                        # default 1; raise if queries queue behind each other
+  # query_auto_stop_mins     = 10                       # default 1; minutes idle before the query warehouse stops (fewer cold starts, more cost)
   # databricks_account_id    = "00000000-0000-0000-0000-000000000000" # optional; unset = read from the workspace (Public Beta data source). Account console, top-right menu.
   # alarm_notification_email = "jdoe@acme.com"          # get notified when a scheduled job fails or data goes stale
   # reader_user_names              = ["jdoe@acme.com"]    # read-only access: users (email)

@@ -86,6 +86,16 @@ variable "query_max_num_clusters" {
   }
 }
 
+variable "query_auto_stop_mins" {
+  description = "Minutes the query warehouse stays up after its last query. 1 is the cheapest, but the first query after an idle minute waits for a cold start; raise it (e.g. 10) if dashboard or Claude Code sessions feel slow. Billed while it's up, so a higher value costs more."
+  type        = number
+  default     = 1
+  validation {
+    condition     = var.query_auto_stop_mins >= 1 && var.query_auto_stop_mins == floor(var.query_auto_stop_mins)
+    error_message = "query_auto_stop_mins must be a whole number >= 1."
+  }
+}
+
 variable "databricks_account_id" {
   description = "Your Databricks account ID (a UUID, not a workspace ID). Optional: unset, it's read from the workspace with the databricks_workspace_iam_service_principal_v2 data source (Public Beta); set it to avoid that dependency, or if plan or apply fails with an error from that data source (e.g. \"failed to get workspace_iam_service_principal_v2\"). Shown in the account console (top-right user menu; account admins only). Used only to name the ingest service principal's role rule set."
   type        = string
