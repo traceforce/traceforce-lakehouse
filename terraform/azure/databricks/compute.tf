@@ -1,7 +1,7 @@
 # Two serverless SQL warehouses, so reads and ingest scale (and are billed) separately: one for the
 # scheduled ingest and mirror tasks, one for ad-hoc queries (engineers, Claude Code, the in-app
 # dashboards). Each only wakes for a query or a task, so it stops after one minute idle (the
-# provider default is 120). Both carry the module's tags plus traceforce-warehouse = ingest / query,
+# provider default is 120); query_auto_stop_mins keeps the query warehouse up longer to avoid cold starts. Both carry the module's tags plus traceforce-warehouse = ingest / query,
 # to tell them apart in usage and cost reports.
 
 # Ingest: used only by the ingest service principal. One cluster: the tasks are scheduled, not bursty.
@@ -40,7 +40,7 @@ resource "databricks_sql_endpoint" "query" {
   name                      = local.name
   cluster_size              = var.query_warehouse_size
   max_num_clusters          = var.query_max_num_clusters
-  auto_stop_mins            = 1
+  auto_stop_mins            = var.query_auto_stop_mins
   enable_serverless_compute = true  # set explicitly, as the provider docs recommend
   warehouse_type            = "PRO" # serverless requires PRO
 

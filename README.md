@@ -88,7 +88,7 @@ IAM resources in that account; deploy in the bucket's region.
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws?ref=1.7.0"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws?ref=1.7.1"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
@@ -148,7 +148,7 @@ APIs — in practice **project Owner**.
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform/gcp?ref=1.7.0"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform/gcp?ref=1.7.1"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
@@ -190,6 +190,10 @@ APIs — in practice **project Owner**.
 - The first deployment against a Snowflake account/tenant pair needs a Microsoft Entra admin to
   grant admin consent (step 3 below); subscription roles like Owner don't include that. With
   `use_azuread_auth`, the state storage account also needs `Storage Blob Data Contributor`.
+- The `Microsoft.Storage` resource provider registered in the subscription
+  (`az provider register --namespace Microsoft.Storage`, by someone with Contributor or Owner on
+  the subscription). Roles on the resource group can't register providers, so the `azurerm`
+  provider below sets `resource_provider_registrations = "none"` rather than trying.
 
 1. Create a root configuration. Keep the state in your own state storage account, never the
    logs storage account.
@@ -225,6 +229,9 @@ APIs — in practice **project Owner**.
    provider "azurerm" {
      subscription_id = "00000000-0000-0000-0000-000000000000" # az account show --query id -o tsv
      tenant_id       = "00000000-0000-0000-0000-000000000000" # az account show --query tenantId -o tsv
+     # Don't auto-register Azure resource providers: that needs subscription-level rights the
+     # deployer may not have. Register the ones this module needs beforehand (README, "Before you start").
+     resource_provider_registrations = "none"
      features {}
    }
 
@@ -256,7 +263,7 @@ APIs — in practice **project Owner**.
    }
 
    module "traceforce_lakehouse" {
-     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure/snowflake?ref=1.7.0"
+     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure/snowflake?ref=1.7.1"
 
      # Must be globally unique across all of Azure (storage account names share one namespace
      # account-wide) and stable for the life of the deployment: changing it later destroys and
@@ -340,11 +347,17 @@ The first load runs within the hour and covers the last few days.
   Iceberg data. The logs storage account must be ADLS Gen2 (hierarchical namespace enabled).
 - A name for the Databricks workspace the module creates (Premium, serverless) in the logs
   resource group and region. `terraform destroy` deletes this workspace and everything in it.
-- A service principal (Entra app registration with a client secret) for `terraform apply`, with
-  **Contributor** and **Role Based Access Control Administrator** (or **User Access
-  Administrator**) on the logs resource group, and `Storage Blob Data Contributor` on the state
-  container. Set its `ARM_*` variables in the environment, not in `main.tf`. Don't use it to query.
-- The `Microsoft.Databricks` resource provider registered in the subscription.
+- A service principal (Entra app registration with a client secret) to deploy with, used for
+  every `terraform apply`, with **Contributor** and **Role Based Access Control Administrator**
+  (or **User Access Administrator**) on the logs resource group, and `Storage Blob Data
+  Contributor` on the state storage container.
+- Deploying reads its `ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`, `ARM_TENANT_ID` and
+  `ARM_SUBSCRIPTION_ID` from the environment. Keep the secret out of `main.tf`, and don't use it
+  to query: it owns the lakehouse.
+- The `Microsoft.Databricks` and `Microsoft.Storage` resource providers registered in the
+  subscription (`az provider register --namespace <name>`, by someone with Contributor or Owner
+  on the subscription). The deployer's resource-group roles can't register providers, so the
+  `azurerm` provider below sets `resource_provider_registrations = "none"` rather than trying.
 - One lakehouse per Azure region and per resource group.
 
 1. Create a root configuration. Keep the state in your own state storage account, never the
@@ -381,6 +394,9 @@ The first load runs within the hour and covers the last few days.
    provider "azurerm" {
      subscription_id = "00000000-0000-0000-0000-000000000000" # az account show --query id -o tsv
      tenant_id       = "00000000-0000-0000-0000-000000000000" # az account show --query tenantId -o tsv
+     # Don't auto-register Azure resource providers: that needs subscription-level rights the
+     # deployer may not have. Register the ones this module needs beforehand (README, "Before you start").
+     resource_provider_registrations = "none"
      features {}
    }
 
@@ -397,7 +413,7 @@ The first load runs within the hour and covers the last few days.
    }
 
    module "traceforce_lakehouse" {
-     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure/databricks?ref=1.7.0"
+     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure/databricks?ref=1.7.1"
 
      # Must be globally unique across all of Azure (storage account names share one namespace
      # account-wide) and stable for the life of the deployment: changing it later destroys and
@@ -416,6 +432,7 @@ The first load runs within the hour and covers the last few days.
      # ingest_warehouse_size    = "Small"                  # default 2X-Small; bump for a lookback_days catch-up
      # query_warehouse_size     = "Small"                  # default 2X-Small; bump if ad-hoc queries feel slow
      # query_max_num_clusters   = 2                        # default 1; raise if queries queue behind each other
+     # query_auto_stop_mins     = 10                       # default 1; minutes idle before the query warehouse stops (fewer cold starts, more cost)
      # databricks_account_id    = "00000000-0000-0000-0000-000000000000" # optional; unset = read from the workspace (Public Beta data source). Account console, top-right menu.
      # alarm_notification_email = "jdoe@acme.com"          # get notified when a scheduled job fails or data goes stale
      # reader_user_names              = ["jdoe@acme.com"]    # read-only access: users (email)

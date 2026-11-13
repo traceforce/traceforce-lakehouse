@@ -29,6 +29,9 @@ terraform {
 provider "azurerm" {
   subscription_id = "00000000-0000-0000-0000-000000000000" # az account show --query id -o tsv
   tenant_id       = "00000000-0000-0000-0000-000000000000" # az account show --query tenantId -o tsv
+  # Don't auto-register Azure resource providers: that needs subscription-level rights the
+  # deployer may not have. Register the ones this module needs beforehand (README, "Before you start").
+  resource_provider_registrations = "none"
   features {}
 }
 
@@ -60,7 +63,7 @@ provider "snowflake" {
 }
 
 module "traceforce_lakehouse" {
-  source = "../../../terraform/azure/snowflake" # customers: github.com/traceforce/traceforce-lakehouse//terraform/azure/snowflake?ref=1.7.0
+  source = "../../../terraform/azure/snowflake" # customers: github.com/traceforce/traceforce-lakehouse//terraform/azure/snowflake?ref=1.7.1
 
   # Must be globally unique across all of Azure (storage account names share one namespace
   # account-wide) and stable for the life of the deployment: changing it later destroys and
