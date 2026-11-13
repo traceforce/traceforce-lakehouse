@@ -1,6 +1,6 @@
 locals {
-  # Fixed names: the skill, docs and examples all assume them. The catalog name uses an underscore
-  # to match the Snowflake database name.
+  # Fixed names: the skill, docs and examples all assume them. catalog_name is a variable (default
+  # traceforce_lakehouse, the name the skill assumes); its underscore matches the Snowflake database.
   name         = "traceforce-lakehouse" # the Iceberg container
   catalog_name = var.catalog_name
   schema_name  = "traceforce"
