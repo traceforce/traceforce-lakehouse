@@ -255,6 +255,26 @@ BEGIN
     SELECT ${select_cols} FROM priced
     WHERE ts IS NOT NULL; -- a record with no time and a filename without one is dropped, never given a fabricated time
     GET DIAGNOSTICS rows_inserted = ROW_COUNT;
+
+    -- Reprice: rows loaded before their model's price existed keep a NULL cost; the INSERT only prices new rows.
+    -- Same formula and predicates as the INSERT's priced CTE (cache_write_tokens is not stored, so it is read from attrs_json).
+    UPDATE ${target} AS t
+    SET cost_usd = (
+      SELECT (t.input_tokens * p.input_usd_per_mtok
+              + coalesce(t.cache_read_tokens, 0) * coalesce(p.cache_read_usd_per_mtok, p.input_usd_per_mtok)
+              + coalesce(try_cast(coalesce(get_json_object(t.attrs_json, '$[''cache_creation_tokens'']'),
+                                           get_json_object(t.attrs_json, '$[''gen_ai.usage.cache_write.input_tokens'']'),
+                                           get_json_object(t.attrs_json, '$[''gen_ai.usage.cache_creation.input_tokens'']'),
+                                           get_json_object(t.attrs_json, '$[''cache_write_token_count'']')) AS BIGINT), 0)
+                * coalesce(p.cache_write_usd_per_mtok, p.input_usd_per_mtok)
+              + coalesce(t.output_tokens, 0) * p.output_usd_per_mtok) / 1e6
+      FROM ${prices} p
+      WHERE p.model_key = t.model)
+    WHERE t.cost_usd IS NULL
+      AND t.input_tokens IS NOT NULL
+      AND t.operation IS DISTINCT FROM 'invoke_agent'
+      AND t.agent_type != 'github_copilot'
+      AND EXISTS (SELECT 1 FROM ${prices} p WHERE p.model_key = t.model);
   END run;
 
   INSERT INTO ${runs_table} (table_name, run_id, started_at, finished_at, newest_upload_at,
