@@ -298,3 +298,26 @@ LEFT JOIN ${prices} p ON p."model_key" = f.model
 -- shared by all three clouds, and a positional mapping could shift values silently.
 SELECT ${select_cols} FROM priced
 WHERE ts IS NOT NULL -- a record with no time and a filename without one is dropped, never given a fabricated time
+;
+-- Reprice rows the INSERT left with a NULL cost (their model had no price when they were loaded).
+-- The inner join to the prices is the price-exists check: a no-op until the mirror has loaded them.
+-- shortcut: cache-write cost is left out (not a stored column; attrs_json would disagree with the INSERT), so repriced rows with cache writes read low; upgrade when agent_events stores cache_write_tokens (a table recreate, RELEASING.md).
+-- shortcut: assumes llm_model_prices.model_key is unique (the INSERT's LEFT JOIN at line 295 assumes it too); if not, max() mixes rows silently; upgrade if the mirror can hold duplicate keys.
+-- Ends without ';': the run block adds it, as it does for the INSERT.
+UPDATE ${target} AS t
+SET "cost_usd" = (t."input_tokens" * p.input_price
+                  + COALESCE(t."cache_read_tokens", 0) * COALESCE(p.cache_read_price, p.input_price)
+                  + COALESCE(t."output_tokens", 0) * p.output_price) / 1e6
+FROM (
+  SELECT "model_key",
+         MAX("input_usd_per_mtok") AS input_price,
+         MAX("cache_read_usd_per_mtok") AS cache_read_price,
+         MAX("output_usd_per_mtok") AS output_price
+  FROM ${prices}
+  GROUP BY "model_key"
+) p
+WHERE p."model_key" = t."model"
+  AND t."cost_usd" IS NULL
+  AND t."input_tokens" IS NOT NULL
+  AND t."operation" IS DISTINCT FROM 'invoke_agent'
+  AND t."agent_type" != 'github_copilot'
