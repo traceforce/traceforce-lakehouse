@@ -2,7 +2,7 @@
 -- Athena runs one statement per query, so this is its own query, run by the state machine after
 -- every agent's ingest (ingest.tf RepriceAgentEvents). Idempotent: a repriced row no longer matches.
 -- Same predicates and formula as the INSERT's priced CTE (ingest_agent_events.sql.tftpl:207-220).
--- shortcut: cache-write cost is left out (not a stored column), so repriced rows with cache writes read low; upgrade when agent_events stores cache_write_tokens (a table recreate, RELEASING.md).
+-- shortcut: cache-write cost is left out (not a stored column; attrs_json would disagree with the INSERT), so repriced rows with cache writes read low; upgrade when agent_events stores cache_write_tokens (a table recreate, RELEASING.md).
 -- shortcut: assumes llm_model_prices.model_key is unique (the INSERT's LEFT JOIN at ingest_agent_events.sql.tftpl:219 assumes it too); max() per column mixes rows silently if not; upgrade if the mirror can hold duplicate keys.
 -- No table alias: Athena's UPDATE takes none, so columns are unqualified. llm_model_prices has none of their names.
 UPDATE ${target}
