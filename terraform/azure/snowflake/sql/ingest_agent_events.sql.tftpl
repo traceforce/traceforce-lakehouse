@@ -303,7 +303,7 @@ WHERE ts IS NOT NULL -- a record with no time and a filename without one is drop
 -- The inner join to the prices is the price-exists check: a no-op until the mirror has loaded them.
 -- shortcut: cache-write cost is left out (not a stored column; attrs_json would disagree with the INSERT), so repriced rows with cache writes read low; upgrade when agent_events stores cache_write_tokens (a table recreate, RELEASING.md).
 -- shortcut: assumes llm_model_prices.model_key is unique (the INSERT's LEFT JOIN at line 295 assumes it too); if not, max() mixes rows silently; upgrade if the mirror can hold duplicate keys.
--- Ends without ';': the run block adds it, as it does for the INSERT.
+-- Ends without ';': the run block adds it (the INSERT above carries its own).
 UPDATE ${target} AS t
 SET "cost_usd" = (t."input_tokens" * p.input_price
                   + COALESCE(t."cache_read_tokens", 0) * COALESCE(p.cache_read_price, p.input_price)
