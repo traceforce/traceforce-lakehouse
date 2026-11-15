@@ -50,6 +50,7 @@ UNIQUE = {
     "user_group_devices": ["(org_id, device_id, user_group_id)"],
     "idp_directory_users": ["(idp_integration_id, external_user_id): the same person appears once per directory; email is not unique"],
     "device_component_versions": ["(org_id, device_id, component, instance_id), NULLs compared as equal"],
+    "enforcement_events": ["(org_id, record_id): one row per hook enforcement; a redelivered upload no-ops"],
 }
 COMMON = {
     "id": "Primary key (uuid as text).",
@@ -342,6 +343,27 @@ TABLES = {
                "request_id": "Id of the check-in that last reported it.",
                "metadata": "JSON text; on scout's row, proxy status {proxy: {certInstalled, pacURL}}; NULL otherwise.",
                "updated_at": "Last check-in that reported this component (UTC)."}),
+    "enforcement_events": dict(
+        purpose="One row per thing TraceForce's hook enforced on a prompt or tool call (block/warn), recorded authoritatively at the decision. Append-only audit ledger, NOT a finding and NOT an incident; it never feeds the incidents pipeline. Use it for enforcement effectiveness ('what did we prevent'), not detection counts. A blocked prompt never produces a sensitive_data_findings row; this is where it is recorded.",
+        joins=["person/session: conversation_external_id = agent_conversations.conversation_external_id (LEFT JOIN on (org_id, device_id, conversation_external_id); the ledger is identity-less and may arrive before the conversation row, so the match can be absent), then agent_conversations.agent_account_id → agent_accounts.agent_email",
+               "device owner (for display): device_id → devices.device_native_id → device_owner_mappings.owner_email",
+               "agent name: agent → agent_catalog.agent_type (the ledger's agent is the AgentIdentity decoded to text, same vocabulary as agent_catalog.agent_type)",
+               "the enforced tool call: tool_use_id = agent_events.tool_call_id (same session) on tool-call surfaces; for prompt surfaces the turn is message_external_id (Claude prompt id / Cursor generation id; absent for Codex/Copilot)"],
+        notes={"conversation_external_id": "The agent's own session id the hook stamped; equals agent_events.session_id and agent_conversations.conversation_external_id. Stored as text, NOT a foreign key: the ledger records the attempt whether or not the conversation row exists yet.",
+               "record_id": "The hook's per-enforcement id; the ledger's dedup key (unique per (org_id, record_id)). A redelivered upload no-ops.",
+               "agent": "Which agent product the enforcement was for (decoded AgentIdentity text, e.g. 'claude_code').",
+               "control": "Which control decided, as text: 'containment' / 'sensitive_data' / 'mcp_access' / 'mcp_tool_permission'.",
+               "surface": "What it applied to, as text: 'tool_call' / 'file_read' / 'prompt' / 'prompt_file'.",
+               "mode": "The policy mode, as text: 'block' or 'warn'.",
+               "action": "What actually happened, as text: 'deny' (block: denied), 'ask' (warn: the agent's own dialog asked), 'deny_once' (warn: withheld until the user re-submitted), 'allowed_after_warn' (warn: re-submitted, so let through). The Prevented view EXCLUDES 'allowed_after_warn' — nothing was prevented there.",
+               "tool_name": "The tool the call used (e.g. 'Bash'); '' for a prompt enforcement.",
+               "tool_use_id": "The agent's tool-call id for a tool enforcement; equals agent_events.tool_call_id. NULL for prompt enforcements and for Cursor (which carries no per-tool-call id).",
+               "message_external_id": "The agent's prompt/turn id for a prompt enforcement (Claude prompt id, Cursor generation id); NULL for Codex/Copilot (no prompt id) and for tool-call enforcements.",
+               "risky_action_subcategory": "The containment risky-action subcategory, as text (same vocabulary as connector_containment_findings.risky_action_subcategory); 'unknown' on sensitive-data rows.",
+               "sensitive_data_category": "The sensitive-data category, as text (same vocabulary as sensitive_data_findings.category, e.g. 'credentials'); 'unknown' on containment rows.",
+               "rule_id": "The detector/rule that fired (sensitive-data only, e.g. a gitleaks rule id or a custom-regex rule id); NULL for containment, which has no discrete rule.",
+               "description": "The sanitized, user-facing reason shown at the block/warn: it starts with the [Traceforce - Blocked] / [Traceforce - Action Required] tag and names the data types or the risky action. Commands are redacted and no secret value is included. NULL on an 'allowed_after_warn' override (nothing was prevented).",
+               "detected_at": "When the hook enforced the attempt (UTC); bound periods on this, not created_at."}),
 }
 
 # ----------------------------------------------------------------------------- agent_events

@@ -42,3 +42,4 @@ One file per table under `tables/`; read only the ones a question needs.
 | `user_group_devices` | Devices in manual user groups | `tables/user_group_devices.md` |
 | `idp_directory_users` | People in your identity provider's directory, as synced to TraceForce | `tables/idp_directory_users.md` |
 | `device_component_versions` | Versions of TraceForce's own components on each device (scout, updater, proxy, browser extensions): one row per component, and per browser profile for extensions | `tables/device_component_versions.md` |
+| `enforcement_events` | One row per thing TraceForce's hook enforced on a prompt or tool call (block/warn), recorded authoritatively at the decision | `tables/enforcement_events.md` |

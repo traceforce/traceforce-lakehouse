@@ -4,6 +4,15 @@ Was an action actually blocked (vs just warned)? Supabase carries no blocked/war
 the findings tables record what was *detected*, and denied attempts are not stored as findings.
 So this outcome is derived from the agent_events logs, per agent, using the literals below.
 
+**Authoritative source (ENG-654): the `enforcement_events` table.** Scout's hook now records what
+it enforced — block/warn × deny/ask/deny_once/allowed_after_warn, per control and surface — as a
+structured, append-only ledger, mirrored to the lakehouse as `enforcement_events` (see
+`tables/enforcement_events.md`). Prefer it for "what did TraceForce prevent": exclude
+`action = 'allowed_after_warn'` (the user overrode the warning) for the Prevented view. It covers
+the hook-enforced agents (Claude Code, ChatGPT Codex, GitHub Copilot CLI, Cursor). The per-agent
+heuristics below remain the fallback for activity that predates the ledger (or a lakehouse where it
+is not yet populated), and for surfaces the hook does not cover — notably the Cowork inline proxy.
+
 > These are agent/collector *behavior* literals, not schema generated from the proto or
 > Terraform, so they can drift when scout or the collector changes. They are verified against
 > scout source; re-verify on a scout/collector upgrade. If scout and the binary processor ever
