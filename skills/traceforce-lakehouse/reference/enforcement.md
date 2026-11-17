@@ -1,8 +1,10 @@
 # Enforcement outcomes
 
-Was an action actually blocked (vs just warned)? Supabase carries no blocked/warned column —
-the findings tables record what was *detected*, and denied attempts are not stored as findings.
-So this outcome is derived from the agent_events logs, per agent, using the literals below.
+Was an action actually blocked (vs just warned)? The findings tables record only what was
+*detected*, and denied attempts are not stored as findings. As of ENG-654 the outcome is
+recorded directly — see the authoritative source below. Historically it had to be reconstructed
+from the agent_events logs per agent using the literals further down; that path is now the
+fallback, not the primary answer.
 
 **Authoritative source (ENG-654): the `enforcement_events` table.** Scout's hook now records what
 it enforced — block/warn × deny/ask/deny_once/allowed_after_warn, per control and surface — as a
@@ -15,9 +17,9 @@ is not yet populated), and for surfaces the hook does not cover — notably the 
 
 > These are agent/collector *behavior* literals, not schema generated from the proto or
 > Terraform, so they can drift when scout or the collector changes. They are verified against
-> scout source; re-verify on a scout/collector upgrade. If scout and the binary processor ever
-> write a structured enforcement outcome into Supabase, mirror that column and prefer it over
-> these heuristics.
+> scout source; re-verify on a scout/collector upgrade. Scout and the binary-processor now DO
+> write a structured enforcement outcome into Supabase (ENG-654: `enforcement_events`); prefer
+> it, and use these heuristics only where it is absent (pre-ledger activity, uncovered surfaces).
 
 `sd_enforcement` and `containment_enforcement` are the policy MODE that was configured
 (warn or block), never the outcome. Whether something was actually blocked lives in the event:
