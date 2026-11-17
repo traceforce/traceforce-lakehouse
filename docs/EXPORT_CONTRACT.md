@@ -59,7 +59,9 @@ element-wise into a JSON text array (e.g. `["remote","local_process"]`). These c
 Decoded columns (`[]` = JSON text array):
 
 - `connector_containment_findings`: `op`, `outcome`, `finding_status`, `risky_action_category`, `risky_action_subcategory`
-- `sensitive_data_findings`: `category`, `type`, `finding_status`
+- `sensitive_data_findings`: `category`, `type`, `finding_status`; a `type` of 100000 or above is an
+  org custom type, exported as `custom_<id>` (e.g. `custom_100001`)
+- `org_sensitive_data_custom_types`: `category`
 - `prompt_injection_findings`: `finding_status`
 - `sandboxes`: `runtime_type`
 - `agent_accounts`: `agent_type`, `plan`
@@ -105,6 +107,8 @@ left as is. A listed column is re-encoded as compact JSON with sorted keys.
 These have no TraceForce database column; the producer computes them from another column of the
 same row:
 
+- `org_sensitive_data_custom_types.type`: `custom_<id>` from `sensitive_data_type`, the same value
+  `sensitive_data_findings.type` carries for that type. `pattern` and `created_by` are never exported.
 - `issue_types.criticality`: `trigger_score` in the console's risk bands, `low` below 40, `medium`
   below 60, `high` below 80, else `critical`.
 - `issue_detail` on `sensitive_data_findings` (from `category`), `connector_containment_findings`
@@ -123,7 +127,7 @@ mismatch fails the run for that table and is reported to TraceForce; the previou
 |---|---|
 | Identity | devices, sandboxes, agent_accounts, agent_instances, agent_instances_accounts, device_owner_mappings, device_component_versions |
 | Agents | agent_catalog (global), agents, llm_model_prices (global) |
-| Findings + bridge to logs | sensitive_data_findings, connector_containment_findings, prompt_injection_findings, agent_conversations, agent_conversation_files |
+| Findings + bridge to logs | sensitive_data_findings, org_sensitive_data_custom_types, connector_containment_findings, prompt_injection_findings, agent_conversations, agent_conversation_files |
 | MCP | mcp_server_instances, mcp_server_agent_instances, mcp_servers, mcp_catalog (global), org_mcp_catalog, mcp_categories (global) |
 | Issues | agent_issues, mcp_server_issues, issue_type_controls, issue_types (global) |
 | User groups + IdP | user_groups, user_group_members, user_group_devices, idp_directory_users |

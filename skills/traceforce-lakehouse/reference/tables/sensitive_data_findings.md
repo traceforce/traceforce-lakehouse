@@ -7,6 +7,7 @@ Joins:
 - device owner (secondary, for display): device_id → devices.device_native_id → device_owner_mappings.owner_email
 - conversation_id → agent_conversations.id → conversation_external_id = agent_events.session_id
 - file_id → agent_conversation_files.id (file name, type, size)
+- type = org_sensitive_data_custom_types.type for an org custom type (its name and category); LEFT JOIN, built-in types have no row
 
 Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 - (org_id, conversation_id, message_external_id, file_id, part_index, start_offset, end_offset, start_line, end_line, rule_id): one row per match location
@@ -22,13 +23,13 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `message_external_id` | string | The agent's own id of the source message (Claude prompt/response id, Cursor generation id). |
 | `message_timestamp` | timestamp | When the message was sent (UTC): the column to bound a period on; created_at is when TraceForce recorded it. |
 | `category` | string | Coarse sensitive-data class as text (e.g. 'credentials'); never NULL, 'unknown' when the rule mapped no class. |
-| `type` | string | Specific sensitive-data type as text (e.g. 'ssn', 'email_address'); never NULL, 'unknown' when the rule mapped no type. |
+| `type` | string | Specific sensitive-data type as text (e.g. 'ssn', 'email_address'); never NULL, 'unknown' when the rule mapped no type. 'custom_<id>' for an org-defined custom type; join org_sensitive_data_custom_types on type for its name and category. |
 | `start_offset` | long | Character offset of the match start from the start of start_line. |
 | `end_offset` | long | Character offset of the match end (exclusive) from the start of end_line; may be < start_offset when end_line > start_line. |
 | `start_line` | long | 0-indexed first line of the match within the scanned text (message or attachment). |
 | `end_line` | long | 0-indexed last line (inclusive). |
 | `part_index` | int | Index of the message part the match is in. |
-| `rule_id` | string | Detector rule that fired. |
+| `rule_id` | string | Detector rule that fired; 'custom-<id>' for an org custom type. |
 | `encoding_type` | string | Set when the value was encoded (e.g. base64) and decoded before matching. |
 | `archive_inner_path` | string | Path inside a zip/tar when the finding is in an archive entry. |
 | `finding_status` | string | Reviewer triage state (text: awaiting_review, under_review, false_positive, revoked, used_in_tests, wont_fix, acknowledged, unknown). Open, as the API counts it, is finding_status IN ('awaiting_review', 'under_review'). Not the enforcement outcome: see reference/enforcement.md (a blocked prompt never produces a finding row). |
