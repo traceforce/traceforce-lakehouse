@@ -708,6 +708,7 @@
       "tool_name:string",
       "tool_use_id:string",
       "message_external_id:string",
+      "correlation_id:string",
       "risky_action_subcategory:string",
       "sensitive_data_category:string",
       "rule_id:string",

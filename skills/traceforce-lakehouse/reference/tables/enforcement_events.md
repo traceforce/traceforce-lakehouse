@@ -10,6 +10,7 @@ Joins:
 
 Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 - (org_id, record_id): one row per hook enforcement; a redelivered upload no-ops
+- (org_id, correlation_id) WHERE action = 4: one allowed_after_warn override per operation (repeats within the deny-once TTL collapse)
 
 | column | type | meaning |
 |---|---|---|
@@ -27,6 +28,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `tool_name` | string | The tool the call used (e.g. 'Bash'); '' for a prompt enforcement. |
 | `tool_use_id` | string | The agent's tool-call id for a tool enforcement; equals agent_events.tool_call_id. NULL for prompt enforcements and for Cursor (which carries no per-tool-call id). |
 | `message_external_id` | string | The agent's prompt/turn id for a prompt enforcement (Claude prompt id, Cursor generation id); NULL for Codex/Copilot (no prompt id) and for tool-call enforcements. |
+| `correlation_id` | string | Stable per-operation key (the deny-once op hash) the hook stamps on every record for the same operation. Identical on a deny_once and the allowed_after_warn that overrode it, so Prevented counts a deny_once ONLY when no allowed_after_warn shares its (org_id, correlation_id). Content-based, so it works for Cursor. NULL when the hook input had no hashable operation. |
 | `risky_action_subcategory` | string | The containment risky-action subcategory, as text (same vocabulary as connector_containment_findings.risky_action_subcategory); 'unknown' on sensitive-data rows. |
 | `sensitive_data_category` | string | The sensitive-data category, as text (same vocabulary as sensitive_data_findings.category, e.g. 'credentials'); 'unknown' on containment rows. |
 | `rule_id` | string | The detector/rule that fired (sensitive-data only, e.g. a gitleaks rule id or a custom-regex rule id); NULL for containment, which has no discrete rule. |
