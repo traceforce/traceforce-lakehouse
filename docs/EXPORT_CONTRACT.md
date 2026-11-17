@@ -108,7 +108,7 @@ These have no TraceForce database column; the producer computes them from anothe
 same row:
 
 - `org_sensitive_data_custom_types.type`: `custom_<id>` from `sensitive_data_type`, the same value
-  `sensitive_data_findings.type` carries for that type. `pattern` and `created_by` are never exported.
+  `sensitive_data_findings.type` carries for that type.
 - `issue_types.criticality`: `trigger_score` in the console's risk bands, `low` below 40, `medium`
   below 60, `high` below 80, else `critical`.
 - `issue_detail` on `sensitive_data_findings` (from `category`), `connector_containment_findings`
