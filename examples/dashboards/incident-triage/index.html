@@ -151,7 +151,9 @@
 
   const LABELS = { api_key: "API key", ssn: "SSN", credit_card: "Credit card", email_address: "Email address",
     database_connection_string: "Database connection string", private_key: "Private key", prompt_injection: "Prompt injection" };
-  const typeLabel = t => LABELS[t] || (t || "unknown").replace(/_/g, " ").replace(/^./, c => c.toUpperCase());
+  // A custom type's admin-given name; an unnamed one (deleted, or a lake without names) stays raw.
+  const typeLabel = t => DATA.type_names?.[t] ?? LABELS[t]
+    ?? (/^custom_\d+$/.test(t) ? t : (t || "unknown").replace(/_/g, " ").replace(/^./, c => c.toUpperCase()));
   const OPEN = new Set(["awaiting_review", "under_review"]);
   const statusLabel = s => (s || "unknown").replace(/_/g, " ");
   const agentLabel = a => (a ? agentName(a) : "Unknown agent");
@@ -186,8 +188,8 @@
   }
   function summary(fs) {
     const c = new Map();
-    for (const f of fs) c.set(f.type, (c.get(f.type) || 0) + 1);
-    return [...c].sort((a, b) => b[1] - a[1]).map(([t, n]) => `${typeLabel(t)}${n > 1 ? " ×" + n : ""}`).join(" · ");
+    for (const f of fs) { const t = typeLabel(f.type); c.set(t, (c.get(t) || 0) + 1); }
+    return [...c].sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t}${n > 1 ? " ×" + n : ""}`).join(" · ");
   }
 
   // ---------- render ----------
@@ -233,17 +235,17 @@
     // Top types
     const types = new Map();
     for (const f of findings) {
-      const o = types.get(f.type) || { n: 0, kind: f.kind, sev: 3 };
+      const t = typeLabel(f.type), o = types.get(t) || { n: 0, kind: f.kind, sev: 3 };
       o.n++; o.sev = Math.min(o.sev, f.sev);
-      types.set(f.type, o);
+      types.set(t, o);
     }
     const typeRows = [...types].sort((a, b) => b[1].n - a[1].n);
     hBars($("types-chart"), typeRows.slice(0, 8).map(([t, o]) => ({
-      label: typeLabel(t), value: o.n, display: compact(o.n),
+      label: t, value: o.n, display: compact(o.n),
       tip: [{ value: numExact(o.n), label: "findings" }, { value: KINDS[o.kind].name, label: "" }, { value: SEV[o.sev].label, label: "at most" }],
     })), "No findings in this selection");
     table($("types-table"), ["Type", "Kind", "Findings", "Severity (at most)"],
-      typeRows.map(([t, o]) => [typeLabel(t), KINDS[o.kind].name, numExact(o.n), SEV[o.sev].label]), [1, 3]);
+      typeRows.map(([t, o]) => [t, KINDS[o.kind].name, numExact(o.n), SEV[o.sev].label]), [1, 3]);
 
     // People
     const people = new Map();
