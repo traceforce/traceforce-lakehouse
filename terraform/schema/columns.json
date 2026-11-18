@@ -700,7 +700,7 @@
       "sandbox_id:string",
       "conversation_external_id:string",
       "record_id:string",
-      "agent:string",
+      "agent_type:string",
       "control:string",
       "surface:string",
       "mode:string",

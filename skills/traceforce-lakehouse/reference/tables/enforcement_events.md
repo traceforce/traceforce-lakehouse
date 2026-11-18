@@ -5,7 +5,7 @@ One row per thing TraceForce's hook enforced on a prompt or tool call (block/war
 Joins:
 - person/session (identity enrichment, may be unresolved): the ledger is identity-less, so LEFT JOIN agent_conversations on (org_id, device_id, conversation_external_id) — but resolve identity ONLY when exactly one row matches. The same conversation_external_id can exist under two agent_account_id on a device (agent_conversations is unique on (org_id, agent_account_id, conversation_external_id)), so match via a scalar/aggregated subquery (or a GROUP BY that keeps one enforcement row) to avoid fanning out and double-counting enforcement, and leave the person NULL when >1 candidate matches or the conversation row is absent. Then agent_conversations.agent_account_id → agent_accounts.agent_email
 - device owner (for display): device_id → devices.device_native_id → device_owner_mappings.owner_email
-- agent name: agent → agent_catalog.agent_type (the ledger's agent is the AgentIdentity decoded to text, same vocabulary as agent_catalog.agent_type)
+- agent name: agent_type → agent_catalog.agent_type (the ledger's agent_type is the AgentIdentity decoded to text, same vocabulary as agent_catalog.agent_type)
 - the enforced tool call: tool_use_id = agent_events.tool_call_id (same session) on tool-call surfaces; for prompt surfaces the turn is message_external_id (Claude prompt id / Cursor generation id; absent for Codex/Copilot)
 
 Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
@@ -20,7 +20,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `sandbox_id` | string | → sandboxes.id; NULL when the row is about the host device itself. |
 | `conversation_external_id` | string | The agent's own session id the hook stamped; equals agent_events.session_id and agent_conversations.conversation_external_id. Stored as text, NOT a foreign key: the ledger records the attempt whether or not the conversation row exists yet. |
 | `record_id` | string | The hook's per-enforcement id; the ledger's dedup key (unique per (org_id, record_id)). A redelivered upload no-ops. |
-| `agent` | string | Which agent product the enforcement was for (decoded AgentIdentity text, e.g. 'claude_code'). |
+| `agent_type` | string | Which agent product the enforcement was for (decoded AgentIdentity text, e.g. 'claude_code'). |
 | `control` | string | Which control decided, as text: 'containment' / 'sensitive_data' / 'mcp_access' / 'mcp_tool_permission'. |
 | `surface` | string | What it applied to, as text: 'tool_call' / 'file_read' / 'prompt' / 'prompt_file'. |
 | `mode` | string | The policy mode, as text: 'block' or 'warn'. |
