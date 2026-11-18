@@ -125,6 +125,11 @@ function parseCsv(text) {
   })));
 }
 
+// A table or column the dashboards read that the lake lacks: its Terraform module predates them.
+const MISSING_SCHEMA = /TABLE_NOT_FOUND|COLUMN_NOT_FOUND|Table .* does not exist|Not found: Table|Unrecognized name|TABLE_OR_VIEW_NOT_FOUND|UNRESOLVED_COLUMN/;
+const UPGRADE_MODULE = "Your lakehouse is on an older TraceForce module than these dashboards. " +
+  "Update the module's ?ref= to the latest release and run terraform apply.";
+
 // One query on one lake through its script, resolving to its rows. With several lakes, the label names the cloud.
 function query(cloud, label, sql) {
   const tag = CLOUDS.length > 1 ? `${label} (${cloud})` : label;
@@ -138,6 +143,7 @@ function query(cloud, label, sql) {
       for (const line of stderr.split("\n").filter(Boolean)) console.error(`  ${tag}: ${line}`);
       if (err) {
         const last = stderr.trim().split("\n").pop() || err.message;
+        if (MISSING_SCHEMA.test(stderr)) return reject(new QueryFailed(UPGRADE_MODULE));
         return reject(new QueryFailed(`${tag} failed: ${last}`));
       }
       resolve(parseCsv(stdout));
