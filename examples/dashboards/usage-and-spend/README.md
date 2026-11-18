@@ -36,9 +36,10 @@ Prompt text leaves the lake only for the session you open.
   sessions (start time, agent, duration, models, prompts, tool calls, tokens and cost; sortable,
   newest first) and their top tools. MCP tools show as `server/tool`.
 - **Prompts in a session**: click a session to expand its prompts. Each card shows the time, duration,
-  model, tool calls, tokens and cost, then the prompt and the agent's final response. The text is
-  as TraceForce stored it: values your redaction policy matched show as `****`. Prompts are cut at
-  4,000 characters and responses at 2,000.
+  model, tool calls per tool (for example `Grep ×2, PowerShell ×3`), tokens and cost, then the prompt
+  and the agent's responses in the turn, joined in time order. The text is as TraceForce stored it:
+  values your redaction policy matched show as `****`. Prompts are cut at 4,000 characters and the
+  joined responses at 2,000.
 - **Unattributed activity by device**: each device serial behind the *Unattributed* bucket, with
   its name, MDM status and the agent accounts signed in on it. When there's exactly one account,
   it's flagged as the likely owner (a hint, not proof). Click a device for its sessions. The fix
