@@ -29,13 +29,14 @@ txt AS (
     END AS prompt_text,
     CASE WHEN content_output IS NOT NULL
           AND (event_name IN ('assistant_response', 'afterAgentResponse', 'agent_response') OR (signal = 'span' AND operation = 'chat'))
-      THEN coalesce(
+      THEN CASE WHEN SAFE.PARSE_JSON(content_output) IS NULL THEN content_output  -- unparseable: shown raw
+        ELSE
         -- Text of every assistant message in the JSON message array.
         (SELECT STRING_AGG(coalesce(JSON_VALUE(p, '$.content'), ''), '\n' ORDER BY i, o)
          FROM UNNEST(JSON_QUERY_ARRAY(SAFE.PARSE_JSON(content_output))) x WITH OFFSET i,
               UNNEST(JSON_QUERY_ARRAY(x, '$.parts')) p WITH OFFSET o
-         WHERE JSON_VALUE(x, '$.role') = 'assistant'),
-        content_output)
+         WHERE JSON_VALUE(x, '$.role') = 'assistant')
+        END
     END AS response_text
   FROM ev
 ),
@@ -58,7 +59,7 @@ per_turn AS (
     FORMAT_TIMESTAMP('%F %H:%M:%E6S', turn_ts) AS ts,
     FORMAT_TIMESTAMP('%F %H:%M:%E6S', max(ts)) AS ended_at,
     substr(max(CASE WHEN is_start AND ts = turn_ts THEN prompt_text END), 1, 4000) AS prompt,
-    substr(STRING_AGG(response_text, '\n' ORDER BY ts, response_text), 1, 2000) AS response,
+    substr(STRING_AGG(NULLIF(response_text, ''), '\n' ORDER BY ts, response_text), 1, 2000) AS response,
     STRING_AGG(DISTINCT billed_model, ', ' ORDER BY billed_model) AS models,
     count(DISTINCT CASE WHEN operation = 'execute_tool' THEN tool_call_id END)
       + COUNTIF(operation = 'execute_tool' AND tool_call_id IS NULL AND signal = 'span') AS tool_calls,
@@ -74,17 +75,33 @@ per_turn AS (
   WHERE turn_ts IS NOT NULL
   GROUP BY agent, person, session_id, turn_ts
 ),
-tool_counts AS (
-  SELECT agent, person, session_id, turn_ts,
-    CASE WHEN mcp_server_name IS NOT NULL THEN mcp_server_name || '/' || coalesce(tool_name, '?') ELSE coalesce(tool_name, 'unknown') END AS tool,
-    count(DISTINCT tool_call_id) + COUNTIF(tool_call_id IS NULL AND signal = 'span') AS n
+calls AS (
+  -- A call's rows share the id; decision/result rows say 'mcp_tool', so keep the most specific name.
+  SELECT agent, person, session_id, turn_ts, tool_call_id,
+    coalesce(max(CASE WHEN tool_name <> 'mcp_tool' THEN tool_name END), max(tool_name)) AS tool_name,
+    max(mcp_server_name) AS mcp_server_name
   FROM turns
-  WHERE turn_ts IS NOT NULL AND operation = 'execute_tool'
+  WHERE turn_ts IS NOT NULL AND operation = 'execute_tool' AND tool_call_id IS NOT NULL
+  GROUP BY agent, person, session_id, turn_ts, tool_call_id
+),
+tool_counts AS (
+  SELECT agent, person, session_id, turn_ts, tool, count(*) AS n
+  FROM (
+    SELECT agent, person, session_id, turn_ts,
+      CASE WHEN mcp_server_name IS NOT NULL THEN mcp_server_name || '/' || coalesce(tool_name, '?') ELSE coalesce(tool_name, 'unknown') END AS tool
+    FROM calls
+    UNION ALL
+    -- A span with no call id (Copilot) is one call by itself.
+    SELECT agent, person, session_id, turn_ts,
+      CASE WHEN mcp_server_name IS NOT NULL THEN mcp_server_name || '/' || coalesce(tool_name, '?') ELSE coalesce(tool_name, 'unknown') END AS tool
+    FROM turns
+    WHERE turn_ts IS NOT NULL AND operation = 'execute_tool' AND tool_call_id IS NULL AND signal = 'span'
+  ) by_tool
   GROUP BY agent, person, session_id, turn_ts, tool
 ),
 tools_text AS (
   SELECT agent, person, session_id, turn_ts,
-    STRING_AGG(CONCAT(tool, ' ×', CAST(n AS STRING)), ', ' ORDER BY tool) AS tools
+    STRING_AGG(CONCAT(tool, ' ×', CAST(n AS STRING)), ', ' ORDER BY CONCAT(tool, ' ×', CAST(n AS STRING))) AS tools
   FROM tool_counts
   GROUP BY agent, person, session_id, turn_ts
 )

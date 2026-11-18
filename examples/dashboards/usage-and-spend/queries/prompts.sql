@@ -59,7 +59,7 @@ per_turn AS (
     cast(turn_ts AS varchar) AS ts,
     cast(max(ts) AS varchar) AS ended_at,
     substr(max(CASE WHEN is_start AND ts = turn_ts THEN prompt_text END), 1, 4000) AS prompt,
-    substr(array_join(array_agg(response_text ORDER BY ts) FILTER (WHERE response_text IS NOT NULL), chr(10)), 1, 2000) AS response,
+    nullif(substr(array_join(array_agg(response_text ORDER BY ts, response_text) FILTER (WHERE response_text <> ''), chr(10)), 1, 2000), '') AS response,
     array_join(array_sort(array_distinct(array_agg(
       CASE WHEN (input_tokens IS NOT NULL OR cost_usd IS NOT NULL) AND operation IS DISTINCT FROM 'invoke_agent' THEN model END))), ', ') AS models,
     count(DISTINCT CASE WHEN operation = 'execute_tool' THEN tool_call_id END)
@@ -71,15 +71,28 @@ per_turn AS (
   WHERE turn_ts IS NOT NULL
   GROUP BY agent, person, session_id, turn_ts
 ),
+calls AS (
+  -- A call's rows share the id; decision/result rows say 'mcp_tool', so keep the most specific name.
+  SELECT agent, person, session_id, turn_ts, tool_call_id,
+    coalesce(max(CASE WHEN tool_name <> 'mcp_tool' THEN tool_name END), max(tool_name)) AS tool_name,
+    max(mcp_server_name) AS mcp_server_name
+  FROM turns
+  WHERE turn_ts IS NOT NULL AND operation = 'execute_tool' AND tool_call_id IS NOT NULL
+  GROUP BY agent, person, session_id, turn_ts, tool_call_id
+),
 tool_counts AS (
-  SELECT agent, person, session_id, turn_ts, tool,
-    count(DISTINCT tool_call_id) + count_if(tool_call_id IS NULL AND signal = 'span') AS n
+  SELECT agent, person, session_id, turn_ts, tool, count(*) AS n
   FROM (
-    SELECT turns.*,
+    SELECT agent, person, session_id, turn_ts,
+      CASE WHEN mcp_server_name IS NOT NULL THEN mcp_server_name || '/' || coalesce(tool_name, '?') ELSE coalesce(tool_name, 'unknown') END AS tool
+    FROM calls
+    UNION ALL
+    -- A span with no call id (Copilot) is one call by itself.
+    SELECT agent, person, session_id, turn_ts,
       CASE WHEN mcp_server_name IS NOT NULL THEN mcp_server_name || '/' || coalesce(tool_name, '?') ELSE coalesce(tool_name, 'unknown') END AS tool
     FROM turns
-    WHERE turn_ts IS NOT NULL AND operation = 'execute_tool'
-  ) calls
+    WHERE turn_ts IS NOT NULL AND operation = 'execute_tool' AND tool_call_id IS NULL AND signal = 'span'
+  ) by_tool
   GROUP BY agent, person, session_id, turn_ts, tool
 ),
 tools_text AS (

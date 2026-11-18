@@ -64,28 +64,46 @@ turns AS (
 ),
 per_turn AS (
   SELECT
-  agent, person, session_id, turn_ts,
-  CAST(turn_ts AS STRING) AS ts,
-  CAST(max(ts) AS STRING) AS ended_at,
-  substr(max(CASE WHEN is_start AND ts = turn_ts THEN prompt_text END), 1, 4000) AS prompt,
-  substr(array_join(transform(array_sort(collect_list(CASE WHEN response_text IS NOT NULL THEN named_struct('t', ts, 'r', response_text) END)), x -> x.r), char(10)), 1, 2000) AS response,
-  array_join(array_sort(array_distinct(collect_list(
-    CASE WHEN (input_tokens IS NOT NULL OR cost_usd IS NOT NULL) AND operation IS DISTINCT FROM 'invoke_agent' THEN model END))), ', ') AS models,
-  count(DISTINCT CASE WHEN operation = 'execute_tool' THEN tool_call_id END)
-    + count_if(operation = 'execute_tool' AND tool_call_id IS NULL AND signal = 'span') AS tool_calls,
-  sum(CASE WHEN operation IS DISTINCT FROM 'invoke_agent' THEN input_tokens END) AS input_tokens,
-  sum(CASE WHEN operation IS DISTINCT FROM 'invoke_agent' THEN output_tokens END) AS output_tokens,
-  sum(cost_usd) AS cost_usd
-FROM turns
-WHERE turn_ts IS NOT NULL
-GROUP BY agent, person, session_id, turn_ts
+    agent, person, session_id, turn_ts,
+    CAST(turn_ts AS STRING) AS ts,
+    CAST(max(ts) AS STRING) AS ended_at,
+    substr(max(CASE WHEN is_start AND ts = turn_ts THEN prompt_text END), 1, 4000) AS prompt,
+    nullif(substr(array_join(transform(
+      array_sort(collect_list(CASE WHEN response_text <> '' THEN named_struct('t', ts, 'r', response_text) END)),
+      x -> x.r), char(10)), 1, 2000), '') AS response,
+    array_join(array_sort(array_distinct(collect_list(
+      CASE WHEN (input_tokens IS NOT NULL OR cost_usd IS NOT NULL) AND operation IS DISTINCT FROM 'invoke_agent' THEN model END))), ', ') AS models,
+    count(DISTINCT CASE WHEN operation = 'execute_tool' THEN tool_call_id END)
+      + count_if(operation = 'execute_tool' AND tool_call_id IS NULL AND signal = 'span') AS tool_calls,
+    sum(CASE WHEN operation IS DISTINCT FROM 'invoke_agent' THEN input_tokens END) AS input_tokens,
+    sum(CASE WHEN operation IS DISTINCT FROM 'invoke_agent' THEN output_tokens END) AS output_tokens,
+    sum(cost_usd) AS cost_usd
+  FROM turns
+  WHERE turn_ts IS NOT NULL
+  GROUP BY agent, person, session_id, turn_ts
+),
+calls AS (
+  -- A call's rows share the id; decision/result rows say 'mcp_tool', so keep the most specific name.
+  SELECT agent, person, session_id, turn_ts, tool_call_id,
+    coalesce(max(CASE WHEN tool_name <> 'mcp_tool' THEN tool_name END), max(tool_name)) AS tool_name,
+    max(mcp_server_name) AS mcp_server_name
+  FROM turns
+  WHERE turn_ts IS NOT NULL AND operation = 'execute_tool' AND tool_call_id IS NOT NULL
+  GROUP BY agent, person, session_id, turn_ts, tool_call_id
 ),
 tool_counts AS (
-  SELECT agent, person, session_id, turn_ts,
-    CASE WHEN mcp_server_name IS NOT NULL THEN mcp_server_name || '/' || coalesce(tool_name, '?') ELSE coalesce(tool_name, 'unknown') END AS tool,
-    count(DISTINCT tool_call_id) + count_if(tool_call_id IS NULL AND signal = 'span') AS n
-  FROM turns
-  WHERE turn_ts IS NOT NULL AND operation = 'execute_tool'
+  SELECT agent, person, session_id, turn_ts, tool, count(*) AS n
+  FROM (
+    SELECT agent, person, session_id, turn_ts,
+      CASE WHEN mcp_server_name IS NOT NULL THEN mcp_server_name || '/' || coalesce(tool_name, '?') ELSE coalesce(tool_name, 'unknown') END AS tool
+    FROM calls
+    UNION ALL
+    -- A span with no call id (Copilot) is one call by itself.
+    SELECT agent, person, session_id, turn_ts,
+      CASE WHEN mcp_server_name IS NOT NULL THEN mcp_server_name || '/' || coalesce(tool_name, '?') ELSE coalesce(tool_name, 'unknown') END AS tool
+    FROM turns
+    WHERE turn_ts IS NOT NULL AND operation = 'execute_tool' AND tool_call_id IS NULL AND signal = 'span'
+  ) by_tool
   GROUP BY agent, person, session_id, turn_ts, tool
 ),
 tools_text AS (

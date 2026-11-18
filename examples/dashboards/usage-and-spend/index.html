@@ -425,6 +425,7 @@
       if (dur >= 60000) meta.append(el("span", null, fmtDuration(dur)));
       if (t.models) meta.append(el("span", null, t.models));
       if (t.tool_calls) meta.append(el("span", null, `${numExact(t.tool_calls)} tool call${t.tool_calls === 1 ? "" : "s"}`));
+      if (t.tools) meta.append(el("span", null, t.tools));
       if (t.input_tokens != null || t.output_tokens != null) meta.append(el("span", null, `${num((t.input_tokens || 0) + (t.output_tokens || 0))} tokens`));
       if (t.cost_usd != null) meta.append(el("span", null, usd(t.cost_usd, true)));
       card.append(meta);
