@@ -19,13 +19,10 @@ const firstPer = (rows, key) => [...new Map(rows.map(r => [key(r), r]).reverse()
 
 export const routes = {
   // Every finding and block of the last 90 days; the page groups and filters them.
-  async overview(_, { run, runAll }) {
-    // Names are optional: a lake without the table (older module) leaves custom types unnamed.
-    const [r, names] = await Promise.all([runAll({ findings: ["findings"], blocks: ["blocks"], freshness: ["freshness"] }),
-      run("type_names").catch(() => [])]);
+  async overview(_, { runAll }) {
+    const r = await runAll({ findings: ["findings"], blocks: ["blocks"], freshness: ["freshness"] });
     const findings = firstPer(r.findings, f => `${f.kind}|${f.id}`).sort((a, b) => (a.at > b.at) - (a.at < b.at));
-    return { findings, blocks: r.blocks, type_names: Object.fromEntries(names.reverse().map(n => [n.type, n.name])),
-      findings_through: latest(r.freshness, "findings_through"),
+    return { findings, blocks: r.blocks, findings_through: latest(r.freshness, "findings_through"),
       events_through: latest(r.freshness, "events_through"), generated_at: new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC" };
   },
   // What happened in one session around its findings.

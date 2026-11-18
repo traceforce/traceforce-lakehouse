@@ -13,7 +13,7 @@ sample data and labels it as such.
 
 | when | endpoint | queries |
 |---|---|---|
-| the page loads | `api/overview` | `findings`, `blocks`, `freshness`, `type_names`, in parallel |
+| the page loads | `api/overview` | `findings`, `blocks`, `freshness`, in parallel |
 | you open an incident | `api/timeline` | `timeline` for that session, 30 minutes either side of its findings |
 
 ## What it shows
@@ -62,7 +62,6 @@ badge); a finding with no issue type ranks low. An incident takes its most sever
 | `blocks.sql` | one row per blocked action, last 90 days | blocks |
 | `timeline.sql` | prompts, tool calls and flagged replies in one session and time window | an incident |
 | `freshness.sql` | one row | the header |
-| `type_names.sql` | one row per custom sensitive-data type | type names (a custom type without one shows its `custom_<id>` value) |
 
 `timeline.sql` has `{{session_id}}`, `{{person}}`, `{{since}}` and `{{until}}` placeholders that
 `../serve.mjs` fills in. To run it by hand, replace them with literals.
