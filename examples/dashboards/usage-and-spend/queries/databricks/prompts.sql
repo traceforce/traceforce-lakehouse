@@ -10,7 +10,7 @@ WITH ev AS (
   SELECT
     lower(replace(e.agent, 'AGENT_IDENTITY_', '')) AS agent,
     coalesce(lower(e.user_email), lower(m.owner_email)) AS person,
-    e.session_id, e.ts, e.event_name, e.signal, e.operation, e.model, e.tool_call_id,
+    e.session_id, e.ts, e.event_name, e.signal, e.operation, e.model, e.tool_call_id, e.tool_name, e.mcp_server_name,
     e.input_tokens, e.output_tokens, e.cost_usd, e.content_input, e.content_output
   FROM traceforce_lakehouse.traceforce.agent_events e
   LEFT JOIN traceforce_lakehouse.traceforce.device_owner_mappings m ON m.device_native_id = e.device_native_id
@@ -61,13 +61,14 @@ turns AS (
     max(CASE WHEN is_start THEN ts END) OVER (PARTITION BY agent, person, session_id ORDER BY ts
       ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS turn_ts
   FROM starts
-)
-SELECT
-  agent, person, session_id,
+),
+per_turn AS (
+  SELECT
+  agent, person, session_id, turn_ts,
   CAST(turn_ts AS STRING) AS ts,
   CAST(max(ts) AS STRING) AS ended_at,
   substr(max(CASE WHEN is_start AND ts = turn_ts THEN prompt_text END), 1, 4000) AS prompt,
-  substr(max_by(response_text, CASE WHEN response_text IS NOT NULL THEN ts END), 1, 2000) AS response,
+  substr(array_join(transform(array_sort(collect_list(CASE WHEN response_text IS NOT NULL THEN named_struct('t', ts, 'r', response_text) END)), x -> x.r), char(10)), 1, 2000) AS response,
   array_join(array_sort(array_distinct(collect_list(
     CASE WHEN (input_tokens IS NOT NULL OR cost_usd IS NOT NULL) AND operation IS DISTINCT FROM 'invoke_agent' THEN model END))), ', ') AS models,
   count(DISTINCT CASE WHEN operation = 'execute_tool' THEN tool_call_id END)
@@ -78,4 +79,24 @@ SELECT
 FROM turns
 WHERE turn_ts IS NOT NULL
 GROUP BY agent, person, session_id, turn_ts
-ORDER BY session_id, ts
+),
+tool_counts AS (
+  SELECT agent, person, session_id, turn_ts,
+    CASE WHEN mcp_server_name IS NOT NULL THEN mcp_server_name || '/' || coalesce(tool_name, '?') ELSE coalesce(tool_name, 'unknown') END AS tool,
+    count(DISTINCT tool_call_id) + count_if(tool_call_id IS NULL AND signal = 'span') AS n
+  FROM turns
+  WHERE turn_ts IS NOT NULL AND operation = 'execute_tool'
+  GROUP BY agent, person, session_id, turn_ts, tool
+),
+tools_text AS (
+  SELECT agent, person, session_id, turn_ts,
+    concat_ws(', ', array_sort(collect_list(concat(tool, ' ×', CAST(n AS STRING))))) AS tools
+  FROM tool_counts
+  GROUP BY agent, person, session_id, turn_ts
+)
+SELECT p.agent, p.person, p.session_id, p.ts, p.ended_at, p.prompt, p.response, p.models, p.tool_calls,
+  p.input_tokens, p.output_tokens, p.cost_usd, coalesce(t.tools, '') AS tools
+FROM per_turn p
+LEFT JOIN tools_text t
+  ON t.agent <=> p.agent AND t.person <=> p.person AND t.session_id = p.session_id AND t.turn_ts = p.turn_ts
+ORDER BY p.session_id, p.ts

@@ -6,7 +6,7 @@ WITH ev AS (
     lower(replace(e.agent, 'AGENT_IDENTITY_', '')) AS agent,
     coalesce(lower(e.user_email), lower(m.owner_email)) AS person,
     e.session_id, e.ts, e.event_name, e.signal, e.operation, e.model, e.tool_call_id,
-    e.input_tokens, e.output_tokens, e.cost_usd, e.content_input, e.content_output
+    e.tool_name, e.mcp_server_name, e.input_tokens, e.output_tokens, e.cost_usd, e.content_input, e.content_output
   FROM traceforce_lakehouse.agent_events e
   LEFT JOIN traceforce_lakehouse.device_owner_mappings m ON m.device_native_id = e.device_native_id
   WHERE e.ts >= {{since}} AND e.session_id = {{session_id}}
@@ -51,25 +51,47 @@ turns AS (
     max(CASE WHEN is_start THEN ts END) OVER (PARTITION BY agent, person, session_id ORDER BY ts
       ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS turn_ts
   FROM starts
-)
-SELECT
-  agent, person, session_id,
-  FORMAT_TIMESTAMP('%F %H:%M:%E6S', turn_ts) AS ts,
-  FORMAT_TIMESTAMP('%F %H:%M:%E6S', max(ts)) AS ended_at,
-  substr(max(CASE WHEN is_start AND ts = turn_ts THEN prompt_text END), 1, 4000) AS prompt,
-  substr(ARRAY_AGG(response_text IGNORE NULLS ORDER BY ts DESC LIMIT 1)[SAFE_OFFSET(0)], 1, 2000) AS response,
-  STRING_AGG(DISTINCT billed_model, ', ' ORDER BY billed_model) AS models,
-  count(DISTINCT CASE WHEN operation = 'execute_tool' THEN tool_call_id END)
-    + COUNTIF(operation = 'execute_tool' AND tool_call_id IS NULL AND signal = 'span') AS tool_calls,
-  sum(CASE WHEN operation IS DISTINCT FROM 'invoke_agent' THEN input_tokens END) AS input_tokens,
-  sum(CASE WHEN operation IS DISTINCT FROM 'invoke_agent' THEN output_tokens END) AS output_tokens,
-  sum(cost_usd) AS cost_usd
-FROM (
-  SELECT turns.*,
-    CASE WHEN (input_tokens IS NOT NULL OR cost_usd IS NOT NULL) AND operation IS DISTINCT FROM 'invoke_agent'
-      THEN model END AS billed_model
+),
+per_turn AS (
+  SELECT
+    agent, person, session_id, turn_ts,
+    FORMAT_TIMESTAMP('%F %H:%M:%E6S', turn_ts) AS ts,
+    FORMAT_TIMESTAMP('%F %H:%M:%E6S', max(ts)) AS ended_at,
+    substr(max(CASE WHEN is_start AND ts = turn_ts THEN prompt_text END), 1, 4000) AS prompt,
+    substr(STRING_AGG(response_text, '\n' ORDER BY ts, response_text), 1, 2000) AS response,
+    STRING_AGG(DISTINCT billed_model, ', ' ORDER BY billed_model) AS models,
+    count(DISTINCT CASE WHEN operation = 'execute_tool' THEN tool_call_id END)
+      + COUNTIF(operation = 'execute_tool' AND tool_call_id IS NULL AND signal = 'span') AS tool_calls,
+    sum(CASE WHEN operation IS DISTINCT FROM 'invoke_agent' THEN input_tokens END) AS input_tokens,
+    sum(CASE WHEN operation IS DISTINCT FROM 'invoke_agent' THEN output_tokens END) AS output_tokens,
+    sum(cost_usd) AS cost_usd
+  FROM (
+    SELECT turns.*,
+      CASE WHEN (input_tokens IS NOT NULL OR cost_usd IS NOT NULL) AND operation IS DISTINCT FROM 'invoke_agent'
+        THEN model END AS billed_model
+    FROM turns
+  )
+  WHERE turn_ts IS NOT NULL
+  GROUP BY agent, person, session_id, turn_ts
+),
+tool_counts AS (
+  SELECT agent, person, session_id, turn_ts,
+    CASE WHEN mcp_server_name IS NOT NULL THEN mcp_server_name || '/' || coalesce(tool_name, '?') ELSE coalesce(tool_name, 'unknown') END AS tool,
+    count(DISTINCT tool_call_id) + COUNTIF(tool_call_id IS NULL AND signal = 'span') AS n
   FROM turns
+  WHERE turn_ts IS NOT NULL AND operation = 'execute_tool'
+  GROUP BY agent, person, session_id, turn_ts, tool
+),
+tools_text AS (
+  SELECT agent, person, session_id, turn_ts,
+    STRING_AGG(CONCAT(tool, ' ×', CAST(n AS STRING)), ', ' ORDER BY tool) AS tools
+  FROM tool_counts
+  GROUP BY agent, person, session_id, turn_ts
 )
-WHERE turn_ts IS NOT NULL
-GROUP BY agent, person, session_id, turn_ts
-ORDER BY session_id, turn_ts
+SELECT p.agent, p.person, p.session_id, p.ts, p.ended_at, p.prompt, p.response, p.models, p.tool_calls,
+  p.input_tokens, p.output_tokens, p.cost_usd, coalesce(t.tools, '') AS tools
+FROM per_turn p
+LEFT JOIN tools_text t
+  ON t.agent IS NOT DISTINCT FROM p.agent AND t.person IS NOT DISTINCT FROM p.person
+  AND t.session_id = p.session_id AND t.turn_ts = p.turn_ts
+ORDER BY p.session_id, p.turn_ts
