@@ -18,6 +18,24 @@ the hook-enforced agents (Claude Code, ChatGPT Codex, GitHub Copilot CLI, Cursor
 heuristics below remain the fallback for activity that predates the ledger (or a lakehouse where it
 is not yet populated), and for surfaces the hook does not cover — notably the Cowork inline proxy.
 
+**Telling TraceForce's enforcement apart from the user's own hooks and the agent's native prompts
+(ENG-1213).** A TraceForce warning is delivered *as the agent's own permission prompt* — in the
+logs it looks identical to a native `ask` / `user_*` and to a user-installed hook's `tool_decision`
+`reject` (`source = 'hook'`). The per-agent heuristics below **cannot** separate them (any
+`source = 'hook'` reject under block, and any reject under warn, both read as "ours"). The
+`enforcement_events` ledger is the only reliable discriminator, joined on `tool_use_id`:
+
+- A `tool_decision` `reject` with `source = 'hook'`, or any `ask` / `user_*`, with **no**
+  `enforcement_events` row on the same `tool_use_id`, was **not** TraceForce — it was the agent's
+  own prompt or a user-installed hook.
+- A TraceForce `ask` row **plus** a `source = 'hook'` reject on the same `tool_use_id` means a
+  **user hook** denied what TraceForce only asked about.
+- The enforcement records also surface in `agent_events` as hourly `traceforce.enforcement` rows.
+
+Caveats: older scout builds write **no** ledger rows (use the heuristics for them), and ledger rows
+are **unauthenticated claims** — the loopback receiver accepts any local process's record, so use
+them to show what TraceForce enforced, never to suppress a finding or incident.
+
 > These are agent/collector *behavior* literals, not schema generated from the proto or
 > Terraform, so they can drift when scout or the collector changes. They are verified against
 > scout source; re-verify on a scout/collector upgrade. Scout and the binary-processor now DO

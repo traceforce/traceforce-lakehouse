@@ -23,6 +23,6 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `message_external_id` | string | Agent's id of the message the file was attached to. |
 | `message_timestamp` | timestamp | When it was attached (UTC). |
 | `archive_inner_path` | string | Entry path when the file is an archive member; '' (never NULL) for a plain file. |
-| `customer_storage` | string | JSON text: a pointer into the customer's BYO storage bucket; provider is 'gcs', 's3' or 'azure_blob'. On conversations it locates the session's uploaded activity objects; on findings it locates the evidence object holding the verbatim matched value / tool input. NULL when BYO storage is unconfigured or the source object is empty. Evidence is not in the lake by design; see reference/redaction.md. |
+| `customer_storage` | string | JSON text: a pointer into the customer's BYO storage bucket; provider is 'gcs', 's3' or 'azure_blob'. On conversations it locates the session's uploaded activity objects; on findings it locates the evidence object holding the verbatim matched value / tool input; on enforcement_events it locates the verbatim blocked prompt / tool input. NULL when BYO storage is unconfigured or the source object is empty. Evidence is not in the lake by design; see reference/redaction.md. |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |
