@@ -67,5 +67,5 @@ badge); a finding with no issue type ranks low. An incident takes its most sever
 `../serve.mjs` fills in. To run it by hand, replace them with literals.
 
 The SQL in `queries/` is Athena (Trino); `queries/bigquery/` has the same queries in GoogleSQL, used
-with `--cloud gcp`, and `queries/databricks/` in Databricks SQL, used with `--cloud databricks`. Keep
-them in step.
+with `--cloud gcp`, `queries/databricks/` in Databricks SQL, used with `--cloud databricks`, and
+`queries/snowflake/` in Snowflake SQL, used with `--cloud snowflake`. Keep them in step.

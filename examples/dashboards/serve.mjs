@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Serve the TraceForce lakehouse dashboards, querying the lakehouse live: Athena on AWS, BigQuery on GCP,
-// Databricks SQL on Azure Databricks.
+// Databricks SQL on Azure Databricks, Snowflake on AWS or Azure.
 //
 //   node serve.mjs              # check AWS access, then serve http://localhost:8765
 //   node serve.mjs --cloud gcp  # the same for a GCP (BigQuery) lakehouse (default: --cloud aws)
 //   node serve.mjs --cloud databricks  # the same for an Azure Databricks lakehouse
+//   node serve.mjs --cloud snowflake   # the same for a Snowflake lakehouse (on AWS or Azure)
 //   node serve.mjs --cloud gcp,aws  # both lakehouses, merged into one view (see "Several lakes" below)
 //   node serve.mjs --open       # ...and open it in the browser
 //   node serve.mjs --check      # only check access: exit 0, or exit 2 with what to fix
@@ -13,8 +14,10 @@
 // Before serving, it checks that the cloud's CLI is installed, you're signed in, and your identity can
 // query the lakehouse (AWS: a region is set and the Athena workgroup is usable; GCP: a project is set and
 // the traceforce_lakehouse dataset is queryable; Databricks: the workspace and query warehouse are set and
-// a small query on the lakehouse succeeds), and stops with the fix if not. If the port already has a
-// dashboards server, it reuses that one (and opens it with --open) instead of failing.
+// a small query on the lakehouse succeeds; Snowflake: the connector and credentials are in place and a small
+// query on the lakehouse succeeds as the reader role, resuming the query warehouse if suspended, billed for at least
+// 60 s), and stops with the fix if not. If the port already has a dashboards server, it reuses that one (and
+// opens it with --open) instead of failing.
 //
 // Every folder here with an api.mjs is a dashboard, served at /<folder>/ and listed on the home page.
 // An api.mjs exports:
@@ -22,10 +25,11 @@
 //   order                optional number: lower comes first on the home page (then by folder name)
 //   params               { name: { pattern, timestamp?, emptyIsNull? } }: the values its pages may send
 //   routes               { name: async (query, { run, runAll, arg }) => json }, served at /<folder>/api/<name>
-// run("x", params) runs the folder's queries/x.sql (Athena), queries/bigquery/x.sql (BigQuery) or
-// queries/databricks/x.sql (Databricks) through the skill's athena_query.sh, bq_query.sh or
-// databricks_query.sh, with each {{param}} placeholder replaced by the checked value as a SQL literal, and
-// resolves to its rows.
+// run("x", params) runs the folder's queries/x.sql (Athena), queries/bigquery/x.sql (BigQuery),
+// queries/databricks/x.sql (Databricks) or queries/snowflake/x.sql (Snowflake) through the skill's
+// athena_query.sh, bq_query.sh, databricks_query.sh or snowflake_query.sh, with each {{param}} placeholder
+// replaced by the checked value as a SQL literal, and resolves to its rows. The per-engine SQL logic is in
+// engines.mjs.
 //
 // Several lakes: every query runs on each, and the rows are concatenated (the routes merge what needs it,
 // such as freshness, findings by id, or a session's parts). A session can be in more than one lake: copied
@@ -39,7 +43,10 @@
 // region of athena_query.sh; on GCP, the gcloud sign-in and project of bq_query.sh
 // (TRACEFORCE_LAKEHOUSE_PROJECT, else the gcloud default project); on Azure Databricks, python3 and the
 // settings and sign-in of databricks_query.sh (DATABRICKS_HOST, TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID, and
-// az login, a Databricks CLI login or a service principal's DATABRICKS_CLIENT_ID/SECRET). Nothing is written to disk here:
+// az login, a Databricks CLI login or a service principal's DATABRICKS_CLIENT_ID/SECRET); on Snowflake, python3
+// with snowflake-connector-python and the credentials of snowflake_query.sh (all five SNOWFLAKE_* variables,
+// or none and a connections.toml connection) for a user holding the reader role (queries run on the
+// query warehouse, named at sign-in, so no default warehouse is needed). Nothing is written to disk here:
 // results go straight to the page. (Athena itself keeps each result in the workgroup's S3 result location,
 // and BigQuery in its own temporary result tables, as they do for every query.) The server listens on
 // 127.0.0.1 only and runs only the SQL files in each dashboard's queries/. The pages send values, never SQL.
@@ -49,16 +56,12 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { BadRequest, DATASET, ENGINES, buildSql, classifySnowflakeError, parseCsv, scriptMessages } from "./engines.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS = join(HERE, "..", "..", "skills", "traceforce-lakehouse", "scripts");
 const SHARED = new Set(["dashboard.css", "dashboard.js"]);
 
-// Columns the pages treat as numbers. Empty cells are SQL NULLs ("not reported"), kept distinct from 0.
-const NUM = new Set(["sessions", "prompts", "tool_calls", "requests", "calls", "tokens", "live_devices",
-  "input_tokens", "output_tokens", "cache_read_tokens", "cost_usd", "findings", "open_findings", "blocks"]);
-
-class BadRequest extends Error {}
 class QueryFailed extends Error {}
 
 const argv = process.argv.slice(2);
@@ -67,86 +70,38 @@ const option = (name, fallback) => (argv.indexOf(name) >= 0 ? argv[argv.indexOf(
 const PORT = Number(option("--port", 8765));
 const URL_HOME = `http://localhost:${PORT}/`;
 const WORKGROUP = "traceforce-lakehouse";
-const DATASET = "traceforce_lakehouse";
+const CHECKS = { aws: checkAws, gcp: checkGcp, databricks: checkDatabricks, snowflake: checkSnowflake };
 
-// The lakehouse's cloud picks the query script, the folder of SQL in its dialect, how a string literal is
-// quoted (GoogleSQL and Databricks SQL have backslash escapes, not doubled quotes: on Databricks 'it''s'
-// reads as two literals joined, "its"), how a timestamp literal is written (on Databricks TIMESTAMP_NTZ:
-// a TIMESTAMP literal is read in the session's time zone, and inside a daylight-saving gap it moves an
-// hour), the access check, its events table and the query listing its recent session ids.
-const ENGINES = {
-  aws: { script: "athena_query.sh", queries: "queries", check: checkAws,
-    quote: v => "'" + v.replaceAll("'", "''") + "'", timestamp: "TIMESTAMP ", events: "agent_events",
-    sessionSpans: "SELECT session_id, cast(min(ts) AS varchar) AS t0, cast(max(ts) AS varchar) AS t1 FROM agent_events " +
-      "WHERE session_id IS NOT NULL AND ts >= date_add('day', -92, current_date) GROUP BY session_id" },
-  gcp: { script: "bq_query.sh", queries: join("queries", "bigquery"), check: checkGcp,
-    quote: v => "'" + v.replace(/[\\']/g, "\\$&") + "'", timestamp: "TIMESTAMP ", events: `${DATASET}.agent_events`,
-    sessionSpans: "SELECT session_id, FORMAT_TIMESTAMP('%F %H:%M:%E6S', min(ts)) AS t0, FORMAT_TIMESTAMP('%F %H:%M:%E6S', max(ts)) AS t1 " +
-      `FROM ${DATASET}.agent_events WHERE session_id IS NOT NULL AND ts >= TIMESTAMP(DATE_SUB(CURRENT_DATE(), INTERVAL 92 DAY)) GROUP BY session_id` },
-  databricks: { script: "databricks_query.sh", queries: join("queries", "databricks"), check: checkDatabricks,
-    // databricks_query.sh refuses these characters anywhere in a statement; a session id from another lake
-    // (the duplicate-session skip list) can hold them, so they're written as \uXXXX escapes.
-    quote: v => "'" + v.replace(/[\\']/g, "\\$&")
-      .replace(/[\x0b\x0c\x1c-\x1e\x85\u2028\u2029]/g, c => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0")) + "'",
-    timestamp: "TIMESTAMP_NTZ ", events: `${DATASET}.traceforce.agent_events`,
-    // ts is UTC; the UTC date, not current_date(), which follows the session time zone.
-    sessionSpans: "SELECT session_id, CAST(min(ts) AS STRING) AS t0, CAST(max(ts) AS STRING) AS t1 " +
-      `FROM ${DATASET}.traceforce.agent_events WHERE session_id IS NOT NULL AND ts >= CAST(date_sub(to_date(` +
-      "timestampadd(MICROSECOND, unix_micros(current_timestamp()), TIMESTAMP_NTZ '1970-01-01 00:00:00')), 92) AS TIMESTAMP_NTZ) " +
-      "GROUP BY session_id" },
-};
 const CLOUDS = option("--cloud", "aws").split(",");
-for (const c of CLOUDS) if (!Object.hasOwn(ENGINES, c)) fail(`Unknown cloud "${c}"`, "Use --cloud aws (Athena), --cloud gcp (BigQuery), --cloud databricks (Azure Databricks), or several: --cloud gcp,aws.");
+for (const c of CLOUDS) if (!Object.hasOwn(ENGINES, c)) fail(`Unknown cloud "${c}"`, "Use --cloud aws (Athena), --cloud gcp (BigQuery), --cloud databricks (Azure Databricks), --cloud snowflake (Snowflake on AWS or Azure), or several: --cloud gcp,aws.");
 if (new Set(CLOUDS).size !== CLOUDS.length) fail(`--cloud lists a cloud twice`, "List each cloud once, for example --cloud gcp,aws.");
 const CLOUD = CLOUDS.join(",");
 
-// RFC 4180 CSV, as Athena writes it: quoted fields may hold commas, doubled quotes and newlines.
-function parseCsv(text) {
-  const rows = [];
-  let row = [], field = "", quoted = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (quoted) {
-      if (c !== '"') field += c;
-      else if (text[i + 1] === '"') { field += '"'; i++; }
-      else quoted = false;
-    } else if (c === '"') quoted = true;
-    else if (c === ",") { row.push(field); field = ""; }
-    else if (c === "\n" || c === "\r") {
-      if (c === "\r" && text[i + 1] === "\n") i++;
-      row.push(field); rows.push(row); row = []; field = "";
-    } else field += c;
-  }
-  if (field || row.length) { row.push(field); rows.push(row); }
-  const [head = [], ...body] = rows;
-  return body.map(r => Object.fromEntries(head.map((k, j) => {
-    const v = r[j] ?? "";
-    return [k, v === "" ? null : NUM.has(k) ? Number(v) : v];
-  })));
-}
-
-// A table or column the dashboards read that the lake lacks: its Terraform module predates them.
-const MISSING_SCHEMA = /TABLE_NOT_FOUND|COLUMN_NOT_FOUND|Table .* does not exist|Not found: Table|Unrecognized name|TABLE_OR_VIEW_NOT_FOUND|UNRESOLVED_COLUMN/;
+// A table or column the dashboards read that the lake lacks: its Terraform module predates them. Snowflake:
+// "Object '"<table>"' does not exist or not authorized" and "invalid identifier '"<column>"'" (the reader role
+// is granted every table in the schema, so a missing table there is an older module too).
+const MISSING_SCHEMA = /TABLE_NOT_FOUND|COLUMN_NOT_FOUND|Table .* does not exist|Not found: Table|Unrecognized name|TABLE_OR_VIEW_NOT_FOUND|UNRESOLVED_COLUMN|Object '"[a-z_]+"' does not exist or not authorized|invalid identifier '"[a-z_]+"'/;
 const UPGRADE_MODULE = "Your lakehouse is on an older TraceForce module than these dashboards. " +
-  "Update the module's ?ref= to the latest release and run terraform apply.";
+  "Update the module's ?ref= to the latest release, then run terraform init -upgrade and terraform apply.";
 
 // One query on one lake through its script, resolving to its rows. With several lakes, the label names the cloud.
 function query(cloud, label, sql) {
   const tag = CLOUDS.length > 1 ? `${label} (${cloud})` : label;
   return new Promise((resolve, reject) => {
-    // TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT: the Databricks script cancels a statement after 300 s by default;
-    // give it nearly the 600 s this waits, so it ends with Databricks' message rather than being killed.
-    // (The Athena and BigQuery scripts set no time limit of their own.)
+    // TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT: the Databricks and Snowflake scripts cancel a statement after
+    // 300 s by default; give them nearly the 600 s this waits, so it ends with the warehouse's message rather
+    // than being killed. (The Athena and BigQuery scripts set no time limit of their own.)
     execFile(join(SCRIPTS, ENGINES[cloud].script), [sql], { env: { ...process.env, TRACEFORCE_LAKEHOUSE_MAX_ROWS: "0",
       TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT: "590" },
       timeout: 600_000, maxBuffer: 1 << 30 }, (err, stdout, stderr) => {
-      for (const line of stderr.split("\n").filter(Boolean)) console.error(`  ${tag}: ${line}`);
+      const lines = scriptMessages(stderr);
+      for (const line of lines) console.error(`  ${tag}: ${line}`);
       if (err) {
-        const last = stderr.trim().split("\n").pop() || err.message;
         if (MISSING_SCHEMA.test(stderr)) return reject(new QueryFailed(CLOUDS.length > 1 ? `${cloud}: ${UPGRADE_MODULE}` : UPGRADE_MODULE));
+        const last = (lines.length && ENGINES[cloud].errorLine(lines)) || err.message;
         return reject(new QueryFailed(`${tag} failed: ${last}`));
       }
-      resolve(parseCsv(stdout));
+      resolve(parseCsv(stdout, { lowerHeader: ENGINES[cloud].lowerHeader, label: tag, warn: m => console.error(`  ${m}`) }));
     });
   });
 }
@@ -173,30 +128,15 @@ function duplicateSessions() {
 
 // The query helpers one dashboard's routes get, bound to its folder and its params.
 function helpers(dir, params) {
-  // A checked page value as a SQL literal in one engine's dialect.
-  function literal(engine, name, value) {
-    const spec = params[name];
-    if (!spec) throw new BadRequest(`unknown parameter ${name}`);
-    if (spec.emptyIsNull && value === "") return "NULL";
-    if (!spec.pattern.test(value)) throw new BadRequest(`invalid ${name}`);
-    const quoted = engine.quote(value);
-    return spec.timestamp ? engine.timestamp + quoted : quoted;
-  }
   // The query on every lake, with the rows concatenated in lake order.
   async function run(name, values = {}) {
     const skips = CLOUDS.length > 1 ? await duplicateSessions() : [];
     const parts = await Promise.all(CLOUDS.map(async (cloud, i) => {
       const engine = ENGINES[cloud];
-      let sql = await readFile(join(dir, engine.queries, name + ".sql"), "utf8");
-      for (const [k, v] of Object.entries(values)) sql = sql.replaceAll(`{{${k}}}`, literal(engine, k, v));
-      if (sql.includes("{{")) throw new BadRequest(`${name}.sql needs a parameter that wasn't given`);
-      if (skips[i] && skips[i].length) {
-        const q = engine.quote;
-        const held = skips[i].map(x => `(session_id = ${q(x.session_id)} AND ts BETWEEN ${engine.timestamp}${q(x.t0)} AND ${engine.timestamp}${q(x.t1)})`);
-        const kept = `(SELECT * FROM ${engine.events} WHERE session_id IS NULL OR NOT (${held.join(" OR ")}))`;
-        sql = sql.replace(/\b(?:traceforce_lakehouse\.(?:traceforce\.)?)?agent_events\b/g, kept);
-      }
-      return query(cloud, name + ".sql", sql);
+      const file = join(dir, engine.queries, name + ".sql");
+      if (!existsSync(file)) throw new QueryFailed(`${name}.sql isn't available for --cloud ${cloud} yet`);
+      const text = await readFile(file, "utf8");
+      return query(cloud, name + ".sql", buildSql(engine, text, params, values, skips[i] || [], name));
     }));
     return parts.flat();
   }
@@ -371,6 +311,42 @@ async function checkDatabricks() {
   console.error(`✓ Lakehouse catalog "${DATASET}" is queryable on warehouse ${process.env.TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID.trim()}`);
 }
 
+const SNOWFLAKE_VARS = ["SNOWFLAKE_ORGANIZATION_NAME", "SNOWFLAKE_ACCOUNT_NAME", "SNOWFLAKE_USER", "SNOWFLAKE_AUTHENTICATOR", "SNOWFLAKE_PRIVATE_KEY"];
+async function checkSnowflake() {
+  if (Number(process.versions.node.split(".")[0]) < 18) fail(`Node ${process.versions.node} is too old`, "Install Node 18 or later.");
+
+  if ((await cli("python3", ["--version"])).missing)
+    fail("python3 isn't installed", "The Snowflake query script needs it: install Python 3.");
+  const imp = await cli("python3", ["-c", "import snowflake.connector"]);
+  if (!imp.ok) {
+    if (/No module named/.test(imp.stderr))
+      fail("snowflake-connector-python isn't installed", "Install it for the python3 on your PATH: python3 -m pip install snowflake-connector-python");
+    fail("snowflake-connector-python doesn't import", imp.stderr.split("\n").pop());
+  }
+  // The script takes all five variables (key-pair sign-in) or none (a connections.toml connection), with
+  // its rules: a variable counts as set when it isn't empty, and the authenticator compares uppercased.
+  const missing = SNOWFLAKE_VARS.filter(v => !process.env[v]);
+  if (missing.length && missing.length < SNOWFLAKE_VARS.length)
+    fail(`Only some SNOWFLAKE_* variables are set: missing ${missing.join(", ")}`, "Set all five for key-pair sign-in, or unset all five to use a connections.toml connection.");
+  if (!missing.length && process.env.SNOWFLAKE_AUTHENTICATOR.toUpperCase() !== "SNOWFLAKE_JWT")
+    fail(`SNOWFLAKE_AUTHENTICATOR is ${process.env.SNOWFLAKE_AUTHENTICATOR}`, "With the five SNOWFLAKE_* variables, set SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT (key-pair sign-in), or unset all five to use a connections.toml connection (which can use SSO).");
+  const via = missing.length ? "your connections.toml connection" : "the SNOWFLAKE_* variables";
+
+  // One small query, through the same script the dashboards use, names the identity and proves it can read
+  // the lakehouse as the reader role.
+  const probe = await new Promise(resolve => execFile(join(SCRIPTS, "snowflake_query.sh"),
+    ['SELECT CURRENT_USER() AS "who", CURRENT_ORGANIZATION_NAME() || \'-\' || CURRENT_ACCOUNT_NAME() AS "account", ' +
+      'CURRENT_ROLE() AS "role", (SELECT COUNT(*) FROM (SELECT 1 FROM "agent_events" LIMIT 1)) AS "readable"'],
+    { timeout: 300_000 }, (err, stdout, stderr) => resolve({ ok: !err, stdout, stderr: (stderr || (err && err.message) || "").trim() })));
+  if (!probe.ok) {
+    const { what, fix } = classifySnowflakeError(scriptMessages(probe.stderr).join("\n") || probe.stderr, via);
+    fail(what, fix);
+  }
+  const row = parseCsv(probe.stdout)[0] || {};
+  console.error(`✓ Signed in to Snowflake as ${row.who || "an unknown user"} (account ${row.account || "unknown"})`);
+  console.error(`✓ Lakehouse "${DATASET}" is queryable as role ${row.role || "unknown"}`);
+}
+
 // ---------- browser ----------
 function openBrowser(url) {
   const [cmd, args] = process.platform === "darwin" ? ["open", [url]]
@@ -395,7 +371,7 @@ async function portInUse() {
   process.exit(0);
 }
 
-if (!flag("--no-check")) for (const c of CLOUDS) await ENGINES[c].check();
+if (!flag("--no-check")) for (const c of CLOUDS) await CHECKS[c]();
 if (flag("--check")) process.exit(0);
 
 const server = createServer(async (req, res) => {

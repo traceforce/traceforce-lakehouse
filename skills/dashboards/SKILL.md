@@ -1,7 +1,7 @@
 ---
 name: dashboards
-description: "Open the TraceForce lakehouse dashboards (AI agent usage & spend, incident triage) in the browser: checks access to the lakehouse first and says exactly what to fix, then starts the local dashboards server and opens it. Use when someone asks to open, start, launch or show the TraceForce dashboards. AWS (Athena), GCP (BigQuery) and Azure Databricks lakehouses."
-argument-hint: "[--cloud aws|gcp|databricks|gcp,aws] [--port N]"
+description: "Open the TraceForce lakehouse dashboards (AI agent usage & spend, incident triage) in the browser: checks access to the lakehouse first and says exactly what to fix, then starts the local dashboards server and opens it. Use when someone asks to open, start, launch or show the TraceForce dashboards. AWS (Athena), GCP (BigQuery), Azure Databricks and Snowflake (AWS or Azure) lakehouses."
+argument-hint: "[--cloud aws|gcp|databricks|snowflake|gcp,aws] [--port N]"
 allowed-tools: Bash(node ${CLAUDE_PLUGIN_ROOT}/examples/dashboards/serve.mjs *)
 ---
 
@@ -10,17 +10,17 @@ allowed-tools: Bash(node ${CLAUDE_PLUGIN_ROOT}/examples/dashboards/serve.mjs *)
 The server is `${CLAUDE_PLUGIN_ROOT}/examples/dashboards/serve.mjs` (Node 18+, no packages). It queries
 the lakehouse live: through Athena with the user's AWS credentials (`--cloud aws`, the default), or
 through BigQuery with their gcloud sign-in (`--cloud gcp`), through Databricks SQL with their Azure or
-Databricks sign-in (`--cloud databricks`), or several merged into one view (`--cloud gcp,aws`, which checks
-each sign-in). Do the three steps in order, and stop at the
-first failure.
+Databricks sign-in (`--cloud databricks`), through Snowflake with their key pair or `connections.toml`
+connection (`--cloud snowflake`), or several merged into one view (`--cloud gcp,aws`, which checks each
+sign-in). Do the three steps in order, and stop at the first failure.
 
 Pick the cloud from what the user said or passed in `$ARGUMENTS` ("GCP", "BigQuery", "Google" →
-`--cloud gcp`; "AWS", "Athena" → `--cloud aws`; "Databricks", or "Azure" with Databricks →
-`--cloud databricks`; several → for example `--cloud gcp,aws`). Don't infer it from which CLIs or
-credentials are present: a machine often has several. If nothing names it, ask whether their lakehouse is
-on AWS, GCP or Azure Databricks. Pass the same `--cloud` to both commands below. Azure (Snowflake) isn't
-supported by the dashboards yet; say so if asked (for "Azure" alone, ask whether it's Databricks or
-Snowflake).
+`--cloud gcp`; "Athena" → `--cloud aws`; "Databricks" → `--cloud databricks`; "Snowflake" →
+`--cloud snowflake`; several → for example `--cloud gcp,aws`). "AWS" alone: ask whether it's Athena or
+Snowflake; "Azure" alone: ask whether it's Databricks or Snowflake. Don't infer it from which CLIs or
+credentials are present: a machine often has several. If nothing names it, ask which engine their
+lakehouse runs on (Athena, BigQuery, Databricks or Snowflake). Pass the same `--cloud` to both commands
+below.
 
 ## 1. Check access
 
@@ -52,6 +52,12 @@ indented under it, the fix, and exits 2. Then:
   `DATABRICKS_HOST=x TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID=y node ...`. If they do, use the same variables in
   step 2. A permissions fix (being listed as a reader, the Databricks SQL access entitlement) needs an
   admin of their Databricks workspace; don't try to grant it.
+- Snowflake: if the fix is about credentials, they can set the five `SNOWFLAKE_*` variables in their shell
+  before starting Claude Code, or use a `connections.toml` connection: it's used only when none of the five
+  is set, so they unset them in their shell before starting Claude Code, and you run step 1 again with
+  `SNOWFLAKE_DEFAULT_CONNECTION_NAME=<name> node ...`. If they do, use the same variable in step 2. A
+  missing `snowflake-connector-python`: show the install command from the fix; the user runs it. The
+  reader role grant needs a Snowflake admin; don't try to grant it.
 
 If `node` itself isn't found, tell the user the dashboards need Node 18 or later, and stop.
 

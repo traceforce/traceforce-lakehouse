@@ -1,0 +1,37 @@
+-- Upsert the newest daily snapshot of one TraceForce metadata table into its Iceberg mirror.
+-- "Newest" = the lexically greatest METADATA$FILENAME within the last 7 days of dt (paths embed
+-- the date and time of day, so a same-day retry wins). dt is bounded on both ends so a
+-- future-dated partition cannot win MAX.
+-- Source columns are all strings, so non-string columns are cast. int/long parse at 10/19 digits:
+-- INT and BIGINT are both NUMBER(38,0), so a plain TRY_CAST would pass a value wider than the
+-- NUMBER(10,0)/NUMBER(19,0) column and fail the MERGE. Values outside the signed 32/64-bit range
+-- also become NULL, as with Athena's and Databricks' TRY_CAST to INTEGER/BIGINT. Timestamps go
+-- through TRY_TO_TIMESTAMP_TZ('AUTO') then CONVERT_TIMEZONE so their offset is applied (a direct
+-- TIMESTAMP_NTZ cast drops it) without depending on TIMESTAMP_INPUT_FORMAT; an offset-less string
+-- is read in the Task's UTC session.
+-- Source columns are uppercase/unquoted; target columns are quoted lowercase.
+MERGE INTO ${target} t
+USING (
+  SELECT
+%{ for c in columns ~}
+    %{ if c.type == "timestamp" }CONVERT_TIMEZONE('UTC', TRY_TO_TIMESTAMP_TZ(${c.name}, 'AUTO'))::TIMESTAMP_NTZ%{ else }%{ if c.type == "string" }${c.name}%{ else }${c.type == "long" ? "IFF(TRY_TO_NUMBER(${c.name}, 19, 0) BETWEEN -9223372036854775808 AND 9223372036854775807, TRY_TO_NUMBER(${c.name}, 19, 0), NULL)" : c.type == "int" ? "IFF(TRY_TO_NUMBER(${c.name}, 10, 0) BETWEEN -2147483648 AND 2147483647, TRY_TO_NUMBER(${c.name}, 10, 0), NULL)" : "TRY_CAST(${c.name} AS ${upper(c.type)})"}%{ endif }%{ endif } AS ${c.name}%{ if c.name != columns[length(columns) - 1].name },%{ endif }
+%{ endfor ~}
+  FROM ${source}
+  WHERE dt >= TO_VARCHAR(DATEADD(day, -7, CURRENT_DATE()), 'YYYY-MM-DD')
+    AND dt <= TO_VARCHAR(CURRENT_DATE(), 'YYYY-MM-DD')
+    AND METADATA$FILENAME = (
+      SELECT MAX(METADATA$FILENAME) FROM ${source}
+      WHERE dt >= TO_VARCHAR(DATEADD(day, -7, CURRENT_DATE()), 'YYYY-MM-DD')
+        AND dt <= TO_VARCHAR(CURRENT_DATE(), 'YYYY-MM-DD')
+    )
+    AND id IS NOT NULL
+) s
+ON t."id" = s.id
+WHEN MATCHED THEN UPDATE SET
+%{ for c in columns ~}
+%{ if c.name != "id" ~}
+  "${c.name}" = s.${c.name}%{ if c.name != columns[length(columns) - 1].name },%{ endif }
+%{ endif ~}
+%{ endfor ~}
+WHEN NOT MATCHED THEN INSERT (${join(", ", [for c in columns : "\"${c.name}\""])})
+  VALUES (${join(", ", [for c in columns : "s.${c.name}"])})

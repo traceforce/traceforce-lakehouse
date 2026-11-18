@@ -12,13 +12,13 @@ On GCP, the same two dashboards are also in the TraceForce console (Lakehouse in
 BigQuery from your browser with your own Google sign-in, with nothing to install. Set them up in
 Settings › Lakehouse, step 3.
 
-## Run it (AWS / Athena, GCP / BigQuery, Azure Databricks)
+## Run it (Athena, BigQuery, Databricks or Snowflake)
 
 In Claude Code with the `traceforce-lakehouse` plugin installed, type `/traceforce-lakehouse:dashboards` (or ask Claude to
-open the dashboards), adding `--cloud gcp` for a GCP lakehouse or `--cloud databricks` for an Azure
-Databricks one. It checks your access, starts the
-server in the background and opens your browser, or tells you exactly what to fix. The server stops
-when the Claude Code session ends.
+open the dashboards), adding `--cloud gcp` for a GCP lakehouse, `--cloud databricks` for an Azure
+Databricks one or `--cloud snowflake` for a Snowflake one (on AWS or Azure). It checks your access,
+starts the server in the background and opens your browser, or tells you exactly what to fix. The
+server stops when the Claude Code session ends.
 
 From a terminal:
 
@@ -26,12 +26,13 @@ From a terminal:
 node serve.mjs --open              # AWS: check access, start the server, open http://localhost:8765
 node serve.mjs --cloud gcp --open  # the same for a GCP (BigQuery) lakehouse
 node serve.mjs --cloud databricks --open  # the same for an Azure Databricks lakehouse
+node serve.mjs --cloud snowflake --open   # the same for a Snowflake lakehouse (AWS or Azure)
 node serve.mjs --cloud gcp,aws --open  # both, merged into one view
 ```
 
 | flag | does |
 |---|---|
-| `--cloud aws\|gcp\|databricks\|gcp,aws` | the lakehouse's cloud: Athena on AWS (default), BigQuery on GCP or Databricks SQL on Azure Databricks, or several merged (see below) |
+| `--cloud aws\|gcp\|databricks\|snowflake\|gcp,aws` | the lakehouse's engine: Athena on AWS (default), BigQuery on GCP, Databricks SQL on Azure Databricks, Snowflake on AWS or Azure, or several merged (see below) |
 | `--open` | open the home page in your browser once the server is up |
 | `--check` | only check access, then exit (0 = ready, 2 = something to fix) |
 | `--no-check` | skip the access check |
@@ -48,6 +49,10 @@ Before serving, `serve.mjs` checks, in order:
 - **Azure Databricks:** python3 is installed, `DATABRICKS_HOST` and `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID`
   are set, and a small query on the `traceforce_lakehouse` catalog succeeds, which shows who you're signed
   in as and that you can read the tables. It may start the query warehouse.
+- **Snowflake:** python3 and `snowflake-connector-python` are installed, the `SNOWFLAKE_*` variables
+  are all set (key-pair sign-in) or none are (a `connections.toml` connection), and a small query on the
+  `traceforce_lakehouse` database succeeds as the reader role, which shows who you're signed in as, in
+  which account. It may resume the query warehouse.
 
 The first check that fails stops it with what's wrong and the fix, for example:
 
@@ -84,14 +89,27 @@ skill's query script, so it needs the same credentials:
   query's result is limited to 25 MiB, Databricks' limit for results returned with the query; a large
   organization's 90 days of findings or daily activity can go over it, and the page then says it couldn't
   load, with Databricks' message.
+- **Snowflake:** `snowflake_query.sh`, with python3, `snowflake-connector-python`, and either the five
+  `SNOWFLAKE_*` variables (key-pair sign-in, listed in the script) or a `connections.toml` connection, for
+  a user that holds the `traceforce_lakehouse_reader` role; for example
+  `SNOWFLAKE_DEFAULT_CONNECTION_NAME=lakehouse node serve.mjs --cloud snowflake --open` (the script uses a
+  connection only when none of the five variables is set, so unset them first in a shell that holds the
+  deploy key's). Keep this
+  user's key apart from the Terraform deploy key (README, the Snowflake sections). Use key-pair sign-in:
+  each query opens its own connection, so a connection that signs in through the browser
+  (`authenticator = "externalbrowser"`) may ask you to sign in for each query. Queries run on the
+  lakehouse's query warehouse, `traceforce_lakehouse_query`, and use its credits: opening a page resumes
+  it if it's suspended (billed for at least a minute), and a page runs its queries at once, so they may
+  queue there. Each query may run up to 590 s.
 
 If a page later says it couldn't load from the lake, the terminal running the server shows Athena's,
-BigQuery's or Databricks' error.
+BigQuery's, Databricks' or Snowflake's error.
 
 Each page fetches what it shows when it needs it, and keeps it in memory until you reload. A reload
 queries the lake again. Athena itself keeps each query's result in the workgroup's S3 result location,
-and BigQuery in its own temporary result tables, as they do for every query. Opened as a file (`open usage-and-spend/index.html`), a page has no server
-and shows generated sample data, labeled as such.
+BigQuery in its own temporary result tables, and Snowflake in its result cache, as they do for every
+query. Opened as a file (`open usage-and-spend/index.html`), a page has no server and shows generated
+sample data, labeled as such.
 
 ## Security
 
@@ -115,13 +133,15 @@ shared/dashboard.js        formatting, tooltip, charts, tables, fetching (window
 <dashboard>/queries/*.sql  its queries (Athena); {{name}} placeholders are filled in by serve.mjs
 <dashboard>/queries/bigquery/*.sql  the same queries in GoogleSQL, for --cloud gcp
 <dashboard>/queries/databricks/*.sql  the same queries in Databricks SQL, for --cloud databricks
+<dashboard>/queries/snowflake/*.sql  the same queries in Snowflake SQL, for --cloud snowflake
 ```
 
 ## Add a dashboard
 
 Make a folder with an `index.html`, a `queries/` folder (and `queries/bigquery/` for GCP,
-`queries/databricks/` for Azure Databricks) and an `api.mjs`. The server picks up every
-folder that has an `api.mjs`, serves it at `/<folder>/` and lists it on the home page.
+`queries/databricks/` for Azure Databricks, `queries/snowflake/` for Snowflake) and an `api.mjs`. The
+server picks up every folder that has an `api.mjs`, serves it at `/<folder>/` and lists it on the home
+page.
 
 ```js
 // my-dashboard/api.mjs
@@ -150,5 +170,9 @@ prints them) because the pages send them back as `{{since}}`/`{{until}}` values.
 `queries/databricks/*.sql` is the same in Databricks SQL: tables qualified as
 `traceforce_lakehouse.traceforce.<table>`, times kept in UTC whatever the session's time zone, and
 timestamps printed without trailing zeros in the fraction (still a `{{since}}` the pages accept).
-Snowflake (Azure) isn't supported yet: it would need another set of queries and an entry in `ENGINES` in `serve.mjs`
-for `snowflake_query.sh`, which takes the same arguments and prints the same CSV.
+`queries/snowflake/*.sql` is the same in Snowflake SQL: tables unqualified (the script sets the database
+and schema, and the session's time zone to UTC); table, column and output names double-quoted lowercase
+(Snowflake returns an unquoted alias in uppercase); timestamps printed with
+`TO_CHAR(..., 'YYYY-MM-DD HH24:MI:SS.FF6')`. A `GROUP BY` name that is both a source column and an
+output alias groups by the source column, so group by position or by a CTE's column. Write regexes in
+`$$...$$`, so their backslashes aren't escapes.

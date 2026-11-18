@@ -15,7 +15,7 @@ and export snapshots goes through each cloud's SQL; the rows are compared as tex
 | `fixture/exports_phase4/...` | a malformed newest snapshot (not JSON), added last: the mirror run must fail and change nothing |
 | `make_fixture.py` | writes `fixture/` (`python3 make_fixture.py fixture`); edit this, not the files |
 | `expected/` | the AWS SQL's output for the fixture, from `run_trino.py --update`: `agents_day1.jsonl` after day 1, `agents.jsonl` after day 2, `agent_conversation_files.jsonl` and `issue_type_controls.jsonl` (empty) at the end |
-| `run_trino.py` | runs `terraform/aws/sql` in a local Trino (the engine Athena engine version 3 is built on) |
+| `run_trino.py` | runs `terraform/aws/athena/sql` in a local Trino (the engine Athena engine version 3 is built on) |
 | `run_databricks.py` | runs `terraform/azure/databricks/sql` on a Databricks SQL warehouse |
 | `golden.py` | shared: lays out the fixture for today's date, renders templates with Terraform, normalises rows |
 
@@ -75,7 +75,6 @@ Accepted differences from `expected/`, listed in each runner:
 | Engine | Difference |
 |---|---|
 | Databricks | Characters outside the Basic Multilingual Plane (emoji) are written as UTF-8 in `attrs_json`; AWS escapes them (`😀`). Same JSON value. |
-| Databricks | Mirror timestamps keep microseconds; AWS keeps milliseconds. |
 | AWS | A newest snapshot with rows but no ids deletes every mirror row: AWS's delete guard checks the whole 7-day window, not the newest file. The Databricks and Snowflake SQL scope it to the newest file. `run_trino.py` reports this rather than failing. |
 | AWS (simulation only) | Trino's `OPENX_JSON` reads a malformed line as an all-NULL row, so the malformed snapshot doesn't fail the run there; Athena's OpenX SerDe fails it (`ignore.malformed.json` defaults to false). `run_trino.py` checks only that the mirror is unchanged. |
 

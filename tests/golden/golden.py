@@ -204,8 +204,6 @@ def _escape_non_bmp(text):
 RULES = {
     # the same JSON text once non-BMP characters are escaped the AWS way
     "non_bmp_escape": lambda e, a: a is not None and _escape_non_bmp(a) == e,
-    # the same timestamp once microseconds are truncated to milliseconds, as AWS keeps them
-    "ms_truncation": lambda e, a: a is not None and e is not None and a[:-3] + "000" == e,
 }
 
 

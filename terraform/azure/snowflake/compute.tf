@@ -11,14 +11,26 @@ resource "snowflake_resource_monitor" "lakehouse" {
   notify_users    = var.credit_notification_users
 }
 
-# Compute for ad-hoc queries and for the hourly ingest and the export-mirror Tasks (ingest.tf).
+# Compute for the hourly ingest and the export-mirror Tasks (ingest.tf) and the failure alert below.
+# Readers using a plugin from before the query warehouse still run here (query_role.tf).
 resource "snowflake_warehouse" "lakehouse" {
   name           = "traceforce_lakehouse"
   warehouse_size = upper(var.warehouse_size)
-  # The warehouse only wakes for a Task or an ad-hoc query, so idle time is pure waste.
+  # It wakes only for those, so idle time is pure waste.
   auto_suspend     = 60
   auto_resume      = "true"
   resource_monitor = snowflake_resource_monitor.lakehouse.name
+}
+
+# Compute for every reader (the skill, the dashboards), so their queries don't queue behind the
+# ingest. Idle, it costs nothing: a warehouse bills only while running, at least 60 s per resume.
+resource "snowflake_warehouse" "query" {
+  name                = "traceforce_lakehouse_query"
+  warehouse_size      = upper(var.query_warehouse_size)
+  auto_suspend        = 60
+  auto_resume         = "true"
+  initially_suspended = true
+  resource_monitor    = snowflake_resource_monitor.lakehouse.name
 }
 
 # A Task's error_integration cannot be EMAIL (queue types only), so the alert below polls

@@ -1,11 +1,11 @@
 # TraceForce lakehouse — agent guide
 
 This repo is a Terraform module plus a portable skill for querying the TraceForce lakehouse in
-plain language: read-only, over Apache Iceberg tables in your own cloud — **Athena** on AWS
-(S3), **BigQuery** on GCP (GCS), or **Snowflake** or **Databricks** on Azure (Blob Storage / ADLS
-Gen2). Your lakehouse is set up on one of them; use its script (`athena_query.sh` for AWS,
-`bq_query.sh` for GCP, `snowflake_query.sh` for Azure Snowflake, `databricks_query.sh` for Azure
-Databricks).
+plain language: read-only, over Apache Iceberg tables in your own cloud — **Athena** or
+**Snowflake** on AWS (S3), **BigQuery** on GCP (GCS), or **Snowflake** or **Databricks** on Azure
+(Blob Storage / ADLS Gen2). Your lakehouse is set up on one of them; use its script
+(`athena_query.sh` for AWS Athena, `bq_query.sh` for GCP, `snowflake_query.sh` for Snowflake on AWS
+or Azure, `databricks_query.sh` for Azure Databricks).
 
 ## Claude Code
 
@@ -40,7 +40,7 @@ Only Claude Code is verified end to end so far.
 - **GCP (BigQuery):** the gcloud CLI signed in (`gcloud auth login` + `gcloud auth
   application-default login`) with the lakehouse's project as your default
   (`gcloud config set project <id>`).
-- **Azure (Snowflake):** python3 with `snowflake-connector-python`, and either all five
+- **Snowflake (AWS or Azure):** python3 with `snowflake-connector-python`, and either all five
   `SNOWFLAKE_*` environment variables (listed in `snowflake_query.sh`) or a `connections.toml`
   connection, for a user that holds the `traceforce_lakehouse_reader` role.
 - **Azure (Databricks):** python3, `DATABRICKS_HOST` and `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID` (the

@@ -3,7 +3,7 @@
 Producer: TraceForce's export job, run daily around 11:00 UTC for every org with a CONNECTED
 S3, GCS or Azure Blob Storage Provider.
 Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glue tables on AWS
-(Athena), or the external tables on GCP (BigQuery) and Azure (Snowflake).
+(Athena), or the external tables on GCP (BigQuery) and Snowflake (AWS or Azure).
 
 ## Location
 
@@ -22,7 +22,7 @@ Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glu
 - One file per table per run (gzip, JSON Lines, UTF-8). An empty table still writes a
   zero-line file, but no engine reads rows from it, so the newest non-empty file stays the
   effective snapshot: a table that genuinely drops to zero rows keeps its stale mirror rows
-  until it has a row again (see `terraform/aws/sql/mirror_export_delete.sql.tftpl`; GCP folds the
+  until it has a row again (see `terraform/aws/athena/sql/mirror_export_delete.sql.tftpl`; GCP folds the
   same delete into `terraform/gcp/sql/mirror_export.sql.tftpl`; Azure keeps it separate too, in
   `terraform/azure/snowflake/sql/mirror_export_delete.sql.tftpl`).
 
@@ -36,8 +36,8 @@ Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glu
   objects/arrays and SQL arrays **as JSON text (a string)**, not nested JSON, so the consumer can
   keep them as one string column. A `jsonb` column holding a bare scalar (none exist today) is
   exported as that scalar.
-  The mirrors keep the microseconds on Azure (Snowflake and Databricks) and GCP. AWS keeps
-  milliseconds: it parses timestamps with `from_iso8601_timestamp`, which drops the rest.
+  The mirrors keep the microseconds on every cloud. (AWS parses with `from_iso8601_timestamp_nanos`,
+  and with `from_iso8601_timestamp` only for a value the first can't read, such as a bare date.)
 - Rows: exactly the contract columns (`export_tables` in `terraform/schema/columns.json`, the one
   column list every cloud module reads), `WHERE org_id = $org` for tenant tables; whole table for
   `agent_catalog`, `mcp_catalog`, `mcp_categories`, `issue_types` and `llm_model_prices` (global, no
