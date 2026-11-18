@@ -42,9 +42,9 @@ txt AS (
         array_join(flatten(filter(transform(
           filter(try_variant_get(coalesce(try_parse_json(content_output), CASE WHEN instr(content_output, char(1)) = 0 THEN try_parse_json(replace(regexp_replace(regexp_replace(replace(content_output, concat(char(92), char(92)), char(1)), r'\\u[dD][89abAB][0-9a-fA-F]{2}(?!\\u[dD][c-fC-F][0-9a-fA-F]{2})', r'\\ufffd'), r'(?<!\\u[dD][89abAB][0-9a-fA-F]{2})\\u[dD][c-fC-F][0-9a-fA-F]{2}', r'\\ufffd'), char(1), concat(char(92), char(92)))) END), '$', 'array<variant>'),
                  x -> try_variant_get(x, '$.role', 'string') = 'assistant'),
-          x -> transform(try_variant_get(x, '$.parts', 'array<variant>'),
+          x -> filter(transform(try_variant_get(x, '$.parts', 'array<variant>'),
                          p -> coalesce(CASE WHEN schema_of_variant(try_variant_get(p, '$.content', 'variant')) RLIKE '^(OBJECT|ARRAY)' THEN NULL
-                    ELSE try_variant_get(p, '$.content', 'string') END, ''))), a -> a IS NOT NULL)), char(10)),
+                    ELSE try_variant_get(p, '$.content', 'string') END, '')), s -> s <> '')), a -> a IS NOT NULL)), char(10)),
         content_output)
     END AS response_text
   FROM ev

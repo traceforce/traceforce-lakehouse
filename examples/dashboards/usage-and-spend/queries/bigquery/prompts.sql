@@ -29,14 +29,13 @@ txt AS (
     END AS prompt_text,
     CASE WHEN content_output IS NOT NULL
           AND (event_name IN ('assistant_response', 'afterAgentResponse', 'agent_response') OR (signal = 'span' AND operation = 'chat'))
-      THEN CASE WHEN SAFE.PARSE_JSON(content_output) IS NULL THEN content_output  -- unparseable: shown raw
-        ELSE
-        -- Text of every assistant message in the JSON message array.
-        (SELECT STRING_AGG(coalesce(JSON_VALUE(p, '$.content'), ''), '\n' ORDER BY i, o)
+      THEN CASE WHEN JSON_TYPE(SAFE.PARSE_JSON(content_output)) = 'array' THEN
+        -- Text of every assistant message in the JSON message array; parts with no text are skipped.
+        (SELECT STRING_AGG(JSON_VALUE(p, '$.content'), '\n' ORDER BY i, o)
          FROM UNNEST(JSON_QUERY_ARRAY(SAFE.PARSE_JSON(content_output))) x WITH OFFSET i,
               UNNEST(JSON_QUERY_ARRAY(x, '$.parts')) p WITH OFFSET o
-         WHERE JSON_VALUE(x, '$.role') = 'assistant')
-        END
+         WHERE JSON_VALUE(x, '$.role') = 'assistant' AND coalesce(JSON_VALUE(p, '$.content'), '') <> '')
+        ELSE content_output END                                -- not a JSON array (or unparseable): shown raw
     END AS response_text
   FROM ev
 ),

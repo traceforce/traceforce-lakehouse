@@ -34,7 +34,7 @@ txt AS (
       THEN coalesce(
         try(array_join(flatten(transform(
           filter(cast(json_parse(content_output) AS array(json)), x -> json_extract_scalar(x, '$.role') = 'assistant'),
-          x -> transform(cast(json_extract(x, '$.parts') AS array(json)), p -> coalesce(json_extract_scalar(p, '$.content'), '')))),
+          x -> filter(transform(cast(json_extract(x, '$.parts') AS array(json)), p -> coalesce(json_extract_scalar(p, '$.content'), '')), s -> s <> ''))),
           chr(10))),
         content_output)
     END AS response_text
