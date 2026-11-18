@@ -40,7 +40,7 @@ badge); a finding with no issue type ranks low. An incident takes its most sever
 
 ## Caveats
 
-- **Needs lakehouse module 1.4.0 or later** for `issue_types` and the findings' `issue_detail`. On an
+- **Needs lakehouse module 1.7.3 or later** for `issue_types`, the findings' `issue_detail` and custom type names (`org_sensitive_data_custom_types`). On an
   older module the page can't load from the lake until you re-apply Terraform.
 - **The matched sensitive value is never in the lake.** Open the finding in the TraceForce console for
   its evidence.

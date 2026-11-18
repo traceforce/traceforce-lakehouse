@@ -123,6 +123,20 @@ LEFT JOIN agent_issues ai ON ai.issue_type_control_id = itc.id AND ai.agent_acco
 GROUP BY f.id, f.issue_detail, it.criticality
 ```
 
+## Sensitive-data finding to its custom type
+
+Use when a `sensitive_data_findings.type` reads `custom_<id>`: an org-defined custom type, whose
+name and category are in `org_sensitive_data_custom_types`. `LEFT JOIN` on `type`; built-in types
+have no row, and a deleted custom type leaves its findings with no name.
+When presenting results, show the custom type's name, and the `custom_<id>` value only when it has no name.
+
+```sql
+SELECT coalesce(ct.name, f.type) AS type_name, count(*) AS findings
+FROM sensitive_data_findings f
+LEFT JOIN org_sensitive_data_custom_types ct ON ct.type = f.type
+GROUP BY coalesce(ct.name, f.type)
+```
+
 ## User group to its devices
 
 Manual groups list devices in `user_group_devices`. Groups synced from an identity provider list

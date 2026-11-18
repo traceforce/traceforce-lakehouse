@@ -365,6 +365,15 @@
       "updated_at:timestamp",
       "issue_detail:string"
     ],
+    "org_sensitive_data_custom_types": [
+      "id:string",
+      "org_id:string",
+      "type:string",
+      "category:string",
+      "name:string",
+      "created_at:timestamp",
+      "updated_at:timestamp"
+    ],
     "connector_containment_findings": [
       "id:string",
       "org_id:string",

@@ -35,7 +35,7 @@ ev AS (
 )
 SELECT
   f.id, f.kind, cast(f.at AS varchar) AS at, cast(date(f.at) AS varchar) AS day, f.status,
-  f.category, f.type, f.outcome, substr(f.detail, 1, 600) AS detail, f.message_external_id, f.tool_use_id, it.criticality,
+  f.category, f.type, sdt.name AS type_name, f.outcome, substr(f.detail, 1, 600) AS detail, f.message_external_id, f.tool_use_id, it.criticality,
   lower(a.agent_email) AS person,
   coalesce(CASE WHEN regexp_like(a.agent_type, '^[0-9]*$') THEN NULL ELSE lower(a.agent_type) END,
            regexp_replace(lower(ct.agent_name), '[^a-z0-9]+', '_'), ev.agent) AS agent,
@@ -48,4 +48,5 @@ LEFT JOIN agent_catalog ct ON ct.agent_type = a.agent_type
 LEFT JOIN ev ON ev.session_id = c.conversation_external_id
 LEFT JOIN devices d ON d.id = f.device_id
 LEFT JOIN issue_types it ON it.issue_detail = f.issue_detail AND it.applicable_to = 'instance'
+LEFT JOIN org_sensitive_data_custom_types sdt ON sdt.type = f.type
 ORDER BY f.at

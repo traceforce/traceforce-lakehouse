@@ -1,5 +1,6 @@
 -- BigQuery (GoogleSQL) version of ../findings.sql: every finding from the last 90 days, one row each.
--- Also in traceforce-ui src/lib/lakehouse/queries/incidents.ts (the in-app GCP dashboards): keep the two in sync.
+-- Also in traceforce-ui src/lib/lakehouse/queries/incidents.ts (the in-app GCP dashboards): keep the two in sync,
+-- except the custom type name join (the app gets names from the API).
 WITH f AS (
   SELECT id, 'sensitive_data' AS kind, conversation_id, device_id, message_timestamp AS `at`, finding_status AS status,
          category, type, CAST(NULL AS STRING) AS outcome,
@@ -30,7 +31,7 @@ ev AS (
 )
 SELECT
   f.id, f.kind, FORMAT_TIMESTAMP('%F %H:%M:%E6S', f.`at`) AS `at`, CAST(DATE(f.`at`) AS STRING) AS day, f.status,
-  f.category, f.type, f.outcome, substr(f.detail, 1, 600) AS detail, f.message_external_id, f.tool_use_id, it.criticality,
+  f.category, f.type, sdt.name AS type_name, f.outcome, substr(f.detail, 1, 600) AS detail, f.message_external_id, f.tool_use_id, it.criticality,
   lower(a.agent_email) AS person,
   coalesce(CASE WHEN REGEXP_CONTAINS(a.agent_type, r'^[0-9]*$') THEN NULL ELSE lower(a.agent_type) END,
            REGEXP_REPLACE(lower(ct.agent_name), r'[^a-z0-9]+', '_'), ev.agent) AS agent,
@@ -43,4 +44,5 @@ LEFT JOIN traceforce_lakehouse.agent_catalog ct ON ct.agent_type = a.agent_type
 LEFT JOIN ev ON ev.session_id = c.conversation_external_id
 LEFT JOIN traceforce_lakehouse.devices d ON d.id = f.device_id
 LEFT JOIN traceforce_lakehouse.issue_types it ON it.issue_detail = f.issue_detail AND it.applicable_to = 'instance'
+LEFT JOIN traceforce_lakehouse.org_sensitive_data_custom_types sdt ON sdt.type = f.type
 ORDER BY f.`at`
