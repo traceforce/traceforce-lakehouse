@@ -143,7 +143,7 @@ function query(cloud, label, sql) {
       for (const line of stderr.split("\n").filter(Boolean)) console.error(`  ${tag}: ${line}`);
       if (err) {
         const last = stderr.trim().split("\n").pop() || err.message;
-        if (MISSING_SCHEMA.test(stderr)) return reject(new QueryFailed(UPGRADE_MODULE));
+        if (MISSING_SCHEMA.test(stderr)) return reject(new QueryFailed(CLOUDS.length > 1 ? `${cloud}: ${UPGRADE_MODULE}` : UPGRADE_MODULE));
         return reject(new QueryFailed(`${tag} failed: ${last}`));
       }
       resolve(parseCsv(stdout));
