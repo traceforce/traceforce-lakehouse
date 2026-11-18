@@ -13,7 +13,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = ">= 4.9.0, < 5.0.0"
+      version = ">= 4.31.0, < 5.0.0"
     }
     azuread = {
       source  = "hashicorp/azuread"
@@ -63,7 +63,7 @@ provider "snowflake" {
 }
 
 module "traceforce_lakehouse" {
-  source = "../../../terraform/azure/snowflake" # customers: github.com/traceforce/traceforce-lakehouse//terraform/azure/snowflake?ref=1.7.3
+  source = "../../../terraform/azure/snowflake" # customers: github.com/traceforce/traceforce-lakehouse//terraform/azure/snowflake?ref=1.8.0
 
   # Must be globally unique across all of Azure (storage account names share one namespace
   # account-wide) and stable for the life of the deployment: changing it later destroys and
@@ -75,12 +75,15 @@ module "traceforce_lakehouse" {
   logs_container_name       = "logs"
   logs_prefix               = "traceforce" # "" if TraceForce writes at the container root
 
-  # warehouse_size             = "SMALL"       # default XSMALL; bump if ad-hoc queries feel slow or for a lookback_days catch-up
+  # warehouse_size             = "SMALL"       # default XSMALL; the scheduled Tasks' warehouse: bump for a lookback_days catch-up
+  # query_warehouse_size       = "SMALL"       # default XSMALL; the warehouse readers query on: bump if queries feel slow
   # alarm_notification_email   = "jdoe@acme.com" # a verified Snowflake user's email, not a team address -- get notified when a scheduled Task fails
   # query_user_public_key      = "MIIBIjAN..."  # one-line public key body: creates traceforce_lakehouse_query, a reader-only service user for step 5
   # reader_users               = ["JDOE"]       # exact stored Snowflake usernames (uppercase unless created quoted) granted read-only access
   # credit_notification_users  = ["JDOE"]       # exact stored usernames with verified emails, emailed as credit usage climbs (the monitor never suspends the warehouse)
+  # dashboard_sign_in          = { console_origin = "https://<TraceForce console>", snowflake = {} } # TraceForce dashboards: viewers sign in to Snowflake (README)
 }
 
 output "azure_consent_url" { value = module.traceforce_lakehouse.azure_consent_url }
 output "reader_role_name" { value = module.traceforce_lakehouse.reader_role_name }
+# output "dashboard_settings" { value = module.traceforce_lakehouse.dashboard_settings } # with dashboard_sign_in (README)

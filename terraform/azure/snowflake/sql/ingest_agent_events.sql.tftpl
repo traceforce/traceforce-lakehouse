@@ -243,26 +243,27 @@ SELECT
   am.a['traceforce.containment_enforcement']::string                    AS containment_enforcement,
   COALESCE(am.a['error.type']::string, am.a['error_type']::string)       AS error_type,
   am.a['gen_ai.request.model']::string                                  AS model,
-  -- 18 digits: BIGINT is NUMBER(38,0) here, and a wider value fails the INSERT into NUMBER(19,0)
+  -- Tokens parse at 19 digits into NUMBER(38,0), so the subtraction can't overflow; bounded (below)
+  -- nulls any result outside the signed 64-bit range.
   -- input_tokens is uncached input for every agent. Claude's own input_tokens already is; GenAI
   -- semconv input (Codex, Copilot) includes cache reads and writes, so they are subtracted.
   CASE WHEN am.a['input_tokens']::string IS NOT NULL
-       THEN TRY_TO_NUMBER(am.a['gen_ai.usage.input_tokens']::string, 18, 0)
-       ELSE TRY_TO_NUMBER(am.a['gen_ai.usage.input_tokens']::string, 18, 0)
+       THEN TRY_TO_NUMBER(am.a['gen_ai.usage.input_tokens']::string, 19, 0)
+       ELSE TRY_TO_NUMBER(am.a['gen_ai.usage.input_tokens']::string, 19, 0)
             - COALESCE(TRY_TO_NUMBER(COALESCE(am.a['gen_ai.usage.cache_read.input_tokens']::string,
-                                              am.a['cached_token_count']::string), 18, 0), 0)
+                                              am.a['cached_token_count']::string), 19, 0), 0)
             - COALESCE(TRY_TO_NUMBER(COALESCE(am.a['gen_ai.usage.cache_write.input_tokens']::string,
                                               am.a['gen_ai.usage.cache_creation.input_tokens']::string,
-                                              am.a['cache_write_token_count']::string), 18, 0), 0)
+                                              am.a['cache_write_token_count']::string), 19, 0), 0)
   END                                                                   AS input_tokens,
-  TRY_TO_NUMBER(am.a['gen_ai.usage.output_tokens']::string, 18, 0)     AS output_tokens,
+  TRY_TO_NUMBER(am.a['gen_ai.usage.output_tokens']::string, 19, 0)     AS output_tokens,
   TRY_TO_NUMBER(COALESCE(am.a['cache_read_tokens']::string,
                          am.a['gen_ai.usage.cache_read.input_tokens']::string,
-                         am.a['cached_token_count']::string), 18, 0)   AS cache_read_tokens,
+                         am.a['cached_token_count']::string), 19, 0)   AS cache_read_tokens,
   TRY_TO_NUMBER(COALESCE(am.a['cache_creation_tokens']::string,
                          am.a['gen_ai.usage.cache_write.input_tokens']::string,
                          am.a['gen_ai.usage.cache_creation.input_tokens']::string,
-                         am.a['cache_write_token_count']::string), 18, 0) AS cache_write_tokens,
+                         am.a['cache_write_token_count']::string), 19, 0) AS cache_write_tokens,
   TRY_CAST(am.a['cost_usd']::string AS DOUBLE)                          AS reported_cost_usd,
   am.a['gen_ai.input.messages']::string                                 AS content_input,
   am.a['gen_ai.output.messages']::string                                AS content_output,
@@ -278,6 +279,17 @@ SELECT
 FROM rec_exp re
 LEFT JOIN rec_map am USING (src_path, block_idx, scope_idx, rec_idx)
 ),
+-- The subtraction can reach 20 digits, which fails the INSERT into the NUMBER(19,0) columns and
+-- with it the whole run. Anything outside the signed 64-bit range becomes NULL instead, matching
+-- the other engines' BIGINT.
+bounded AS (
+SELECT * REPLACE (
+%{ for c in ["input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens"] ~}
+  IFF(${c} BETWEEN -9223372036854775808 AND 9223372036854775807, ${c}, NULL) AS ${c}%{ if c != "cache_write_tokens" },%{ endif }
+%{ endfor ~}
+)
+FROM flat
+),
 -- cost_usd: the agent's own figure, else an estimate at list price from llm_model_prices
 -- (exact model match). invoke_agent repeats its children's usage, so it is never priced.
 priced AS (
@@ -291,7 +303,7 @@ SELECT f.*,
        + COALESCE(f.cache_write_tokens, 0) * COALESCE(p."cache_write_usd_per_mtok", p."input_usd_per_mtok")
        + COALESCE(f.output_tokens, 0) * p."output_usd_per_mtok") / 1e6
     END)                                                                AS cost_usd
-FROM flat f
+FROM bounded f
 LEFT JOIN ${prices} p ON p."model_key" = f.model
 )
 -- select_cols names priced's columns in the INSERT's order rather than SELECT *: columns.json is

@@ -186,10 +186,12 @@
     }
     return [...by.values()];
   }
+  // Findings are grouped by kind and type, not by label: a custom type may share a built-in type's name.
+  const typeKey = f => `${f.kind}|${f.type}`;
   function summary(fs) {
     const c = new Map();
-    for (const f of fs) { const t = typeLabel(f); c.set(t, (c.get(t) || 0) + 1); }
-    return [...c].sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t}${n > 1 ? " ×" + n : ""}`).join(" · ");
+    for (const f of fs) { const o = c.get(typeKey(f)) || { label: typeLabel(f), n: 0 }; o.n++; c.set(typeKey(f), o); }
+    return [...c.values()].sort((a, b) => b.n - a.n).map(o => `${o.label}${o.n > 1 ? " ×" + o.n : ""}`).join(" · ");
   }
 
   // ---------- render ----------
@@ -235,17 +237,17 @@
     // Top types
     const types = new Map();
     for (const f of findings) {
-      const t = typeLabel(f), o = types.get(t) || { n: 0, kind: f.kind, sev: 3 };
+      const o = types.get(typeKey(f)) || { label: typeLabel(f), n: 0, kind: f.kind, sev: 3 };
       o.n++; o.sev = Math.min(o.sev, f.sev);
-      types.set(t, o);
+      types.set(typeKey(f), o);
     }
-    const typeRows = [...types].sort((a, b) => b[1].n - a[1].n);
-    hBars($("types-chart"), typeRows.slice(0, 8).map(([t, o]) => ({
-      label: t, value: o.n, display: compact(o.n),
+    const typeRows = [...types.values()].sort((a, b) => b.n - a.n);
+    hBars($("types-chart"), typeRows.slice(0, 8).map(o => ({
+      label: o.label, value: o.n, display: compact(o.n),
       tip: [{ value: numExact(o.n), label: "findings" }, { value: KINDS[o.kind].name, label: "" }, { value: SEV[o.sev].label, label: "at most" }],
     })), "No findings in this selection");
     table($("types-table"), ["Type", "Kind", "Findings", "Severity (at most)"],
-      typeRows.map(([t, o]) => [t, KINDS[o.kind].name, numExact(o.n), SEV[o.sev].label]), [1, 3]);
+      typeRows.map(o => [o.label, KINDS[o.kind].name, numExact(o.n), SEV[o.sev].label]), [1, 3]);
 
     // People
     const people = new Map();

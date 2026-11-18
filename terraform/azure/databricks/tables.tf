@@ -67,7 +67,7 @@ locals {
 # USING ICEBERG (securable_kind TABLE_DELTA_ICEBERG_MANAGED). Setting DELTA instead would create
 # plain Delta tables.
 
-# A columns.json change to a table recreates it, empty, as on AWS and Azure (Snowflake); see
+# A columns.json change to a table recreates it, empty, as on AWS and on Snowflake; see
 # RELEASING.md. The provider can't alter the columns safely in place: with the same column count
 # it pairs old and new columns by position and renames them (relabelling data), and it refuses
 # any type change at plan time, -replace included. So column changes are ignored on the table and

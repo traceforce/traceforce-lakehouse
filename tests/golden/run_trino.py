@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the golden fixture through the AWS module's SQL (terraform/aws/sql) in a local Trino, the
+"""Run the golden fixture through the AWS module's SQL (terraform/aws/athena/sql) in a local Trino, the
 engine Athena engine version 3 is built on, and write or check expected/.
 
     python3 tests/golden/run_trino.py            # compare with expected/
@@ -90,9 +90,9 @@ def q(s):
 
 def check_projection():
     for f, setting in PROJECTION.items():
-        text = " ".join(open(os.path.join(g.REPO, "terraform", "aws", f)).read().split())
+        text = " ".join(open(os.path.join(g.REPO, "terraform", "aws", "athena", f)).read().split())
         if setting not in text:
-            raise SystemExit(f"terraform/aws/{f} no longer has {setting}: update the partition "
+            raise SystemExit(f"terraform/aws/athena/{f} no longer has {setting}: update the partition "
                              "settings at the top of run_trino.py to match")
 
 
@@ -136,7 +136,7 @@ def setup_tables(work, tokens):
 
 
 def ingest(work, agents):
-    sql = g.render("terraform/aws/sql/ingest_agent_events.sql.tftpl", {
+    sql = g.render("terraform/aws/athena/sql/ingest_agent_events.sql.tftpl", {
         "target": "iceberg.lake.agent_events", "raw": "hive.lake.raw_telemetry",
         "cols": ", ".join(n for n, _, _ in g.AGENT_EVENTS),
         "prices": f"iceberg.lake.{g.PRICES_TABLE}"})
@@ -150,8 +150,8 @@ def mirror(work):
     for table, mcols in g.MIRRORS.items():
         cols = [{"name": n, "type": t} for n, t, _ in mcols]
         v = {"target": f"iceberg.lake.{table}", "source": f"hive.lake.export_{table}"}
-        merge = g.render("terraform/aws/sql/mirror_export_merge.sql.tftpl", {**v, "columns": cols})
-        delete = g.render("terraform/aws/sql/mirror_export_delete.sql.tftpl", v)
+        merge = g.render("terraform/aws/athena/sql/mirror_export_merge.sql.tftpl", {**v, "columns": cols})
+        delete = g.render("terraform/aws/athena/sql/mirror_export_delete.sql.tftpl", v)
         trino(work, merge + ";\n", f"merge {table}")
         trino(work, delete + ";\n", f"delete {table}")
 

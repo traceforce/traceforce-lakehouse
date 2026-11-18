@@ -44,10 +44,6 @@ KNOWN = {
     ("telemetry/agent=AGENT_IDENTITY_CLAUDE_CODE/dt=@D0@/SERIAL-1/dev@example.com_0b5c1f6e-1d2a-4c3b-9e8f-7a6b5c4d3e2f/"
      "sess-1/@D0@_120000.123_11111111-1111-4111-8111-111111111111_logs.json.gz#user_prompt", "attrs_json"):
         "non_bmp_escape",
-    # AWS's from_iso8601_timestamp keeps milliseconds; Databricks keeps the microseconds the
-    # export wrote, as Snowflake does.
-    ("a1", "updated_at"): "ms_truncation",
-    ("a4", "created_at"): "ms_truncation",
 }
 
 H = os.environ.get("DATABRICKS_HOST", "")

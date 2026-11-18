@@ -2,7 +2,7 @@
 """Generate the skill's schema reference from the canonical column lists.
 
 Single source of truth for column names/types is terraform/schema/columns.json, consumed by the
-cloud modules (terraform/aws, terraform/gcp, terraform/azure/snowflake, terraform/azure/databricks) and this script. This script adds meaning: per-column
+cloud modules (terraform/aws/athena, terraform/gcp, terraform/azure/snowflake, terraform/snowflake/core, terraform/azure/databricks) and this script. This script adds meaning: per-column
 notes and join rules, and writes skills/traceforce-lakehouse/reference/*.md. Re-run after editing
 columns.json; commit the output.
 

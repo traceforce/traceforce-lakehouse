@@ -10,10 +10,30 @@ locals {
   # snowflake_external_table does not expose. Accepted: auto-refresh would mean Event Grid
   # resources in the customer's logs account and a second admin consent, while the listing is
   # one metadata call per hour whose cost grows only with the object count.
+  #
+  # The guard before the INSERT: an external table silently returns no rows from a file it can't
+  # read (a missing KMS permission, a lost role or role assignment), so the INSERT would load
+  # nothing and the Task would still succeed. If the table has files registered in this run's
+  # window but none of them yields a row, the block raises instead: the Task fails and the alert
+  # emails. Registered files come from metadata (no file is read); readability is one LIMIT 1 probe.
+  # A quiet window (no files) passes. Telemetry files are never empty, so this has no false alarms;
+  # the export mirrors are not guarded (empty exports are normal: 20-byte gzip files), and their
+  # files share the raw role, key and integration with telemetry, so this check covers them too.
   hourly_ingest_sql = <<-SQL
     EXECUTE IMMEDIATE $$
+      DECLARE
+        logs_unreadable EXCEPTION (-20001, 'TraceForce lakehouse: the raw telemetry external table has files in the ingest window but Snowflake could not read any of them (it returns no rows instead of an error). Check that the storage integration can read and decrypt the logs: on AWS the raw IAM role and logs_kms_key_arn, on Azure the role assignment.');
       BEGIN
         ALTER EXTERNAL TABLE ${snowflake_external_table.raw_telemetry.fully_qualified_name} REFRESH;
+        LET registered INTEGER := (
+          SELECT COUNT(*) FROM TABLE(${snowflake_database.lakehouse.fully_qualified_name}.INFORMATION_SCHEMA.EXTERNAL_TABLE_FILES(TABLE_NAME => '${snowflake_external_table.raw_telemetry.fully_qualified_name}'))
+          WHERE SPLIT_PART(SPLIT_PART(file_name, '/', -5), '=', 2) BETWEEN TO_VARCHAR(DATEADD(day, 1 - ${var.lookback_days}, CURRENT_DATE()), 'YYYYMMDD') AND TO_VARCHAR(DATEADD(day, 1, CURRENT_DATE()), 'YYYYMMDD'));
+        LET readable INTEGER := (
+          SELECT COUNT(*) FROM (SELECT 1 FROM ${snowflake_external_table.raw_telemetry.fully_qualified_name}
+            WHERE dt BETWEEN TO_VARCHAR(DATEADD(day, 1 - ${var.lookback_days}, CURRENT_DATE()), 'YYYYMMDD') AND TO_VARCHAR(DATEADD(day, 1, CURRENT_DATE()), 'YYYYMMDD') LIMIT 1));
+        IF (registered > 0 AND readable = 0) THEN
+          RAISE logs_unreadable;
+        END IF;
         ${templatefile("${path.module}/sql/ingest_agent_events.sql.tftpl", {
   target = snowflake_iceberg_table.agent_events.fully_qualified_name
   raw    = snowflake_external_table.raw_telemetry.fully_qualified_name
