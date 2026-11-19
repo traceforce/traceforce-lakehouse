@@ -55,6 +55,8 @@ Tests the hooks don't run:
   or newer, bash and python3 (no Snowflake connector or credentials).
 - the dashboards' diagnosis of Snowflake sign-in and warehouse failures, with recorded connector
   messages, offline: `node tests/dashboards/test_snowflake_errors.mjs`. Needs Node 18 or newer.
+- which part of a tool call's arguments the incident-triage page shows, offline:
+  `node tests/dashboards/test_args_text.mjs`. Needs Node 18 or newer.
 - the dashboards' Snowflake queries, live, as a user holding the reader role (Node 18 or newer, python3
   with snowflake-connector-python and `snowflake_query.sh`'s credentials):
   - `tests/dashboards/check_snowflake_queries.sh`: each query runs, with the expected column names;

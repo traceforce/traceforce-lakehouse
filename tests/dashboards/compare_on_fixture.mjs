@@ -74,7 +74,7 @@ function messageEvents() {
     if (i < RESPONSE_CASES.length) out.push(ev(CC, al, "D1", "m1", -5 * D + i * 10 + 1, { event_name: RESPONSE_EVENTS[i % 3], signal: "log", content_output: RESPONSE_CASES[i], model: "opus", input_tokens: i, cost_usd: 0.5 }));
   }
   // Turn 0's totals: an invoke_agent row (its tokens and model aren't counted), a call made of two rows sharing
-  // an id, another call, and an id-less span (3 calls). Turn 1's models: repeated, out of order, and one with no
+  // an id, another call, an id-less span, and an app call left out (3 calls). Turn 1's models: repeated, out of order, and one with no
   // tokens or cost (not listed): "alpha, zeta".
   const m1 = (t, o) => ev(CC, al, "D1", "m1", -5 * D + t, { signal: "log", ...o });
   out.push(m1(2, { operation: "invoke_agent", signal: "span", model: "agentmodel", input_tokens: 999, output_tokens: 999, cost_usd: 1 }),
@@ -82,6 +82,8 @@ function messageEvents() {
     m1(4, { operation: "execute_tool", signal: "span", tool_call_id: "k1", tool_name: "read" }),
     m1(5, { operation: "execute_tool", tool_call_id: "k2", tool_name: "edit" }),
     m1(6, { operation: "execute_tool", signal: "span", tool_name: "bash" }),
+    m1(7, { operation: "execute_tool", tool_call_id: "k3", tool_name: "mcp_tool" }),
+    m1(8, { operation: "execute_tool", signal: "span", tool_call_id: "k3", tool_name: "update_plan", mcp_server_name: "ccd_turn" }),
     m1(12, { operation: "chat", model: "zeta", input_tokens: 5 }), m1(13, { operation: "chat", model: "alpha", output_tokens: 2 }),
     m1(14, { operation: "chat", model: "zeta", cost_usd: 0.25 }), m1(15, { operation: "chat", model: "nocost" }));
   // m2: Copilot chat spans. The same user message on several spans is one turn; a span with no user message
@@ -99,7 +101,9 @@ function messageEvents() {
     ev(CC, null, "D9", "m4", -3 * D, { event_name: "beforeSubmitPrompt", content_input: userMsg("who") }));
   // t1: the incident timeline. A prompt stored twice, an unparseable one, one with a raw control character;
   // call c1 is three rows (decision, an MCP span named mcp_tool, a result naming the tool, with long arguments);
-  // c2 a rejected Bash call; c3 only a result; c5 a failed call; a row with an id but no tool event (not a call); id-less tool spans with and without an MCP
+  // c2 a rejected Bash call; c3 only a result; c5 a failed call; c6 a Claude Code MCP call whose decision row holds
+  // the placeholder, its span no arguments and its result the real ones (a dispatch with nested queryParams.q); c7
+  // the same with result arguments that sort below the placeholder, so only the ranked pick shows them; a row with an id but no tool event (not a call); id-less tool spans with and without an MCP
   // server; replies with flags (two flags, ] inside quotes, never closed, a newline inside, stored twice).
   // Person filter: another person's row, rows without an email, an uppercase email; window: rows outside it.
   const t = (dt, email, o) => ev(CC, email, "D1", "t1", -2 * D + dt, o);
@@ -114,6 +118,13 @@ function messageEvents() {
     t(5, "ALICE@example.com", { event_name: "preToolUse", tool_call_id: "c2", tool_name: "Bash", decision: "reject", error_type: "denied", attrs_json: '{"source":"hook"}', tool_args: "rm -rf x" }),
     t(6, al, { event_name: "tool_result", tool_call_id: "c3" }),
     t(6.5, al, { event_name: "postToolUseFailure", tool_call_id: "c5", tool_name: "edit", error_type: "permission_denied" }),
+    t(6.6, al, { event_name: "tool_decision", tool_call_id: "c6", tool_name: "mcp_tool", mcp_server_name: "sf", decision: "accept", tool_args: '{"mcp_server_name":"sf","mcp_tool_name":"dispatch"}' }),
+    t(6.7, al, { operation: "execute_tool", signal: "span", tool_call_id: "c6", tool_name: "dispatch", mcp_server_name: "sf" }),
+    t(6.8, al, { event_name: "tool_result", tool_call_id: "c6", tool_name: "mcp_tool", mcp_server_name: "sf",
+      tool_args: '{"method":"GET","url":"/services/data/v60.0/query","skillId":"soql","queryParams":{"q":"SELECT Id FROM Account"}}' }),
+    t(6.85, al, { event_name: "tool_decision", tool_call_id: "c7", tool_name: "mcp_tool", mcp_server_name: "sf", decision: "accept", tool_args: '{"mcp_server_name":"sf","mcp_tool_name":"describe"}' }),
+    t(6.9, al, { operation: "execute_tool", signal: "span", tool_call_id: "c7", tool_name: "describe", mcp_server_name: "sf" }),
+    t(6.95, al, { event_name: "tool_result", tool_call_id: "c7", tool_name: "mcp_tool", mcp_server_name: "sf", tool_args: '{"id":"001x"}' }),
     t(7.5, al, { event_name: "user_prompt", content_input: `[{"role":"user","parts":[{"content":"a\u0004b"}]}]` }),
     t(7, al, { event_name: "user_prompt", tool_call_id: "c4", content_input: userMsg("has an id") }),
     t(8, al, { operation: "execute_tool", signal: "span", mcp_server_name: "srv2" }),
@@ -135,7 +146,7 @@ const EV = [["agent", "s"], ["user_email", "s"], ["device_native_id", "s"], ["se
   ["input_tokens", "i"], ["output_tokens", "i"], ["cache_read_tokens", "i"], ["cost_usd", "f"], ["tool_name", "s"],
   ["mcp_server_name", "s"], ["ingested_at", "t"], ["event_name", "s"], ["decision", "s"], ["error_type", "s"],
   ["containment_enforcement", "s"], ["sd_enforcement", "s"], ["content_input", "s"], ["tool_args", "s"], ["attrs_json", "s"], ["content_output", "s"]];
-const CC = "AGENT_IDENTITY_CLAUDE_CODE", CU = "AGENT_IDENTITY_CURSOR";
+const CC = "AGENT_IDENTITY_CLAUDE_CODE", CU = "AGENT_IDENTITY_CURSOR", CX = "AGENT_IDENTITY_CHATGPT_CODEX";
 const ev = (agent, email, dev, sess, ts, o = {}) => ({ agent, user_email: email, device_native_id: dev, session_id: sess,
   ts, ingested_at: -60, ...o });
 const EVENTS = [
@@ -150,6 +161,50 @@ const EVENTS = [
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 241, { operation: "execute_tool", tool_call_id: "t1", tool_name: "fetch", mcp_server_name: "srv", signal: "span" }),
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 300, { operation: "execute_tool", tool_name: "bash", signal: "span" }),
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 301, { operation: "execute_tool", tool_name: "ignored", signal: "log" }),
+  // The agent app's own calls, left out per call: a ccd_ call whose log row names no server, Claude Browser's
+  // preview tool (its log row spells the server with a space), an id-less span on visualize, a server-less
+  // ToolSearch, Codex's node-repl reset and an OpenAI tool on its connector hub, Cursor's app control. Counted:
+  // a chat row sharing an app call's id, the same servers' other tools, and ToolSearch on a real server.
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 500, { operation: "execute_tool", tool_call_id: "a1", tool_name: "mcp_tool", signal: "log" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 501, { operation: "execute_tool", tool_call_id: "a1", tool_name: "update_plan", mcp_server_name: "ccd_turn", signal: "span" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 502, { operation: "chat", tool_call_id: "a1", input_tokens: 3, signal: "log" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 503, { operation: "execute_tool", tool_call_id: "a2", tool_name: "mcp_tool", mcp_server_name: "Claude Browser", signal: "log" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 504, { operation: "execute_tool", tool_call_id: "a2", tool_name: "preview_start", mcp_server_name: "Claude_Browser", signal: "span" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 505, { operation: "execute_tool", tool_call_id: "a3", tool_name: "navigate", mcp_server_name: "Claude_Browser", signal: "span" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 506, { operation: "execute_tool", tool_name: "show_widget", mcp_server_name: "visualize", signal: "span" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 507, { operation: "execute_tool", tool_call_id: "a4", tool_name: "ToolSearch", signal: "span" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 508, { operation: "execute_tool", tool_call_id: "a5", tool_name: "ToolSearch", mcp_server_name: "srv", signal: "span" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 509, { operation: "execute_tool", tool_call_id: "a6", tool_name: "run_in_terminal", mcp_server_name: "terminal", signal: "span" }),
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 600, { prompt_id: "p9", operation: "chat", input_tokens: 1 }),
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 601, { operation: "execute_tool", tool_call_id: "a7", tool_name: "js_reset", mcp_server_name: "node-repl", signal: "log" }),
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 602, { operation: "execute_tool", tool_call_id: "a8", tool_name: "mcp__codex_apps__search_service__web_run", mcp_server_name: "codex_apps", signal: "log" }),
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 603, { operation: "execute_tool", tool_call_id: "a9", tool_name: "_fetch", mcp_server_name: "codex_apps", signal: "log" }),
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 604, { operation: "execute_tool", tool_call_id: "a10", tool_name: "js", mcp_server_name: "node_repl", signal: "log" }),
+  ev(CU, null, "D4", "s3", -3 * D + 20, { operation: "execute_tool", tool_call_id: "a11", tool_name: "move_agent_to_root", signal: "log" }),
+  ev(CU, null, "D4", "s3", -3 * D + 21, { operation: "execute_tool", tool_call_id: "a12", tool_name: "x", mcp_server_name: "cursor-app-control", signal: "log" }),
+  // Cursor's '' id, in two sessions on D4: s18's app call (s18 is then noise, hidden) leaves s19's edit counted.
+  ev(CU, null, "D4", "s18", -3 * D + 30, { operation: "execute_tool", tool_call_id: "", tool_name: "move_agent_to_root", signal: "log" }),
+  ev(CU, null, "D4", "s19", -3 * D + 40, { operation: "execute_tool", tool_call_id: "", tool_name: "edit", signal: "log" }),
+  // Codex prompts carry no id: counted by ts, so the one stored twice counts once (s8: 3 prompts).
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 590, { event_name: "user_prompt", signal: "log" }),
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 590, { event_name: "user_prompt", signal: "log" }),
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 595, { event_name: "user_prompt", signal: "log" }),
+  // Noise sessions, hidden: startup and connection events, an app call, an invoke_agent span's tokens, a zero cost.
+  // dan has nothing else (no activity row); D7 is an unattributed device with nothing else (no device row).
+  // Kept: Codex s15, only a TraceForce enforcement row, and Cursor s2 (bob), only TraceForce-blocked failures.
+  // Unattributed on D5 (which has other activity): s16 kept by only an enforcement row; s17 only an app call, hidden.
+  ev(CC, "alice@example.com", "D1", "s12", -2 * D + 700, { event_name: "mcp_server_connection", signal: "log", cost_usd: 0 }),
+  ev(CC, "alice@example.com", "D1", "s12", -2 * D + 701, { operation: "execute_tool", tool_call_id: "a13", tool_name: "update_plan", mcp_server_name: "ccd_turn", signal: "span" }),
+  ev(CC, "alice@example.com", "D1", "s12", -2 * D + 702, { operation: "invoke_agent", signal: "span", input_tokens: 9, output_tokens: 9 }),
+  ev(CC, "dan@example.com", "D1", "s13", -2 * D + 800, { event_name: "hook_registered", signal: "log" }),
+  ev(CU, null, "D7", "s14", -2 * D + 900, { event_name: "sessionStart", signal: "log" }),
+  ev(CX, "alice@example.com", "D1", "s15", -2 * D + 950, { event_name: "traceforce.enforcement", decision: "deny", signal: "log" }),
+  ev(CU, null, "D5", "s16", -2 * D + 960, { event_name: "traceforce.enforcement", decision: "deny", signal: "log" }),
+  ev(CC, null, "D5", "s17", -2 * D + 961, { operation: "execute_tool", tool_call_id: "a14", tool_name: "mcp_tool", signal: "log" }),
+  ev(CC, null, "D5", "s17", -2 * D + 962, { operation: "execute_tool", tool_call_id: "a14", tool_name: "update_plan", mcp_server_name: "ccd_turn", signal: "span" }),
+  // Unattributed D8: s20 starts a day early, so D8's later day has only a Codex prompt and is kept by it alone.
+  ev(CX, null, "D8", "s20", -3 * D + 50, { prompt_id: "p20", operation: "chat" }),
+  ev(CX, null, "D8", "s20", -2 * D + 50, { event_name: "user_prompt", signal: "log" }),
   // s2: no email; the person comes from the device's MDM owner (stored in upper case).
   ev(CC, null, "D3", "s2", -1 * D, { model: "opus", prompt_id: "p2", operation: "chat", input_tokens: 10, cost_usd: 0.5 }),
   // s3, s4: no person. D4 has two live device records, a deleted one and agent accounts; D5 has an MDM
@@ -166,8 +221,9 @@ const EVENTS = [
   ev(CU, "carol@example.com", "D6", "s7", -1 * H, { prompt_id: "p8", operation: "chat" }),
   // Blocks. Counted: a hook rejection (long tool_args, a fraction of a second in ts), a Cursor denial tagged
   // [Traceforce with an MCP server and no tool (person from the MDM owner), a masked prompt, a hook rejection with
-  // no tool. Not counted: another source, an accept, containment off, the message as an object or nested
-  // instead of a dotted key, attrs that aren't an object, an unmasked prompt, and one outside the window.
+  // no tool, a denied Read whose arguments are only on its span. Not counted: another source, an accept,
+  // containment off, the message as an object or nested instead of a dotted key, attrs that aren't an object, an
+  // unmasked prompt, and one outside the window.
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 400.123, { event_name: "tool_decision", decision: "reject", attrs_json: '{"source":"hook"}', tool_name: "Bash", tool_args: "a".repeat(598) + "\u{1F600}bc" }),
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 401, { event_name: "tool_decision", decision: "reject", attrs_json: '{"source":"config"}', tool_name: "Bash" }),
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 402, { event_name: "tool_decision", decision: "accept", attrs_json: '{"source":"hook"}', tool_name: "Bash" }),
@@ -180,6 +236,8 @@ const EVENTS = [
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 405, { event_name: "user_prompt", sd_enforcement: "block", content_input: "my key is ********" }),
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 406, { event_name: "user_prompt", sd_enforcement: "block", content_input: "nothing masked" }),
   ev(CC, "alice@example.com", "D1", "s1", -3 * D, { event_name: "tool_decision", decision: "reject", attrs_json: '{"source":"hook"}' }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 410, { event_name: "tool_decision", tool_call_id: "b1", decision: "reject", attrs_json: '{"source":"hook"}', tool_name: "Read" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 411, { operation: "execute_tool", signal: "span", tool_call_id: "b1", tool_name: "Read", tool_args: '{"file_path":"creds.txt"}' }),
   ev(CC, "alice@example.com", "D1", "s6", -95 * D, { event_name: "tool_decision", decision: "reject", attrs_json: '{"source":"hook"}', tool_name: "old" }),
   ...messageEvents(),
 ];
@@ -243,8 +301,14 @@ const DIALECT = {
   },
 };
 // The first row's casts set each column's name and type; later rows are bare values, which UNION ALL converts
-// to those types. That keeps each query's SQL well under Linux's 128 KiB argument limit (see run).
+// to those types. That keeps each query's SQL well under Linux's 128 KiB argument limit (see run). Athena gets
+// one VALUES list instead: a query reading a long UNION ALL chain several times passes Trino's 150-stage cap
+// (Snowflake's VALUES takes only constants, and the timestamps aren't).
 function cte(d, name, cols, rows) {
+  if (d === DIALECT.aws) {
+    const vals = rows.map(r => `(${cols.map(([, t], i) => d.lit(r[i], t)).join(", ")})`).join(", ");
+    return `${name} AS (SELECT ${cols.map(([c, t]) => `CAST("${c}" AS ${d.cast[t]}) AS "${c}"`).join(", ")} FROM (VALUES ${vals}) AS v(${cols.map(([c]) => `"${c}"`).join(", ")}))`;
+  }
   const body = rows.map((r, n) => `SELECT ${cols.map(([c, t], i) => n ? d.lit(r[i], t) : `CAST(${d.lit(r[i], t)} AS ${d.cast[t]}) AS ${d.id(c)}`).join(", ")}`).join(" UNION ALL ");
   return `${d.id(name)} AS (${body})`;
 }
@@ -316,6 +380,7 @@ const since = run("aws", U, "recent_sessions", { agent: "", since: "2000-01-01 0
   .find(r => r.session_id === "s7")?.started_at;
 const cases = [[U, "freshness", {}], [U, "models", {}], [U, "activity", {}], [U, "unattributed", {}], [U, "unattributed_devices", {}],
   [U, "sessions", { person: "alice@example.com" }], [U, "sessions", { person: "bob@example.com" }], [U, "sessions", { person: "" }],
+  [U, "sessions", { person: "dan@example.com" }],
   [U, "tools", { person: "alice@example.com" }], [U, "tools", { person: "" }],
   [U, "recent_sessions", { agent: "", since: "2000-01-01 00:00:00" }], [U, "recent_sessions", { agent: "cursor", since: "2000-01-01 00:00:00" }],
   [U, "recent_sessions", { agent: "", since }],

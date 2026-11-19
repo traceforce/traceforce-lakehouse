@@ -1,18 +1,55 @@
 -- Snowflake SQL version of ../tools.sql: one person's tool calls per (UTC day, agent, tool).
 -- calls groups by name: tool_call_id isn't in its select list, and "agent" and "person" there are the e
 -- CTE's columns, not derived aliases.
-WITH e AS (
+WITH src AS (
   SELECT
     ev."ts"::DATE AS "day",
     LOWER(REPLACE(ev."agent", 'AGENT_IDENTITY_', '')) AS "agent",
     COALESCE(LOWER(ev."user_email"), LOWER(m."owner_email")) AS "person",
-    ev."tool_call_id" AS "tool_call_id", ev."tool_name" AS "tool_name", ev."mcp_server_name" AS "mcp_server_name",
-    ev."signal" AS "signal"
+    ev."ts" AS "ts", ev."session_id" AS "session_id", ev."tool_call_id" AS "tool_call_id", ev."tool_name" AS "tool_name", ev."mcp_server_name" AS "mcp_server_name",
+    ev."signal" AS "signal", ev."operation" AS "operation",
+    REGEXP_REPLACE(COALESCE(ev."mcp_server_name", ''), '[^A-Za-z0-9_-]', '_') AS "server_key"
   FROM "agent_events" ev
   LEFT JOIN "device_owner_mappings" m ON m."device_native_id" = ev."device_native_id"
   WHERE ev."ts" >= DATEADD('day', -90, CURRENT_DATE())::TIMESTAMP_NTZ
     AND ev."operation" = 'execute_tool'
     AND COALESCE(LOWER(ev."user_email"), LOWER(m."owner_email")) IS NOT DISTINCT FROM {{person}}
+),
+-- The agent app's calls that drive the app itself, not the person's work: scout's hostappmcp.IsHostAppMCP
+-- (server_key spells the server as its mcpServerKey does), plus built-in plumbing. Keep the two in step.
+flagged AS (
+  SELECT src.*, COALESCE("operation" = 'execute_tool' AND (
+    ("agent" IN ('claude', 'claude_code') AND (
+      SUBSTR("server_key", 1, 4) = 'ccd_'
+      OR "server_key" IN ('cowork', 'scheduled-tasks', 'hearthbot', 'claude-code-remote', 'Claude_Code_Remote',
+                          'claude_ai_Claude_Docs', '1a59c906-04da-521d-bda7-7f71b9f9e01c')
+      OR ("server_key" = 'visualize' AND "tool_name" IN ('show_widget', 'read_me'))
+      OR ("server_key" IN ('Claude_Browser', 'Claude_Preview') AND "tool_name" IN ('preview_start', 'preview_stop', 'preview_list', 'preview_logs'))
+      OR ("server_key" = 'terminal' AND "tool_name" IN ('read_terminal', 'open_terminal_tab', 'list_terminal_tabs', 'stop_terminal_tab'))
+      OR ("server_key" = 'memory' AND "tool_name" IN ('memory_read', 'memory_list', 'memory_write', 'memory_str_replace', 'memory_append', 'memory_delete'))))
+    OR ("agent" = 'chatgpt_codex' AND (
+      REPLACE("server_key", '-', '_') IN ('codex_app', 'codex_security')
+      OR (REPLACE("server_key", '-', '_') IN ('node_repl', 'cua_repl') AND "tool_name" IN ('js_reset', 'js_add_node_module_dir'))
+      OR (REPLACE("server_key", '-', '_') = 'codex_apps' AND REGEXP_REPLACE(REGEXP_REPLACE("tool_name", '^.*__', ''), '^_+', '')
+          IN ('web_run', 'write_page_reference', 'create_plugin', 'update_app_permissions', 'save_site_version', 'create_source_repository_write_credential'))))
+    OR ("agent" = 'cursor' AND (("server_key" = '' AND "tool_name" IN ('move_agent_to_root', 'move_agent_to_cloned_root'))
+      OR "server_key" IN ('cursor-app-control', 'cursor-backend-control', 'cursor-subscriptions')))
+    -- Built-in plumbing with no server: tool search, structured output, subagent handback, Claude's compose and present.
+    OR ("server_key" = '' AND "tool_name" IN ('ToolSearch', 'StructuredOutput', 'SubagentHandback', 'tool_search', 'tool_search_tool', 'message_compose_v1', 'present_files'))), FALSE) AS "app_call"
+  FROM src
+),
+-- Per call: Claude Code's decision and result rows say 'mcp_tool' and only its span names the tool, so a call
+-- goes whole when any of its rows is the app's. An id-less row (a Copilot span) goes on its own flag.
+e AS (
+  SELECT * FROM (
+    SELECT flagged.*,
+      -- session_id keeps Cursor's empty tool_call_id from linking calls across sessions;
+      -- ts only splits the id-less rows, whose value is unused, into small partitions.
+      MAX(CASE WHEN "app_call" THEN 1 ELSE 0 END)
+        OVER (PARTITION BY "session_id", "tool_call_id", "operation", CASE WHEN "tool_call_id" IS NULL THEN "ts" END) AS "call_app_call"
+    FROM flagged
+  ) f
+  WHERE NOT "app_call" AND ("tool_call_id" IS NULL OR "call_app_call" = 0)
 ),
 calls AS (
   SELECT MIN("day") AS "day", "agent", "person",

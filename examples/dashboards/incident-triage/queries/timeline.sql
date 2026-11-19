@@ -32,11 +32,15 @@ prompts AS (
 ),
 calls AS (
   -- A call is 1-3 rows sharing tool_call_id (decision, result, span); take the most specific of each field.
+  -- Arguments: the best row's, ranked by a leading digit that is then cut (Claude Code's decision row holds only
+  -- a placeholder for an MCP call, its result row the real arguments).
   SELECT min(ts) AS ts, 'tool' AS kind,
     CASE WHEN max(mcp_server_name) IS NOT NULL
       THEN max(mcp_server_name) || '/' || coalesce(max(CASE WHEN tool_name <> 'mcp_tool' THEN tool_name END), max(tool_name))
       ELSE coalesce(max(CASE WHEN tool_name <> 'mcp_tool' THEN tool_name END), max(tool_name), 'tool') END AS tool,
-    tool_call_id, substr(max(tool_args), 1, 2000) AS text,
+    tool_call_id, substr(max(CASE WHEN tool_args IS NOT NULL THEN concat(CASE WHEN event_name = 'tool_result' THEN '9' WHEN event_name = 'tool_call' THEN '8'
+      WHEN event_name IN ('postToolUse', 'postToolUseFailure') THEN '7' WHEN event_name = 'afterMCPExecution' THEN '6'
+      WHEN event_name = 'preToolUse' THEN '5' WHEN signal = 'span' THEN '4' WHEN event_name = 'tool_decision' THEN '1' ELSE '2' END, tool_args) END), 2, 2000) AS text,
     max(decision) AS decision, max(decision_source) AS decision_source, max(error_type) AS error_type,
     NULL AS message_id
   FROM e

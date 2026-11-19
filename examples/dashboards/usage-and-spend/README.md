@@ -34,7 +34,8 @@ Prompt text leaves the lake only for the session you open.
   date range and agent, with who ran each (the device, for unattributed ones).
 - **User drill-down**: click a user (bar or table row) or pick one in the filter to see their
   sessions (start time, agent, duration, models, prompts, tool calls, tokens and cost; sortable,
-  newest first) and their top tools. MCP tools show as `server/tool`.
+  newest first) and their top tools. MCP tools show as `server/tool`; the agent app's own calls
+  aren't counted (see below).
 - **Prompts in a session**: click a session to expand its prompts. Each card shows the time, duration,
   model, tool calls, tokens and cost, then the prompt and the agent's final response. The text is
   as TraceForce stored it: values your redaction policy matched show as `****`. Prompts are cut at
@@ -48,9 +49,16 @@ Prompt text leaves the lake only for the session you open.
 
 - **User** is the event's `user_email`, else the device's MDM owner. With neither, the row is
   *Unattributed*. GitHub Copilot never reports an email, so it relies on MDM.
-- **Sessions** are distinct `session_id`s, counted once on the UTC day they started.
-  **Prompts** are distinct `prompt_id` / `generation_id`. **Tool calls** are distinct
-  `tool_call_id`s on `execute_tool` rows, plus Copilot's id-less tool spans.
+- **Sessions** are distinct `session_id`s, counted once on the UTC day they started. A session with
+  no prompt, tool call, tokens or cost (only startup, hook or connection events) is left out, unless
+  TraceForce blocked something in it (`traceforce.enforcement`) or a tool attempt failed
+  (`postToolUseFailure`); so is a user or device with nothing else in a day.
+  **Prompts** are distinct `prompt_id` / `generation_id`, plus Codex's `user_prompt` rows, which carry
+  neither (counted by `ts`). GitHub Copilot logs no prompt events, so it shows —. **Tool calls** are distinct
+  `tool_call_id`s on `execute_tool` rows, plus Copilot's id-less tool spans. Calls the agent app makes
+  to drive itself are left out (Claude's `ccd_*` and `cowork` servers and visualize's widget tools, Codex's `codex_app`,
+  Cursor's app control, built-in plumbing such as `ToolSearch`), by the same rule TraceForce's scout
+  uses to tell them apart. A call is left out whole when any of its rows matches.
 - **Cost** is the agent's own figure, else an estimate at list price (`llm_model_prices`);
   **input tokens** exclude cache. The *Cost* card names the agents it excludes.
   `invoke_agent` spans are skipped so tokens aren't counted twice.
@@ -75,6 +83,7 @@ A prompt runs from one user prompt to the next in the same session, and the mode
 and response in between are credited to it. This works for agents that emit no prompt id. Spend
 logged before a session's first prompt isn't credited to any prompt. The prompts are what each agent
 logs as one: Claude Code also logs its own task notifications as prompts, so they appear here too.
+GitHub Copilot's prompts come from its chat spans, so they're listed here though its Prompts count is —.
 
 All read the last 90 days, except `recent_sessions.sql`, which reads from the start of the date range.
 `sessions.sql`, `recent_sessions.sql`, `tools.sql` and `prompts.sql` have `{{person}}`-style
