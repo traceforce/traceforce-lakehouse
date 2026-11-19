@@ -56,7 +56,7 @@ Prompt text leaves the lake only for the session you open.
   **Prompts** are distinct `prompt_id` / `generation_id`, plus Codex's `user_prompt` rows, which carry
   neither (counted by `ts`). GitHub Copilot logs no prompt events, so it shows —. **Tool calls** are distinct
   `tool_call_id`s on `execute_tool` rows, plus Copilot's id-less tool spans. Calls the agent app makes
-  to drive itself are left out (Claude's `ccd_*`, `cowork` and `visualize` servers, Codex's `codex_app`,
+  to drive itself are left out (Claude's `ccd_*` and `cowork` servers and visualize's widget tools, Codex's `codex_app`,
   Cursor's app control, built-in plumbing such as `ToolSearch`), by the same rule TraceForce's scout
   uses to tell them apart. A call is left out whole when any of its rows matches.
 - **Cost** is the agent's own figure, else an estimate at list price (`llm_model_prices`);

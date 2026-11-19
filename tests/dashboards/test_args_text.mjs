@@ -32,5 +32,6 @@ test("argsText", () => {
   assert.equal(argsText('{"command":"a\\u00'), "a …");
   assert.equal(argsText('{"command":"dir C:\\\\Users\\\\'), "dir C:\\Users\\ …");
   assert.equal(argsText('{"command":"dir C:\\\\Users\\'), "dir C:\\Users …");
+  assert.equal(argsText('{"command":"dir c:\\\\users\\\\ub'), "dir c:\\users\\ub …");
   assert.equal(argsText('{"note":"has \\"command\\": \\"x\\" inside","other":"cut'), '{"note":"has \\"command\\": \\"x\\" inside","other":"cut');
 });

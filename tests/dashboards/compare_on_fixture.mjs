@@ -182,6 +182,9 @@ const EVENTS = [
   ev(CX, "alice@example.com", "D1", "s8", -2 * D + 604, { operation: "execute_tool", tool_call_id: "a10", tool_name: "js", mcp_server_name: "node_repl", signal: "log" }),
   ev(CU, null, "D4", "s3", -3 * D + 20, { operation: "execute_tool", tool_call_id: "a11", tool_name: "move_agent_to_root", signal: "log" }),
   ev(CU, null, "D4", "s3", -3 * D + 21, { operation: "execute_tool", tool_call_id: "a12", tool_name: "x", mcp_server_name: "cursor-app-control", signal: "log" }),
+  // Cursor's '' id, in two sessions on D4: s18's app call (s18 is then noise, hidden) leaves s19's edit counted.
+  ev(CU, null, "D4", "s18", -3 * D + 30, { operation: "execute_tool", tool_call_id: "", tool_name: "move_agent_to_root", signal: "log" }),
+  ev(CU, null, "D4", "s19", -3 * D + 40, { operation: "execute_tool", tool_call_id: "", tool_name: "edit", signal: "log" }),
   // Codex prompts carry no id: counted by ts, so the one stored twice counts once (s8: 3 prompts).
   ev(CX, "alice@example.com", "D1", "s8", -2 * D + 590, { event_name: "user_prompt", signal: "log" }),
   ev(CX, "alice@example.com", "D1", "s8", -2 * D + 590, { event_name: "user_prompt", signal: "log" }),
