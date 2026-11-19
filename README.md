@@ -724,7 +724,9 @@ The first load runs within the hour and covers the last few days.
    to the `databricks_workspace_url` and `query_warehouse_id` outputs, then `az login` as the
    reader. Tables live in `traceforce_lakehouse.traceforce`. The catalog is bound to the module's
    workspace: other workspaces on the same Unity Catalog metastore can't see or query it, whatever
-   their grants.
+   their grants. To open it to another workspace, add a `databricks_workspace_binding`
+   (`securable_type = "catalog"`, `binding_type = "BINDING_TYPE_READ_ONLY"`) in your own
+   configuration.
 
 The first load runs within the hour and covers the last few days; the metadata tables fill at the
 daily mirror, 12:30 UTC.
