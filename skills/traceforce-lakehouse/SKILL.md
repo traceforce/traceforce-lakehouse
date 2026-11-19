@@ -103,10 +103,10 @@ the `->>` operator. Do not work around it by connecting as another role.
 "${CLAUDE_SKILL_DIR}/scripts/snowflake_query.sh" "SELECT \"agent\", count(*) FROM \"agent_events\" WHERE \"ts\" > DATEADD('day', -7, CURRENT_TIMESTAMP()) GROUP BY 1"
 ```
 
-Needs python3 with `snowflake-connector-python`, and either all five `SNOWFLAKE_*` environment
-variables (`SNOWFLAKE_ORGANIZATION_NAME`, `SNOWFLAKE_ACCOUNT_NAME`, `SNOWFLAKE_USER`,
-`SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT`, `SNOWFLAKE_PRIVATE_KEY`) or none of them and a
-`connections.toml` connection (preferred: `SNOWFLAKE_PRIVATE_KEY` is also the Terraform deploy
+Needs Python 3 (`python3`, `python` or `py -3`) with `snowflake-connector-python`, and either all
+five `SNOWFLAKE_*` environment variables (`SNOWFLAKE_ORGANIZATION_NAME`, `SNOWFLAKE_ACCOUNT_NAME`,
+`SNOWFLAKE_USER`, `SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT`, `SNOWFLAKE_PRIVATE_KEY`) or none of them
+and a `connections.toml` connection (preferred: `SNOWFLAKE_PRIVATE_KEY` is also the Terraform deploy
 key's variable). The connecting user must hold the reader role (README, the Snowflake section's
 "Grant query access"). An auth or role error is an environment problem, not empty data.
 
@@ -133,16 +133,21 @@ Query as such a reader, not as a workspace admin or the identity that deployed t
 "${CLAUDE_SKILL_DIR}/scripts/databricks_query.sh" "SELECT agent, count(*) FROM agent_events WHERE ts > timestampadd(MICROSECOND, unix_micros(current_timestamp()), TIMESTAMP_NTZ '1970-01-01 00:00:00') - INTERVAL 7 DAYS GROUP BY 1"
 ```
 
-Needs python3, `DATABRICKS_HOST` (the module's `databricks_workspace_url`) and
-`TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID` (its `query_warehouse_id`), and either the Azure CLI signed in
-(`az login`), the Databricks CLI signed in (`databricks auth login --host <workspace URL>`) or
-`DATABRICKS_CLIENT_ID` and `DATABRICKS_CLIENT_SECRET` for a read-only service principal (its
-Databricks OAuth secret, generated in Databricks; not an Entra client secret).
+Needs Python 3 (`python3`, `python` or `py -3`), `DATABRICKS_HOST` (the module's
+`databricks_workspace_url`) and `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID` (its `query_warehouse_id`), and
+either the Azure CLI signed in (`az login`), the Databricks CLI signed in (`databricks auth login
+--host <workspace URL>`) or `DATABRICKS_CLIENT_ID` and `DATABRICKS_CLIENT_SECRET` for a read-only
+service principal (its Databricks OAuth secret, generated in Databricks; not an Entra client
+secret).
 `DATABRICKS_CLIENT_ID`/`SECRET` are also the Databricks Terraform provider's names; make sure they
 hold the read-only principal, not the deploy one. A missing setting, an expired login or a
 permission error is an environment problem, not empty data; the script says which. Never ask the
 user to paste a token or secret. Unqualified table names resolve in
-`traceforce_lakehouse.traceforce`.
+`traceforce_lakehouse.traceforce`; if the module's `catalog_name` is another name, set
+`TRACEFORCE_LAKEHOUSE_CATALOG` to it. On Windows (Git Bash): `winget install
+Databricks.DatabricksCLI`, then in a new terminal `databricks auth login --host <workspace URL>`,
+`setx DATABRICKS_HOST <url>` and `setx TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID <id>`; `setx` reaches
+only new processes, so open a new terminal and start the agent from it.
 
 How current the data is: `SELECT * FROM freshness` has one row per table. For a table the answer
 uses whose `stale` is true, still answer, and say the data may be stale, with its `reason` and

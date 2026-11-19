@@ -81,5 +81,28 @@ done
 check refused "no keyword"                  "-- nothing here"
 check refused "Unicode line separator"      "SELECT 1 -- note$(printf ' ')DROP TABLE agents"
 
+TRACEFORCE_LAKEHOUSE_CATALOG=my_catalog check allowed "custom catalog" "SELECT 1"
+out="$(TRACEFORCE_LAKEHOUSE_CATALOG='x`; DROP' "$SCRIPT" "SELECT 1" 2>&1 >/dev/null)"; code=$?
+if [[ $code -eq 2 && "$out" == *"invalid TRACEFORCE_LAKEHOUSE_CATALOG"* ]]; then echo "ok    refused: catalog not an identifier"
+else echo "FAIL  refused: catalog not an identifier -> exit $code: $out"; fails=$((fails + 1)); fi
+
+# A python3 that only prints a hint (Windows' Store stub): the script falls back to python.
+STUB="$(mktemp -d)"; trap 'rm -rf "$STUB"' EXIT
+printf '#!/bin/sh\necho "Python was not found" >&2; exit 49\n' > "$STUB/python3"
+printf '#!/bin/sh\nexec "%s" "$@"\n' "$(command -v python3)" > "$STUB/python"
+chmod +x "$STUB/python3" "$STUB/python"
+PATH="$STUB:$PATH" check allowed "python3 stub, falls back to python" "SELECT 1"
+PATH="$STUB:$PATH" check refused "python3 stub, scan still runs"      "DELETE FROM agents"
+
+# Windows Python writes CRLF: the scan's trailing \r must not refuse every query.
+CRLF="$(mktemp -d)"; trap 'rm -rf "$STUB" "$CRLF"' EXIT
+cat > "$CRLF/python3" <<EOF
+#!/bin/sh
+"$(command -v python3)" "\$@" | awk '{ printf "%s\r\n", \$0 }'
+EOF
+chmod +x "$CRLF/python3"
+PATH="$CRLF:$PATH" check allowed "CRLF python output, SELECT"         "SELECT 1"
+PATH="$CRLF:$PATH" check refused "CRLF python output, CALL"           "SELECT 1 FROM t WHERE x IN (CALL f())"
+
 echo
 [[ $fails -eq 0 ]] && echo "PASS" || { echo "FAIL ($fails)"; exit 1; }

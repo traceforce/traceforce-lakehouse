@@ -291,9 +291,9 @@ Snowflake, `alarm_notification_email`), `create_glue_integration` (no Glue), and
    ```
 
    Any other agent (Cursor, Copilot, Codex): see [`AGENTS.md`](AGENTS.md). Querying needs
-   python3 with `snowflake-connector-python` and, as the step 3 user, either the five
-   `SNOWFLAKE_*` environment variables (listed in `snowflake_query.sh`) or a `connections.toml`
-   connection. Then ask questions.
+   Python 3 (`python3`, `python` or `py -3`) with `snowflake-connector-python` and, as the step 3
+   user, either the five `SNOWFLAKE_*` environment variables (listed in `snowflake_query.sh`) or a
+   `connections.toml` connection. Then ask questions.
 
 5. Optional: the usage & spend and incident triage dashboards in TraceForce. Each viewer's browser
    queries Snowflake directly, as that viewer, with a token limited to the reader role; query
@@ -554,9 +554,9 @@ APIs — in practice **project Owner**.
    ```
 
    Any other agent (Cursor, Copilot, Codex): see [`AGENTS.md`](AGENTS.md). Querying needs
-   python3 with `snowflake-connector-python` and, as the step 4 user, either the five
-   `SNOWFLAKE_*` environment variables (listed in `snowflake_query.sh`) or a `connections.toml`
-   connection. Then ask questions.
+   Python 3 (`python3`, `python` or `py -3`) with `snowflake-connector-python` and, as the step 4
+   user, either the five `SNOWFLAKE_*` environment variables (listed in `snowflake_query.sh`) or a
+   `connections.toml` connection. Then ask questions.
 
 6. Optional: the usage & spend and incident triage dashboards in TraceForce. Each viewer's browser
    queries Snowflake directly, as that viewer, with a token limited to the reader role; query
@@ -720,9 +720,28 @@ The first load runs within the hour and covers the last few days.
    the service principal. Access can take about 5 minutes.
 
 5. Install the skill in your coding agent (Claude Code: the two `/plugin` commands above; other
-   agents: see [`AGENTS.md`](AGENTS.md)). Set `DATABRICKS_HOST` and `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID`
-   to the `databricks_workspace_url` and `query_warehouse_id` outputs, then `az login` as the
-   reader. Tables live in `traceforce_lakehouse.traceforce`.
+   agents: see [`AGENTS.md`](AGENTS.md)). Querying needs Python 3 (`python3`, `python` or
+   `py -3`). Set `DATABRICKS_HOST` and `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID` to the
+   `databricks_workspace_url` and `query_warehouse_id` outputs, then `az login` as the reader.
+   Tables live in `traceforce_lakehouse.traceforce`; if you set `catalog_name`, also set
+   `TRACEFORCE_LAKEHOUSE_CATALOG` to it (the bundled dashboards still need the default name).
+
+   On Windows the skill's scripts run in Git Bash. Without the Azure CLI, sign in with the
+   Databricks CLI instead. Install it, then open a new Git Bash window (the install changes PATH):
+
+   ```
+   winget install Databricks.DatabricksCLI
+   ```
+
+   In the new window, sign in and set the variables with `setx`:
+
+   ```
+   databricks auth login --host https://adb-<id>.<n>.azuredatabricks.net
+   setx DATABRICKS_HOST adb-<id>.<n>.azuredatabricks.net
+   setx TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID <query_warehouse_id>
+   ```
+
+   `setx` reaches only new processes: open a new terminal and start the agent from it.
 
 The first load runs within the hour and covers the last few days; the metadata tables fill at the
 daily mirror, 12:30 UTC.

@@ -49,6 +49,8 @@ Tests the hooks don't run:
   or newer.
 - the Azure Databricks query script's read-only checks, offline, no cloud access:
   `tests/skill/test_databricks_query.sh`.
+- the Snowflake query script's PROCEDURE/CALL guard, offline, no connector or account:
+  `tests/skill/test_snowflake_query.sh`.
 - the dashboards' per-engine SQL (`examples/dashboards/engines.mjs`: string and timestamp literals,
   the merged-lake rewrite, header case, unchanged SQL for the existing engines) and the Snowflake
   queries' alias and GROUP BY rules, offline: `node tests/dashboards/test_engines.mjs`. Needs Node 18
