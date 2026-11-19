@@ -5,7 +5,7 @@ MERGE INTO ${target} t
 USING (
   SELECT
 %{ for c in columns ~}
-    %{ if c.type == "timestamp" }TRY(CAST(from_iso8601_timestamp(${c.name}) AT TIME ZONE 'UTC' AS timestamp(6)))%{ else }%{ if c.type == "string" }${c.name}%{ else }TRY_CAST(${c.name} AS ${c.type == "long" ? "BIGINT" : c.type == "int" ? "INTEGER" : upper(c.type)})%{ endif }%{ endif } AS ${c.name}%{ if c.name != columns[length(columns) - 1].name },%{ endif }
+    %{ if c.type == "timestamp" }COALESCE(TRY(CAST(from_iso8601_timestamp_nanos(${c.name}) AT TIME ZONE 'UTC' AS timestamp(6))), TRY(CAST(from_iso8601_timestamp(${c.name}) AT TIME ZONE 'UTC' AS timestamp(6))))%{ else }%{ if c.type == "string" }${c.name}%{ else }TRY_CAST(${c.name} AS ${c.type == "long" ? "BIGINT" : c.type == "int" ? "INTEGER" : upper(c.type)})%{ endif }%{ endif } AS ${c.name}%{ if c.name != columns[length(columns) - 1].name },%{ endif }
 %{ endfor ~}
   FROM ${source}
   WHERE dt >= date_format(current_date - interval '7' day, '%Y-%m-%d')

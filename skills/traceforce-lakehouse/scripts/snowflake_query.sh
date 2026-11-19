@@ -16,8 +16,9 @@
 # key whenever terraform apply runs; keep the query user's credentials in a separate shell or in
 # connections.toml (README "Grant query access").
 #
-# Names are fixed by the module (warehouse/database traceforce_lakehouse, schema traceforce,
-# reader role traceforce_lakehouse_reader). Optional:
+# Names are fixed by the module (database traceforce_lakehouse, schema traceforce, reader role
+# traceforce_lakehouse_reader, query warehouse traceforce_lakehouse_query). A deployment from before
+# the query warehouse runs queries on traceforce_lakehouse instead. Optional:
 #   TRACEFORCE_LAKEHOUSE_MAX_ROWS           rows to print (default 200; 0 = all)
 #   TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT  seconds before Snowflake cancels the query (default
 #                                           300; 0 = 7 days, Snowflake's maximum, not unlimited)
@@ -36,7 +37,8 @@ set -euo pipefail
 
 DB="traceforce_lakehouse"
 SCHEMA="traceforce"
-WAREHOUSE="traceforce_lakehouse"
+WAREHOUSE="traceforce_lakehouse_query"
+OLD_WAREHOUSE="traceforce_lakehouse"
 READER_ROLE="traceforce_lakehouse_reader"
 MAX_ROWS="${TRACEFORCE_LAKEHOUSE_MAX_ROWS:-200}"
 if ! [[ "$MAX_ROWS" =~ ^[0-9]+$ ]]; then
@@ -178,9 +180,10 @@ fi
 
 # TIMEZONE is pinned to UTC because the account default is America/Los_Angeles and
 # CURRENT_TIMESTAMP()/CURRENT_DATE() resolve in the session zone; the ts columns are UTC.
-# STATEMENT_TIMEOUT_IN_SECONDS is the runaway-cost guard: the shared warehouse's resource
-# monitor is notify-only so it never suspends the ingest/export Tasks.
-PREAMBLE="USE ROLE \"$READER_ROLE\"; USE SECONDARY ROLES NONE; USE WAREHOUSE \"$WAREHOUSE\"; USE DATABASE \"$DB\"; USE SCHEMA \"$SCHEMA\"; ALTER SESSION SET TIMEZONE = 'UTC'; ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = $STATEMENT_TIMEOUT"
+# STATEMENT_TIMEOUT_IN_SECONDS is the runaway-cost guard: the warehouses' resource monitor is
+# notify-only so it never suspends the ingest/export Tasks. The warehouse is chosen before this
+# request (below), because Snowflake runs a multi-statement request only on a session that has one.
+PREAMBLE="USE ROLE \"$READER_ROLE\"; USE SECONDARY ROLES NONE; USE DATABASE \"$DB\"; USE SCHEMA \"$SCHEMA\"; ALTER SESSION SET TIMEZONE = 'UTC'; ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = $STATEMENT_TIMEOUT"
 
 # Capture the import's own error: a missing package gets the install command, a broken one
 # (e.g. a cryptography/pyOpenSSL mismatch) gets its real last line.
@@ -192,16 +195,18 @@ if ! IMPORT_ERR="$(python3 -c 'import snowflake.connector' 2>&1 >/dev/null)"; th
   exit 2
 fi
 
-python3 - "$PREAMBLE" "$SQL_FILE" "$MAX_ROWS" "$HAVE_ENV_CREDS" <<'PY'
+python3 - "$PREAMBLE" "$SQL_FILE" "$MAX_ROWS" "$HAVE_ENV_CREDS" "$READER_ROLE" "$WAREHOUSE" "$OLD_WAREHOUSE" <<'PY'
 import csv
 import os
 import sys
 
 import snowflake.connector
+from snowflake.connector.config_manager import CONFIG_MANAGER
 from cryptography.hazmat.primitives import serialization
 
 preamble, sql_file, max_rows = sys.argv[1], sys.argv[2], int(sys.argv[3])
 have_env_creds = sys.argv[4] == "1"
+reader_role, warehouse, old_warehouse = sys.argv[5], sys.argv[6], sys.argv[7]
 with open(sql_file, encoding="utf-8") as f:
     sql = f.read().lstrip("\ufeff")
 # max_rows was validated as a non-negative integer in bash.
@@ -232,6 +237,9 @@ def load_der_key() -> bytes:
     )
 
 
+# The role is named at connect time, quoted (the connector uppercases unquoted names), so a user
+# without the reader role is refused at sign-in. The warehouse is chosen below, as the reader alone.
+session = {"role": f'"{reader_role}"'}
 try:
     if have_env_creds:
         con = snowflake.connector.connect(
@@ -239,11 +247,31 @@ try:
             user=os.environ["SNOWFLAKE_USER"],
             private_key=load_der_key(),
             authenticator=os.environ["SNOWFLAKE_AUTHENTICATOR"],
+            **session,
         )
     else:
-        # No arguments: the connector resolves the default connections.toml connection itself.
-        con = snowflake.connector.connect()
+        # The connection the connector would pick on its own ($SNOWFLAKE_DEFAULT_CONNECTION_NAME, else the
+        # configured default), named explicitly: with other arguments, connect() no longer looks it up.
+        con = snowflake.connector.connect(connection_name=CONFIG_MANAGER["default_connection_name"], **session)
     cur = con.cursor()
+    # A multi-statement request needs a warehouse in the session before it starts, so it is chosen here,
+    # with secondary roles off: the reader role alone must be able to use it (a warehouse picked through
+    # another role would fail once the preamble turns them off). A deployment from before the query
+    # warehouse has only the one its readers used.
+    cur.execute("USE SECONDARY ROLES NONE")
+    try:
+        cur.execute(f'USE WAREHOUSE "{warehouse}"')
+    except snowflake.connector.errors.ProgrammingError:
+        try:
+            cur.execute(f'USE WAREHOUSE "{old_warehouse}"')
+        except snowflake.connector.errors.ProgrammingError as e:
+            print(
+                f'no lakehouse warehouse for the reader role: "{warehouse}" and "{old_warehouse}" each'
+                f" does not exist or is not authorized -- re-apply the lakehouse module, or ask a Snowflake"
+                f' admin to grant the role USAGE on "{warehouse}" ({e})',
+                file=sys.stderr,
+            )
+            sys.exit(1)
     cur.execute(f"{preamble}; {sql}", num_statements=num_statements)
 
     # The cursor starts at the first statement's result; nextset() steps past the preamble's.

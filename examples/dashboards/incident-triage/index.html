@@ -151,7 +151,9 @@
 
   const LABELS = { api_key: "API key", ssn: "SSN", credit_card: "Credit card", email_address: "Email address",
     database_connection_string: "Database connection string", private_key: "Private key", prompt_injection: "Prompt injection" };
-  const typeLabel = t => LABELS[t] || (t || "unknown").replace(/_/g, " ").replace(/^./, c => c.toUpperCase());
+  // A custom type shows its admin-given name; a deleted one keeps its raw custom_<id>.
+  const typeLabel = f => f.type_name ?? LABELS[f.type]
+    ?? (/^custom_\d+$/.test(f.type) ? f.type : (f.type || "unknown").replace(/_/g, " ").replace(/^./, c => c.toUpperCase()));
   const OPEN = new Set(["awaiting_review", "under_review"]);
   const statusLabel = s => (s || "unknown").replace(/_/g, " ");
   const agentLabel = a => (a ? agentName(a) : "Unknown agent");
@@ -184,10 +186,12 @@
     }
     return [...by.values()];
   }
+  // Findings are grouped by kind and type, not by label: a custom type may share a built-in type's name.
+  const typeKey = f => `${f.kind}|${f.type}`;
   function summary(fs) {
     const c = new Map();
-    for (const f of fs) c.set(f.type, (c.get(f.type) || 0) + 1);
-    return [...c].sort((a, b) => b[1] - a[1]).map(([t, n]) => `${typeLabel(t)}${n > 1 ? " ×" + n : ""}`).join(" · ");
+    for (const f of fs) { const o = c.get(typeKey(f)) || { label: typeLabel(f), n: 0 }; o.n++; c.set(typeKey(f), o); }
+    return [...c.values()].sort((a, b) => b.n - a.n).map(o => `${o.label}${o.n > 1 ? " ×" + o.n : ""}`).join(" · ");
   }
 
   // ---------- render ----------
@@ -233,17 +237,17 @@
     // Top types
     const types = new Map();
     for (const f of findings) {
-      const o = types.get(f.type) || { n: 0, kind: f.kind, sev: 3 };
+      const o = types.get(typeKey(f)) || { label: typeLabel(f), n: 0, kind: f.kind, sev: 3 };
       o.n++; o.sev = Math.min(o.sev, f.sev);
-      types.set(f.type, o);
+      types.set(typeKey(f), o);
     }
-    const typeRows = [...types].sort((a, b) => b[1].n - a[1].n);
-    hBars($("types-chart"), typeRows.slice(0, 8).map(([t, o]) => ({
-      label: typeLabel(t), value: o.n, display: compact(o.n),
+    const typeRows = [...types.values()].sort((a, b) => b.n - a.n);
+    hBars($("types-chart"), typeRows.slice(0, 8).map(o => ({
+      label: o.label, value: o.n, display: compact(o.n),
       tip: [{ value: numExact(o.n), label: "findings" }, { value: KINDS[o.kind].name, label: "" }, { value: SEV[o.sev].label, label: "at most" }],
     })), "No findings in this selection");
     table($("types-table"), ["Type", "Kind", "Findings", "Severity (at most)"],
-      typeRows.map(([t, o]) => [typeLabel(t), KINDS[o.kind].name, numExact(o.n), SEV[o.sev].label]), [1, 3]);
+      typeRows.map(o => [o.label, KINDS[o.kind].name, numExact(o.n), SEV[o.sev].label]), [1, 3]);
 
     // People
     const people = new Map();
@@ -389,7 +393,7 @@
 
   function findingLine(f) {
     const n = el("div", { class: "finding" });
-    n.append(sevPill(f.sev), el("b", null, typeLabel(f.type)), el("span", { class: "tag" }, KINDS[f.kind].name));
+    n.append(sevPill(f.sev), el("b", null, typeLabel(f)), el("span", { class: "tag" }, KINDS[f.kind].name));
     if (f.outcome) n.append(el("span", { class: "tag" }, f.outcome));
     if (f.detail && f.kind !== "prompt_injection") n.append(el("span", { class: "tag" }, f.detail));
     n.append(el("span", { class: "tag" }, statusLabel(f.status)));

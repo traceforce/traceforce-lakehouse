@@ -6,7 +6,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = ">= 4.9.0, < 5.0.0" # storage_account_id on azurerm_storage_container
+      version = ">= 4.31.0, < 5.0.0" # azurerm_function_app_flex_consumption with https_only (dashboard_relay.tf); also storage_account_id on azurerm_storage_container
     }
     azuread = {
       source  = "hashicorp/azuread"
@@ -15,6 +15,10 @@ terraform {
     snowflake = {
       source  = "snowflakedb/snowflake"
       version = ">= 2.19.0, < 3.0.0" # first release with snowflake_iceberg_table and non-preview Azure stage/integration resources
+    }
+    archive = {
+      source  = "hashicorp/archive"
+      version = ">= 2.4"
     }
     time = {
       source  = "hashicorp/time"

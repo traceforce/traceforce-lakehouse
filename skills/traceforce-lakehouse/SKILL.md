@@ -1,6 +1,6 @@
 ---
 name: traceforce-lakehouse
-description: "Query the TraceForce lakehouse (Athena over Iceberg in AWS, BigQuery over Iceberg in GCP, or Snowflake or Databricks over Iceberg in Azure) to answer questions about AI-agent activity from agents such as Claude Code, Claude, Cursor, GitHub Copilot and ChatGPT: prompts, tool calls, MCP servers, tokens and cost, sensitive-data, containment and prompt-injection findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena, BigQuery, Snowflake, Databricks or SQL over TraceForce data. Read-only. Not for the TraceForce REST API or console."
+description: "Query the TraceForce lakehouse (Athena or Snowflake over Iceberg in AWS, BigQuery over Iceberg in GCP, or Snowflake or Databricks over Iceberg in Azure) to answer questions about AI-agent activity from agents such as Claude Code, Claude, Cursor, GitHub Copilot and ChatGPT: prompts, tool calls, MCP servers, tokens and cost, sensitive-data, containment and prompt-injection findings, devices, users and accounts. Use when someone asks who did what with an AI agent, wants an audit or investigation of agent activity, or mentions agent_events, the lake, Athena, BigQuery, Snowflake, Databricks or SQL over TraceForce data. Read-only. Not for the TraceForce REST API or console."
 ---
 
 # TraceForce lakehouse
@@ -34,16 +34,17 @@ description: "Query the TraceForce lakehouse (Athena over Iceberg in AWS, BigQue
 
 ## Run a query
 
-First pick the engine. The lakehouse is set up on **one** cloud and your task names it (the
-TraceForce setup prompt says "on AWS (Athena)", "on GCP (BigQuery)", "on Azure (Snowflake)" or
-"on Azure (Databricks)"):
-- **AWS / Athena** → `athena_query.sh` (below).
-- **GCP / BigQuery** → `bq_query.sh` (see "GCP (BigQuery)" below).
-- **Azure / Snowflake** → `snowflake_query.sh` (see "Azure (Snowflake)" below).
-- **Azure / Databricks** → `databricks_query.sh` (see "Azure (Databricks)" below).
+First pick the engine. The lakehouse is set up on **one** cloud and engine, usually named in your
+task as "on <cloud> (<engine>)": AWS (Athena), AWS (Snowflake), GCP (BigQuery), Azure (Snowflake) or
+Azure (Databricks). The engine picks the script:
+- **Athena** → `athena_query.sh` (below).
+- **BigQuery** → `bq_query.sh` (see "GCP (BigQuery)" below).
+- **Snowflake**, on AWS or Azure → `snowflake_query.sh` (see "Snowflake (AWS or Azure)" below).
+- **Databricks** → `databricks_query.sh` (see "Azure (Databricks)" below).
 
-Do not infer the cloud from which credentials are present — a machine often has both. If the
-task doesn't name one, ask.
+"AWS" alone could be Athena or Snowflake, and "Azure" alone Snowflake or Databricks, so ask; if
+neither cloud nor engine is named, ask. Do not infer either from which credentials are present — a
+machine often has several.
 
 Use the bundled script; do not reimplement it with raw `aws athena` / `bq` / Snowflake connector /
 Databricks API calls.
@@ -85,12 +86,13 @@ example SQL is Athena/Trino. Translate to GoogleSQL:
 - `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `CROSS JOIN UNNEST(JSON_VALUE_ARRAY(x)) AS elem` (unnesting a JSON array of strings).
 - A lookup by a per-row JSON key, `json_extract_scalar(x, '$["' || key || '"].username')` -> `JSON_VALUE(PARSE_JSON(x)[key], '$.username')`.
 
-## Azure (Snowflake)
+## Snowflake (AWS or Azure)
 
-Quote every table and column name: `SELECT "agent", count(*) FROM "agent_events" WHERE "ts" > ...`.
-This module's identifiers are case-preserved lowercase and Snowflake folds unquoted names to
-uppercase, so an unquoted `agent_events` is not found. Snowflake's own names (`TASK_HISTORY`,
-`INFORMATION_SCHEMA` columns, `FLATTEN`'s `VALUE`) are uppercase and stay unquoted.
+Quote every table and column name, and every output alias:
+`SELECT "agent", count(*) AS "n" FROM "agent_events" WHERE "ts" > ...`. The lakehouse's identifiers
+are case-preserved lowercase and Snowflake folds unquoted names to uppercase, so an unquoted
+`agent_events` is not found and an unquoted alias comes back uppercase. Snowflake's own names
+(`TASK_HISTORY`, `INFORMATION_SCHEMA` columns, `FLATTEN`'s `VALUE`) are uppercase and stay unquoted.
 
 Read-only here is enforced by Snowflake RBAC together with the script: every query runs as the
 module's `traceforce_lakehouse_reader` role with secondary roles off, and the script runs only a
@@ -105,16 +107,19 @@ Needs python3 with `snowflake-connector-python`, and either all five `SNOWFLAKE_
 variables (`SNOWFLAKE_ORGANIZATION_NAME`, `SNOWFLAKE_ACCOUNT_NAME`, `SNOWFLAKE_USER`,
 `SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT`, `SNOWFLAKE_PRIVATE_KEY`) or none of them and a
 `connections.toml` connection (preferred: `SNOWFLAKE_PRIVATE_KEY` is also the Terraform deploy
-key's variable). The connecting user must hold the reader role (README, "Grant query access").
-An auth or role error is an environment problem, not empty data.
+key's variable). The connecting user must hold the reader role (README, the Snowflake section's
+"Grant query access"). An auth or role error is an environment problem, not empty data.
 
 The reference/* schema (columns, joins, identity, redaction, enforcement) is identical, but its
-example SQL is Athena/Trino. Translate to Snowflake SQL, quoting this module's names as above:
+example SQL is Athena/Trino. Translate to Snowflake SQL, quoting its names as above:
 - `json_extract_scalar(x, '$.gen_ai.tool.name')` -> `PARSE_JSON(x):"gen_ai.tool.name"::string` — **double-quote dotted keys**. The JSON columns are strings here, so `PARSE_JSON()` first.
 - `current_timestamp - interval '7' day` -> `DATEADD('day', -7, CURRENT_TIMESTAMP())`; `date_format(...)` -> `TO_CHAR(...)`.
 - `SHOW TABLES` -> `SHOW TABLES IN SCHEMA "traceforce"`; `DESCRIBE <table>` -> `DESCRIBE TABLE "<table>"`.
 - `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `, LATERAL FLATTEN(input => PARSE_JSON(x)) AS elem` (the value is `elem.VALUE`).
 - A lookup by a per-row JSON key, `json_extract_scalar(x, '$["' || key || '"].username')` -> `GET(PARSE_JSON(x), key):"username"::string` (e.g. `key` = `i."tenant"`).
+- `GROUP BY "x"`, where `"x"` is both a column and an output alias of a computed value, groups by the column (no error): group by position, or compute the value in a CTE first.
+- `array_join(array_sort(array_distinct(array_agg(x))), ', ')` -> `LISTAGG(DISTINCT x, ', ') WITHIN GROUP (ORDER BY x)`.
+- JSON message arrays (`content_input`, `content_output`): `TRY_PARSE_JSON(x, 'd')` (`'d'` keeps the last of duplicate keys, as Trino does; without it the whole value is NULL), then `FILTER(v, m -> m:"role"::string = 'user')`, `TRANSFORM(m:"parts", p -> p:"content"::string)` (an object or array comes back as its JSON text, where `json_extract_scalar` gives NULL) and `ARRAY_TO_STRING(..., CHR(10))`. With `'d'`, a lone UTF-16 surrogate escape (half an emoji) makes the parse NULL, or is dropped silently just before a valid pair.
 - Ingest/mirror run history: `SELECT NAME, STATE, SCHEDULED_TIME, ERROR_MESSAGE FROM TABLE(INFORMATION_SCHEMA.TASK_HISTORY(SCHEDULED_TIME_RANGE_START => DATEADD('day', -1, CURRENT_TIMESTAMP())))`; the reader role holds `MONITOR` on the Tasks for this.
 
 ## Azure (Databricks)
@@ -165,8 +170,8 @@ example SQL is Athena/Trino. Translate to Databricks SQL:
 3. Write the targeted query with `ts` bounds; take join rules from `reference/joins.md`.
 4. If a query fails with "column cannot be resolved" or a type error, introspect the schema
    (Athena: `DESCRIBE traceforce.<table>`; BigQuery: `SELECT column_name, data_type FROM
-   traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<table>'`; Azure/
-   Snowflake: `DESCRIBE TABLE "<table>"`; Azure/Databricks: `DESCRIBE <table>`), fix, rerun.
+   traceforce_lakehouse.INFORMATION_SCHEMA.COLUMNS WHERE table_name = '<table>'`; Snowflake:
+   `DESCRIBE TABLE "<table>"`; Databricks: `DESCRIBE <table>`), fix, rerun.
    A table or column that is missing altogether means the customer's lakehouse module predates
    it: say so (re-applying Terraform with the current module adds it) and answer without it.
    If it returns 0 rows: widen the window, check `deleted_at`, and check that every

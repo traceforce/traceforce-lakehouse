@@ -10,6 +10,17 @@ resource "snowflake_account_role" "reader" {
   comment = "Read-only access to the TraceForce lakehouse -- USAGE + SELECT + MONITOR only, no write privileges anywhere."
 }
 
+# Readers run on the query warehouse (compute.tf). USAGE on the ingest warehouse stays for clients
+# that predate it, which still name traceforce_lakehouse.
+resource "snowflake_grant_privileges_to_account_role" "reader_query_warehouse" {
+  account_role_name = snowflake_account_role.reader.name
+  privileges        = ["USAGE"]
+  on_account_object {
+    object_type = "WAREHOUSE"
+    object_name = snowflake_warehouse.query.fully_qualified_name
+  }
+}
+
 resource "snowflake_grant_privileges_to_account_role" "reader_warehouse" {
   account_role_name = snowflake_account_role.reader.name
   privileges        = ["USAGE"]
@@ -106,7 +117,7 @@ resource "snowflake_service_user" "query" {
   comment           = "TraceForce lakehouse read-only query user (key-pair auth, reader role only)."
   rsa_public_key    = var.query_user_public_key
   default_role      = snowflake_account_role.reader.name
-  default_warehouse = snowflake_warehouse.lakehouse.name
+  default_warehouse = snowflake_warehouse.query.name
 
   default_secondary_roles_option = "NONE"
   statement_timeout_in_seconds   = 300

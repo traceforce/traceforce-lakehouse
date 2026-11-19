@@ -38,7 +38,13 @@ variable "iceberg_storage_account_name" {
 # --- Only when your account differs from the default ---
 
 variable "warehouse_size" {
-  description = "Snowflake warehouse size, shared by ad-hoc queries (engineers, Claude Code) and the scheduled ingest/export Tasks (compute.tf). Raise it temporarily for a long lookback_days catch-up."
+  description = "Size of traceforce_lakehouse, the warehouse that runs the scheduled ingest/export Tasks (compute.tf); readers query on traceforce_lakehouse_query (query_warehouse_size). Raise it temporarily for a long lookback_days catch-up."
+  type        = string
+  default     = "XSMALL"
+}
+
+variable "query_warehouse_size" {
+  description = "Size of the query warehouse, traceforce_lakehouse_query, that readers run on (the skill, the dashboards). Raise it if queries feel slow."
   type        = string
   default     = "XSMALL"
 }
@@ -95,5 +101,64 @@ variable "query_user_public_key" {
   validation {
     condition     = var.query_user_public_key == null || can(regex("^[A-Za-z0-9+/=]+$", var.query_user_public_key))
     error_message = "query_user_public_key must be the base64 body of the public key on one line, without the BEGIN/END PUBLIC KEY lines."
+  }
+}
+
+variable "dashboard_sign_in" {
+  description = "Sign-in for the TraceForce UI dashboards (dashboard_sign_in.tf; with snowflake, also the token relay in dashboard_relay.tf). console_origin is the https origin you open the TraceForce console at. Set snowflake = {} for Snowflake's own sign-in, external = { ... } for the company's identity provider, or both. Null = no dashboard sign-in."
+  type = object({
+    console_origin = string
+    snowflake = optional(object({
+      refresh_token_validity = optional(number, 86400) # seconds a viewer stays signed in
+    }))
+    external = optional(object({
+      provider                 = string           # "entra", "okta" or "custom"
+      audience                 = string           # Entra: the resource app's Application ID URI; Okta: the authorization server's audience
+      tenant_id                = optional(string) # Entra
+      issuer                   = optional(string) # Okta (a custom authorization server: https://<org>.okta.com/oauth2/<id>) and custom
+      jws_keys_url             = optional(string) # custom; derived for Entra and Okta
+      user_claim               = optional(string) # default: upn for Entra, sub otherwise
+      snowflake_user_attribute = optional(string, "login_name")
+    }))
+  })
+  default = null
+
+  validation {
+    # Written as browsers send it in Origin, which the relay compares exactly: no default :443, no
+    # leading zeros in a port.
+    condition = var.dashboard_sign_in == null || (
+      can(regex("^https://[a-z0-9.-]+(:[1-9][0-9]{0,4})?/?$", var.dashboard_sign_in.console_origin)) &&
+      !can(regex(":443/?$", var.dashboard_sign_in.console_origin))
+    )
+    error_message = "dashboard_sign_in.console_origin must be the TraceForce console's https origin as the browser sends it: scheme and host, lowercase, no path, no :443."
+  }
+  validation {
+    condition     = var.dashboard_sign_in == null || try(var.dashboard_sign_in.snowflake != null || var.dashboard_sign_in.external != null, false)
+    error_message = "dashboard_sign_in needs snowflake = {}, external = { ... } or both."
+  }
+  validation {
+    # Snowflake's range for custom clients; a shorter one needs Snowflake Support to lower the account's minimum.
+    condition     = try(var.dashboard_sign_in.snowflake.refresh_token_validity, 86400) >= 86400 && try(var.dashboard_sign_in.snowflake.refresh_token_validity, 86400) <= 7776000
+    error_message = "dashboard_sign_in.snowflake.refresh_token_validity must be between 86400 (1 day) and 7776000 (90 days) seconds, Snowflake's range for custom OAuth clients."
+  }
+  validation {
+    condition     = try(var.dashboard_sign_in.external, null) == null || contains(["entra", "okta", "custom"], try(var.dashboard_sign_in.external.provider, ""))
+    error_message = "dashboard_sign_in.external.provider must be \"entra\", \"okta\" or \"custom\"."
+  }
+  validation {
+    condition     = try(var.dashboard_sign_in.external.provider, "") != "entra" || can(regex("^[0-9a-fA-F-]{36}$", var.dashboard_sign_in.external.tenant_id))
+    error_message = "dashboard_sign_in.external with provider \"entra\" needs tenant_id, the Entra tenant's GUID."
+  }
+  validation {
+    condition     = !contains(["okta", "custom"], try(var.dashboard_sign_in.external.provider, "")) || can(regex("^https://", var.dashboard_sign_in.external.issuer))
+    error_message = "dashboard_sign_in.external with provider \"okta\" or \"custom\" needs issuer, the authorization server's https issuer URL."
+  }
+  validation {
+    condition     = try(var.dashboard_sign_in.external.provider, "") != "custom" || can(regex("^https://", var.dashboard_sign_in.external.jws_keys_url))
+    error_message = "dashboard_sign_in.external with provider \"custom\" needs jws_keys_url, the https URL of the server's signing keys."
+  }
+  validation {
+    condition     = try(var.dashboard_sign_in.external, null) == null || try(length(trimspace(var.dashboard_sign_in.external.audience)) > 0, false)
+    error_message = "dashboard_sign_in.external.audience must not be empty."
   }
 }

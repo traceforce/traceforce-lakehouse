@@ -3,7 +3,7 @@
 Producer: TraceForce's export job, run daily around 11:00 UTC for every org with a CONNECTED
 S3, GCS or Azure Blob Storage Provider.
 Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glue tables on AWS
-(Athena), or the external tables on GCP (BigQuery) and Azure (Snowflake).
+(Athena), or the external tables on GCP (BigQuery) and Snowflake (AWS or Azure).
 
 ## Location
 
@@ -22,7 +22,7 @@ Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glu
 - One file per table per run (gzip, JSON Lines, UTF-8). An empty table still writes a
   zero-line file, but no engine reads rows from it, so the newest non-empty file stays the
   effective snapshot: a table that genuinely drops to zero rows keeps its stale mirror rows
-  until it has a row again (see `terraform/aws/sql/mirror_export_delete.sql.tftpl`; GCP folds the
+  until it has a row again (see `terraform/aws/athena/sql/mirror_export_delete.sql.tftpl`; GCP folds the
   same delete into `terraform/gcp/sql/mirror_export.sql.tftpl`; Azure keeps it separate too, in
   `terraform/azure/snowflake/sql/mirror_export_delete.sql.tftpl`).
 
@@ -36,8 +36,8 @@ Consumer: the lakehouse module's daily MERGE/DELETE — the `export_<table>` Glu
   objects/arrays and SQL arrays **as JSON text (a string)**, not nested JSON, so the consumer can
   keep them as one string column. A `jsonb` column holding a bare scalar (none exist today) is
   exported as that scalar.
-  The mirrors keep the microseconds on Azure (Snowflake and Databricks) and GCP. AWS keeps
-  milliseconds: it parses timestamps with `from_iso8601_timestamp`, which drops the rest.
+  The mirrors keep the microseconds on every cloud. (AWS parses with `from_iso8601_timestamp_nanos`,
+  and with `from_iso8601_timestamp` only for a value the first can't read, such as a bare date.)
 - Rows: exactly the contract columns (`export_tables` in `terraform/schema/columns.json`, the one
   column list every cloud module reads), `WHERE org_id = $org` for tenant tables; whole table for
   `agent_catalog`, `mcp_catalog`, `mcp_categories`, `issue_types` and `llm_model_prices` (global, no
@@ -59,7 +59,9 @@ element-wise into a JSON text array (e.g. `["remote","local_process"]`). These c
 Decoded columns (`[]` = JSON text array):
 
 - `connector_containment_findings`: `op`, `outcome`, `finding_status`, `risky_action_category`, `risky_action_subcategory`
-- `sensitive_data_findings`: `category`, `type`, `finding_status`
+- `sensitive_data_findings`: `category`, `type`, `finding_status`; a `type` of 100000 or above is an
+  org custom type, exported as `custom_<id>` (e.g. `custom_100001`)
+- `org_sensitive_data_custom_types`: `category`
 - `prompt_injection_findings`: `finding_status`
 - `sandboxes`: `runtime_type`
 - `agent_accounts`: `agent_type`, `plan`
@@ -105,6 +107,8 @@ left as is. A listed column is re-encoded as compact JSON with sorted keys.
 These have no TraceForce database column; the producer computes them from another column of the
 same row:
 
+- `org_sensitive_data_custom_types.type`: `custom_<id>` from `sensitive_data_type`, the same value
+  `sensitive_data_findings.type` carries for that type.
 - `issue_types.criticality`: `trigger_score` in the console's risk bands, `low` below 40, `medium`
   below 60, `high` below 80, else `critical`.
 - `issue_detail` on `sensitive_data_findings` (from `category`), `connector_containment_findings`
@@ -123,7 +127,7 @@ mismatch fails the run for that table and is reported to TraceForce; the previou
 |---|---|
 | Identity | devices, sandboxes, agent_accounts, agent_instances, agent_instances_accounts, device_owner_mappings, device_component_versions |
 | Agents | agent_catalog (global), agents, llm_model_prices (global) |
-| Findings + bridge to logs | sensitive_data_findings, connector_containment_findings, prompt_injection_findings, agent_conversations, agent_conversation_files |
+| Findings + bridge to logs | sensitive_data_findings, org_sensitive_data_custom_types, connector_containment_findings, prompt_injection_findings, agent_conversations, agent_conversation_files |
 | MCP | mcp_server_instances, mcp_server_agent_instances, mcp_servers, mcp_catalog (global), org_mcp_catalog, mcp_categories (global) |
 | Issues | agent_issues, mcp_server_issues, issue_type_controls, issue_types (global) |
 | User groups + IdP | user_groups, user_group_members, user_group_devices, idp_directory_users |
