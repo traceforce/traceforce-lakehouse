@@ -135,7 +135,7 @@ const EV = [["agent", "s"], ["user_email", "s"], ["device_native_id", "s"], ["se
   ["input_tokens", "i"], ["output_tokens", "i"], ["cache_read_tokens", "i"], ["cost_usd", "f"], ["tool_name", "s"],
   ["mcp_server_name", "s"], ["ingested_at", "t"], ["event_name", "s"], ["decision", "s"], ["error_type", "s"],
   ["containment_enforcement", "s"], ["sd_enforcement", "s"], ["content_input", "s"], ["tool_args", "s"], ["attrs_json", "s"], ["content_output", "s"]];
-const CC = "AGENT_IDENTITY_CLAUDE_CODE", CU = "AGENT_IDENTITY_CURSOR";
+const CC = "AGENT_IDENTITY_CLAUDE_CODE", CU = "AGENT_IDENTITY_CURSOR", CX = "AGENT_IDENTITY_CHATGPT_CODEX";
 const ev = (agent, email, dev, sess, ts, o = {}) => ({ agent, user_email: email, device_native_id: dev, session_id: sess,
   ts, ingested_at: -60, ...o });
 const EVENTS = [
@@ -150,6 +150,27 @@ const EVENTS = [
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 241, { operation: "execute_tool", tool_call_id: "t1", tool_name: "fetch", mcp_server_name: "srv", signal: "span" }),
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 300, { operation: "execute_tool", tool_name: "bash", signal: "span" }),
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 301, { operation: "execute_tool", tool_name: "ignored", signal: "log" }),
+  // The agent app's own calls, left out per call: a ccd_ call whose log row names no server, Claude Browser's
+  // preview tool (its log row spells the server with a space), an id-less span on visualize, a server-less
+  // ToolSearch, Codex's node-repl reset and an OpenAI tool on its connector hub, Cursor's app control. Counted:
+  // a chat row sharing an app call's id, the same servers' other tools, and ToolSearch on a real server.
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 500, { operation: "execute_tool", tool_call_id: "a1", tool_name: "mcp_tool", signal: "log" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 501, { operation: "execute_tool", tool_call_id: "a1", tool_name: "update_plan", mcp_server_name: "ccd_turn", signal: "span" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 502, { operation: "chat", tool_call_id: "a1", input_tokens: 3, signal: "log" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 503, { operation: "execute_tool", tool_call_id: "a2", tool_name: "mcp_tool", mcp_server_name: "Claude Browser", signal: "log" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 504, { operation: "execute_tool", tool_call_id: "a2", tool_name: "preview_start", mcp_server_name: "Claude_Browser", signal: "span" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 505, { operation: "execute_tool", tool_call_id: "a3", tool_name: "navigate", mcp_server_name: "Claude_Browser", signal: "span" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 506, { operation: "execute_tool", tool_name: "show_widget", mcp_server_name: "visualize", signal: "span" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 507, { operation: "execute_tool", tool_call_id: "a4", tool_name: "ToolSearch", signal: "span" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 508, { operation: "execute_tool", tool_call_id: "a5", tool_name: "ToolSearch", mcp_server_name: "srv", signal: "span" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 509, { operation: "execute_tool", tool_call_id: "a6", tool_name: "run_in_terminal", mcp_server_name: "terminal", signal: "span" }),
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 600, { prompt_id: "p9", operation: "chat", input_tokens: 1 }),
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 601, { operation: "execute_tool", tool_call_id: "a7", tool_name: "js_reset", mcp_server_name: "node-repl", signal: "log" }),
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 602, { operation: "execute_tool", tool_call_id: "a8", tool_name: "mcp__codex_apps__search_service__web_run", mcp_server_name: "codex_apps", signal: "log" }),
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 603, { operation: "execute_tool", tool_call_id: "a9", tool_name: "_fetch", mcp_server_name: "codex_apps", signal: "log" }),
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 604, { operation: "execute_tool", tool_call_id: "a10", tool_name: "js", mcp_server_name: "node_repl", signal: "log" }),
+  ev(CU, null, "D4", "s3", -3 * D + 20, { operation: "execute_tool", tool_call_id: "a11", tool_name: "move_agent_to_root", signal: "log" }),
+  ev(CU, null, "D4", "s3", -3 * D + 21, { operation: "execute_tool", tool_call_id: "a12", tool_name: "x", mcp_server_name: "cursor-app-control", signal: "log" }),
   // s2: no email; the person comes from the device's MDM owner (stored in upper case).
   ev(CC, null, "D3", "s2", -1 * D, { model: "opus", prompt_id: "p2", operation: "chat", input_tokens: 10, cost_usd: 0.5 }),
   // s3, s4: no person. D4 has two live device records, a deleted one and agent accounts; D5 has an MDM

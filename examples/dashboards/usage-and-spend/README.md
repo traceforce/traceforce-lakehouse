@@ -34,7 +34,8 @@ Prompt text leaves the lake only for the session you open.
   date range and agent, with who ran each (the device, for unattributed ones).
 - **User drill-down**: click a user (bar or table row) or pick one in the filter to see their
   sessions (start time, agent, duration, models, prompts, tool calls, tokens and cost; sortable,
-  newest first) and their top tools. MCP tools show as `server/tool`.
+  newest first) and their top tools. MCP tools show as `server/tool`; the agent app's own calls
+  aren't counted (see below).
 - **Prompts in a session**: click a session to expand its prompts. Each card shows the time, duration,
   model, tool calls, tokens and cost, then the prompt and the agent's final response. The text is
   as TraceForce stored it: values your redaction policy matched show as `****`. Prompts are cut at
@@ -50,7 +51,10 @@ Prompt text leaves the lake only for the session you open.
   *Unattributed*. GitHub Copilot never reports an email, so it relies on MDM.
 - **Sessions** are distinct `session_id`s, counted once on the UTC day they started.
   **Prompts** are distinct `prompt_id` / `generation_id`. **Tool calls** are distinct
-  `tool_call_id`s on `execute_tool` rows, plus Copilot's id-less tool spans.
+  `tool_call_id`s on `execute_tool` rows, plus Copilot's id-less tool spans. Calls the agent app makes
+  to drive itself are left out (Claude's `ccd_*`, `cowork` and `visualize` servers, Codex's `codex_app`,
+  Cursor's app control, built-in plumbing such as `ToolSearch`), by the same rule TraceForce's scout
+  uses to tell them apart. A call is left out whole when any of its rows matches.
 - **Cost** is the agent's own figure, else an estimate at list price (`llm_model_prices`);
   **input tokens** exclude cache. The *Cost* card names the agents it excludes.
   `invoke_agent` spans are skipped so tokens aren't counted twice.

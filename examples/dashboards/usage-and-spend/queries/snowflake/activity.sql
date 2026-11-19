@@ -1,7 +1,7 @@
 -- Snowflake SQL version of ../activity.sql: one row per (UTC day, agent, person).
 -- The script runs the session in UTC, so CURRENT_DATE() is the UTC date. Derived columns are computed in
--- the e CTE and grouped by position: Snowflake resolves a GROUP BY name to a source column first.
-WITH e AS (
+-- the src CTE and grouped by position: Snowflake resolves a GROUP BY name to a source column first.
+WITH src AS (
   SELECT
     ev."ts"::DATE AS "day",
     LOWER(REPLACE(ev."agent", 'AGENT_IDENTITY_', '')) AS "agent",
@@ -9,10 +9,41 @@ WITH e AS (
     ev."ts" AS "ts", ev."session_id" AS "session_id", ev."prompt_id" AS "prompt_id",
     ev."generation_id" AS "generation_id", ev."tool_call_id" AS "tool_call_id", ev."signal" AS "signal",
     ev."operation" AS "operation", ev."input_tokens" AS "input_tokens", ev."output_tokens" AS "output_tokens",
-    ev."cache_read_tokens" AS "cache_read_tokens", ev."cost_usd" AS "cost_usd"
+    ev."cache_read_tokens" AS "cache_read_tokens", ev."cost_usd" AS "cost_usd",
+    ev."tool_name" AS "tool_name", ev."mcp_server_name" AS "mcp_server_name",
+    REGEXP_REPLACE(COALESCE(ev."mcp_server_name", ''), '[^A-Za-z0-9_-]', '_') AS "server_key"
   FROM "agent_events" ev
   LEFT JOIN "device_owner_mappings" m ON m."device_native_id" = ev."device_native_id"
   WHERE ev."ts" >= DATEADD('day', -90, CURRENT_DATE())::TIMESTAMP_NTZ
+),
+-- The agent app's calls that drive the app itself, not the person's work: scout's hostappmcp.IsHostAppMCP
+-- (server_key spells the server as its mcpServerKey does), plus built-in plumbing. Keep the two in step.
+flagged AS (
+  SELECT src.*, COALESCE("operation" = 'execute_tool' AND (
+    ("agent" IN ('claude', 'claude_code') AND (
+      SUBSTR("server_key", 1, 4) = 'ccd_'
+      OR "server_key" IN ('cowork', 'scheduled-tasks', 'hearthbot', 'claude-code-remote', 'Claude_Code_Remote',
+                          'claude_ai_Claude_Docs', '1a59c906-04da-521d-bda7-7f71b9f9e01c', 'visualize')
+      OR ("server_key" IN ('Claude_Browser', 'Claude_Preview') AND "tool_name" IN ('preview_start', 'preview_stop', 'preview_list', 'preview_logs'))
+      OR ("server_key" = 'terminal' AND "tool_name" IN ('read_terminal', 'open_terminal_tab', 'list_terminal_tabs', 'stop_terminal_tab'))
+      OR ("server_key" = 'memory' AND "tool_name" IN ('memory_read', 'memory_list', 'memory_write', 'memory_str_replace', 'memory_append', 'memory_delete'))))
+    OR ("agent" = 'chatgpt_codex' AND (
+      REPLACE("server_key", '-', '_') IN ('codex_app', 'codex_security')
+      OR (REPLACE("server_key", '-', '_') IN ('node_repl', 'cua_repl') AND "tool_name" IN ('js_reset', 'js_add_node_module_dir'))
+      OR (REPLACE("server_key", '-', '_') = 'codex_apps' AND REGEXP_REPLACE(REGEXP_REPLACE("tool_name", '^.*__', ''), '^_+', '')
+          IN ('web_run', 'write_page_reference', 'create_plugin', 'update_app_permissions', 'save_site_version', 'create_source_repository_write_credential'))))
+    OR ("agent" = 'cursor' AND (("server_key" = '' AND "tool_name" IN ('move_agent_to_root', 'move_agent_to_cloned_root'))
+      OR "server_key" IN ('cursor-app-control', 'cursor-backend-control', 'cursor-subscriptions')))
+    -- Built-in plumbing with no server: tool search, structured output, subagent handback, Claude's compose and present.
+    OR ("server_key" = '' AND "tool_name" IN ('ToolSearch', 'StructuredOutput', 'SubagentHandback', 'tool_search', 'tool_search_tool', 'message_compose_v1', 'present_files'))), FALSE) AS "app_call"
+  FROM src
+),
+-- Per call: Claude Code's decision and result rows say 'mcp_tool' and only its span names the tool.
+e AS (
+  SELECT f.* FROM flagged f
+  LEFT JOIN (SELECT DISTINCT "tool_call_id" FROM flagged WHERE "app_call") a
+    ON a."tool_call_id" = f."tool_call_id" AND f."operation" = 'execute_tool'
+  WHERE NOT f."app_call" AND a."tool_call_id" IS NULL
 ),
 usage AS (
   SELECT
