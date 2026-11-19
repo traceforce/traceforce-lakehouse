@@ -10,6 +10,7 @@ WITH src AS (
     ev."generation_id" AS "generation_id", ev."tool_call_id" AS "tool_call_id", ev."signal" AS "signal",
     ev."operation" AS "operation", ev."input_tokens" AS "input_tokens", ev."output_tokens" AS "output_tokens",
     ev."cache_read_tokens" AS "cache_read_tokens", ev."cost_usd" AS "cost_usd",
+    ev."event_name" AS "event_name",
     ev."tool_name" AS "tool_name", ev."mcp_server_name" AS "mcp_server_name",
     REGEXP_REPLACE(COALESCE(ev."mcp_server_name", ''), '[^A-Za-z0-9_-]', '_') AS "server_key"
   FROM "agent_events" ev
@@ -48,7 +49,9 @@ e AS (
 usage AS (
   SELECT
     "day", "agent", "person",
-    COUNT(DISTINCT COALESCE("prompt_id", "generation_id")) AS "prompts",
+    COUNT(DISTINCT COALESCE("prompt_id", "generation_id"))
+      -- Codex's user_prompt rows carry neither id; ts tells them apart.
+      + COUNT(DISTINCT CASE WHEN "event_name" = 'user_prompt' AND "prompt_id" IS NULL AND "generation_id" IS NULL THEN "ts" END) AS "prompts",
     COUNT(DISTINCT CASE WHEN "operation" = 'execute_tool' THEN "tool_call_id" END)
       + COUNT_IF("operation" = 'execute_tool' AND "tool_call_id" IS NULL AND "signal" = 'span') AS "tool_calls",
     SUM(CASE WHEN "operation" IS DISTINCT FROM 'invoke_agent' THEN "input_tokens" END) AS "input_tokens",
@@ -64,6 +67,13 @@ sessions AS (
     SELECT MIN("ts")::DATE AS "day", "agent", "person", "session_id"
     FROM e WHERE "session_id" IS NOT NULL
     GROUP BY 2, 3, 4
+    -- Hide noise sessions: no prompt, tool call, tokens or cost (only startup, hook or connection events).
+    HAVING (COUNT(COALESCE("prompt_id", "generation_id")) > 0
+      OR COUNT_IF("event_name" IN ('user_prompt', 'beforeSubmitPrompt') OR ("signal" = 'span' AND "operation" = 'chat')) > 0
+      OR COUNT(DISTINCT CASE WHEN "operation" = 'execute_tool' THEN "tool_call_id" END)
+        + COUNT_IF("operation" = 'execute_tool' AND "tool_call_id" IS NULL AND "signal" = 'span') > 0
+      OR COALESCE(SUM(e."cost_usd"), 0) <> 0
+      OR COALESCE(SUM(CASE WHEN "operation" IS DISTINCT FROM 'invoke_agent' THEN COALESCE(e."input_tokens", 0) + COALESCE(e."output_tokens", 0) END), 0) <> 0)
   )
   GROUP BY 1, 2, 3
 )
@@ -79,4 +89,10 @@ SELECT
 FROM usage u
 FULL OUTER JOIN sessions s
   ON s."day" = u."day" AND s."agent" = u."agent" AND s."person" IS NOT DISTINCT FROM u."person"
+-- Rows left all zero (only hidden sessions) would show people and devices with no activity.
+WHERE COALESCE(s."sessions", 0) + COALESCE(u."prompts", 0) + COALESCE(u."tool_calls", 0) > 0
+  OR COALESCE(u."input_tokens", 0) <> 0
+  OR COALESCE(u."output_tokens", 0) <> 0
+  OR COALESCE(u."cache_read_tokens", 0) <> 0
+  OR COALESCE(u."cost_usd", 0) <> 0
 ORDER BY 1, 2, 3

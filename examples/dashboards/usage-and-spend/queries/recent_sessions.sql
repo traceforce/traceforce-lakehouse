@@ -7,7 +7,7 @@ WITH src AS (
     coalesce(lower(ev.user_email), lower(m.owner_email)) AS person,
     ev.session_id, ev.device_native_id, ev.ts, ev.model, ev.prompt_id, ev.generation_id, ev.tool_call_id,
     ev.signal, ev.operation, ev.input_tokens, ev.output_tokens, ev.cost_usd,
-    ev.tool_name, ev.mcp_server_name,
+    ev.event_name, ev.tool_name, ev.mcp_server_name,
     regexp_replace(coalesce(ev.mcp_server_name, ''), '[^A-Za-z0-9_-]', '_') AS server_key
   FROM agent_events ev
   LEFT JOIN device_owner_mappings m ON m.device_native_id = ev.device_native_id
@@ -52,7 +52,9 @@ SELECT
   -- Models that served billed/tokened turns; selectors such as 'auto' are not model names.
   array_join(array_sort(array_distinct(array_agg(
     CASE WHEN (input_tokens IS NOT NULL OR cost_usd IS NOT NULL) AND operation IS DISTINCT FROM 'invoke_agent' THEN model END))), ', ') AS models,
-  count(DISTINCT coalesce(prompt_id, generation_id)) AS prompts,
+  count(DISTINCT coalesce(prompt_id, generation_id))
+    -- Codex's user_prompt rows carry neither id; ts tells them apart.
+    + count(DISTINCT CASE WHEN event_name = 'user_prompt' AND prompt_id IS NULL AND generation_id IS NULL THEN ts END) AS prompts,
   count(DISTINCT CASE WHEN operation = 'execute_tool' THEN tool_call_id END)
     + count_if(operation = 'execute_tool' AND tool_call_id IS NULL AND signal = 'span') AS tool_calls,
   sum(CASE WHEN operation IS DISTINCT FROM 'invoke_agent' THEN input_tokens END) AS input_tokens,
@@ -61,5 +63,13 @@ SELECT
 FROM e
 GROUP BY agent, person, session_id
 HAVING min(ts) >= {{since}}
+  -- Hide noise sessions: no prompt, tool call, tokens or cost (only startup, hook or connection events).
+  -- e. keeps cost and tokens off the output aliases of the same name (BigQuery, Snowflake).
+  AND (count(coalesce(prompt_id, generation_id)) > 0
+    OR count_if(event_name IN ('user_prompt', 'beforeSubmitPrompt') OR (signal = 'span' AND operation = 'chat')) > 0
+    OR count(DISTINCT CASE WHEN operation = 'execute_tool' THEN tool_call_id END)
+      + count_if(operation = 'execute_tool' AND tool_call_id IS NULL AND signal = 'span') > 0
+    OR coalesce(sum(e.cost_usd), 0) <> 0
+    OR coalesce(sum(CASE WHEN operation IS DISTINCT FROM 'invoke_agent' THEN coalesce(e.input_tokens, 0) + coalesce(e.output_tokens, 0) END), 0) <> 0)
 ORDER BY min(ts) DESC
 LIMIT 30

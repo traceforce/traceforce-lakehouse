@@ -8,7 +8,7 @@ WITH src AS (
     coalesce(lower(ev.user_email), lower(m.owner_email)) AS person,
     ev.ts, ev.session_id, ev.prompt_id, ev.generation_id, ev.tool_call_id,
     ev.signal, ev.operation, ev.input_tokens, ev.output_tokens, ev.cache_read_tokens, ev.cost_usd,
-    ev.tool_name, ev.mcp_server_name,
+    ev.event_name, ev.tool_name, ev.mcp_server_name,
     regexp_replace(coalesce(ev.mcp_server_name, ''), '[^A-Za-z0-9_-]', '_') AS server_key
   FROM agent_events ev
   LEFT JOIN device_owner_mappings m ON m.device_native_id = ev.device_native_id
@@ -46,7 +46,9 @@ e AS (
 usage AS (
   SELECT
     day, agent, person,
-    count(DISTINCT coalesce(prompt_id, generation_id)) AS prompts,
+    count(DISTINCT coalesce(prompt_id, generation_id))
+      -- Codex's user_prompt rows carry neither id; ts tells them apart.
+      + count(DISTINCT CASE WHEN event_name = 'user_prompt' AND prompt_id IS NULL AND generation_id IS NULL THEN ts END) AS prompts,
     -- A call is 1-3 rows sharing tool_call_id; Copilot spans carry no id, so count those one each.
     count(DISTINCT CASE WHEN operation = 'execute_tool' THEN tool_call_id END)
       + count_if(operation = 'execute_tool' AND tool_call_id IS NULL AND signal = 'span') AS tool_calls,
@@ -64,6 +66,13 @@ sessions AS (
     SELECT date(min(ts)) AS day, agent, person, session_id
     FROM e WHERE session_id IS NOT NULL
     GROUP BY agent, person, session_id
+    -- Hide noise sessions: no prompt, tool call, tokens or cost (only startup, hook or connection events).
+    HAVING (count(coalesce(prompt_id, generation_id)) > 0
+      OR count_if(event_name IN ('user_prompt', 'beforeSubmitPrompt') OR (signal = 'span' AND operation = 'chat')) > 0
+      OR count(DISTINCT CASE WHEN operation = 'execute_tool' THEN tool_call_id END)
+        + count_if(operation = 'execute_tool' AND tool_call_id IS NULL AND signal = 'span') > 0
+      OR coalesce(sum(e.cost_usd), 0) <> 0
+      OR coalesce(sum(CASE WHEN operation IS DISTINCT FROM 'invoke_agent' THEN coalesce(e.input_tokens, 0) + coalesce(e.output_tokens, 0) END), 0) <> 0)
   )
   GROUP BY 1, 2, 3
 )
@@ -78,4 +87,10 @@ SELECT
 FROM usage u
 FULL OUTER JOIN sessions s
   ON s.day = u.day AND s.agent = u.agent AND s.person IS NOT DISTINCT FROM u.person
+-- Rows left all zero (only hidden sessions) would show people and devices with no activity.
+WHERE coalesce(s.sessions, 0) + coalesce(u.prompts, 0) + coalesce(u.tool_calls, 0) > 0
+  OR coalesce(u.input_tokens, 0) <> 0
+  OR coalesce(u.output_tokens, 0) <> 0
+  OR coalesce(u.cache_read_tokens, 0) <> 0
+  OR coalesce(u.cost_usd, 0) <> 0
 ORDER BY 1, 2, 3

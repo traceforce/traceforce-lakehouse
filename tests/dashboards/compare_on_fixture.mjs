@@ -171,6 +171,17 @@ const EVENTS = [
   ev(CX, "alice@example.com", "D1", "s8", -2 * D + 604, { operation: "execute_tool", tool_call_id: "a10", tool_name: "js", mcp_server_name: "node_repl", signal: "log" }),
   ev(CU, null, "D4", "s3", -3 * D + 20, { operation: "execute_tool", tool_call_id: "a11", tool_name: "move_agent_to_root", signal: "log" }),
   ev(CU, null, "D4", "s3", -3 * D + 21, { operation: "execute_tool", tool_call_id: "a12", tool_name: "x", mcp_server_name: "cursor-app-control", signal: "log" }),
+  // Codex prompts carry no id: counted by ts, so the one stored twice counts once (s8: 3 prompts).
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 590, { event_name: "user_prompt", signal: "log" }),
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 590, { event_name: "user_prompt", signal: "log" }),
+  ev(CX, "alice@example.com", "D1", "s8", -2 * D + 595, { event_name: "user_prompt", signal: "log" }),
+  // Noise sessions, hidden: startup and connection events, an app call, an invoke_agent span's tokens, a zero cost.
+  // dan has nothing else (no activity row); D7 is an unattributed device with nothing else (no device row).
+  ev(CC, "alice@example.com", "D1", "s12", -2 * D + 700, { event_name: "mcp_server_connection", signal: "log", cost_usd: 0 }),
+  ev(CC, "alice@example.com", "D1", "s12", -2 * D + 701, { operation: "execute_tool", tool_call_id: "a13", tool_name: "update_plan", mcp_server_name: "ccd_turn", signal: "span" }),
+  ev(CC, "alice@example.com", "D1", "s12", -2 * D + 702, { operation: "invoke_agent", signal: "span", input_tokens: 9, output_tokens: 9 }),
+  ev(CC, "dan@example.com", "D1", "s13", -2 * D + 800, { event_name: "hook_registered", signal: "log" }),
+  ev(CU, null, "D7", "s14", -2 * D + 900, { event_name: "sessionStart", signal: "log" }),
   // s2: no email; the person comes from the device's MDM owner (stored in upper case).
   ev(CC, null, "D3", "s2", -1 * D, { model: "opus", prompt_id: "p2", operation: "chat", input_tokens: 10, cost_usd: 0.5 }),
   // s3, s4: no person. D4 has two live device records, a deleted one and agent accounts; D5 has an MDM
@@ -337,6 +348,7 @@ const since = run("aws", U, "recent_sessions", { agent: "", since: "2000-01-01 0
   .find(r => r.session_id === "s7")?.started_at;
 const cases = [[U, "freshness", {}], [U, "models", {}], [U, "activity", {}], [U, "unattributed", {}], [U, "unattributed_devices", {}],
   [U, "sessions", { person: "alice@example.com" }], [U, "sessions", { person: "bob@example.com" }], [U, "sessions", { person: "" }],
+  [U, "sessions", { person: "dan@example.com" }],
   [U, "tools", { person: "alice@example.com" }], [U, "tools", { person: "" }],
   [U, "recent_sessions", { agent: "", since: "2000-01-01 00:00:00" }], [U, "recent_sessions", { agent: "cursor", since: "2000-01-01 00:00:00" }],
   [U, "recent_sessions", { agent: "", since }],

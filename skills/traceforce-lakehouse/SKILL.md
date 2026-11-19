@@ -21,8 +21,9 @@ description: "Query the TraceForce lakehouse (Athena or Snowflake over Iceberg i
   the result (e.g. cost by agent omits Cursor). Otherwise don't.
 - Use `operation` for cross-agent questions; `event_name` vocabularies differ per agent.
 - Count distinct ids, not rows (the same record can be stored more than once): prompts by
-  `coalesce(prompt_id, generation_id)` (some agents emit neither: check per agent first),
-  sessions by `session_id`, tool calls by distinct `tool_call_id` on `execute_tool` rows plus one
+  `coalesce(prompt_id, generation_id)` plus Codex's id-less `user_prompt` rows by distinct `ts`
+  (GitHub Copilot has no prompt rows; its prompts are in `chat` spans), sessions by `session_id`
+  (skip ones with only startup, hook or connection events, as the dashboards do), tool calls by distinct `tool_call_id` on `execute_tool` rows plus one
   per `execute_tool` span without one. For a person's tool use, leave out the agent app's calls to
   itself (`mcp_server_name` in `reference/agent_events.md`), as the dashboards do.
 - Value lists in the reference are the values known when it was written; `SELECT DISTINCT` the

@@ -88,14 +88,14 @@
     </div>
 
     <div class="card span-12">
-      <div class="card-head"><h2>By agent</h2><span class="sub">— means the agent doesn't report this measure</span></div>
+      <div class="card-head"><h2>By agent</h2><span class="sub">— means the agent doesn't report this measure. GitHub Copilot's prompts are only in its chat spans, so they aren't counted; open a session to see them.</span></div>
       <div class="tbl-wrap" id="agent-table"></div>
     </div>
   </section>
 
   <footer>
     <p>Source: <code>agent_events</code> in the TraceForce lakehouse, with <code>device_owner_mappings</code> to attribute events with no email to the device's owner. Days are UTC. The date range ends today (UTC).</p>
-    <p>Cost is estimated from public list prices when an agent doesn't report it. Prompt counts aren't available for every agent.</p>
+    <p>Cost is estimated from public list prices when an agent doesn't report it. Prompt counts aren't available for GitHub Copilot. Sessions with no prompts, tool calls, tokens or cost (only startup, hook or connection events) are left out.</p>
   </footer>
 </main>
 <script src="../shared/dashboard.js"></script>
@@ -554,7 +554,7 @@
       for (const g of agents) {
         for (let u = 0; u < g.users; u++) {
           if (rnd() > busy * 0.8) continue;
-          const sessions = 1 + Math.floor(rnd() * 5), prompts = g.a === "github_copilot" || g.a === "chatgpt_codex" ? 0 : sessions * (2 + Math.floor(rnd() * 8));
+          const sessions = 1 + Math.floor(rnd() * 5), prompts = g.a === "github_copilot" ? 0 : sessions * (2 + Math.floor(rnd() * 8));
           const inT = g.tok ? Math.round(sessions * (20000 + rnd() * 90000)) : null;
           const cost = g.cost ? +(sessions * g.cost * (0.4 + rnd() * 1.2)).toFixed(4) : null;
           activity.push({ day, agent: g.a, person: u === g.users - 1 && g.a === "github_copilot" ? null : people[(u * 3 + agents.indexOf(g)) % people.length],

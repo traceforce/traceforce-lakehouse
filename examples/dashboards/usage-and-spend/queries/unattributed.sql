@@ -4,7 +4,7 @@ WITH src AS (
   SELECT date(ev.ts) AS day, lower(replace(ev.agent, 'AGENT_IDENTITY_', '')) AS agent,
          coalesce(ev.device_native_id, 'unknown') AS device_native_id,
          ev.ts, ev.session_id, ev.tool_call_id, ev.signal, ev.operation, ev.input_tokens, ev.output_tokens, ev.cost_usd,
-         ev.tool_name, ev.mcp_server_name,
+         ev.prompt_id, ev.generation_id, ev.event_name, ev.tool_name, ev.mcp_server_name,
          regexp_replace(coalesce(ev.mcp_server_name, ''), '[^A-Za-z0-9_-]', '_') AS server_key
   FROM agent_events ev
   LEFT JOIN device_owner_mappings m ON m.device_native_id = ev.device_native_id
@@ -51,7 +51,14 @@ usage AS (
 sessions AS (
   SELECT day, agent, device_native_id, count(*) AS sessions
   FROM (SELECT date(min(ts)) AS day, agent, device_native_id, session_id
-        FROM e WHERE session_id IS NOT NULL GROUP BY agent, device_native_id, session_id)
+        FROM e WHERE session_id IS NOT NULL GROUP BY agent, device_native_id, session_id
+        -- Hide noise sessions: no prompt, tool call, tokens or cost (only startup, hook or connection events).
+        HAVING (count(coalesce(prompt_id, generation_id)) > 0
+          OR count_if(event_name IN ('user_prompt', 'beforeSubmitPrompt') OR (signal = 'span' AND operation = 'chat')) > 0
+          OR count(DISTINCT CASE WHEN operation = 'execute_tool' THEN tool_call_id END)
+            + count_if(operation = 'execute_tool' AND tool_call_id IS NULL AND signal = 'span') > 0
+          OR coalesce(sum(e.cost_usd), 0) <> 0
+          OR coalesce(sum(CASE WHEN operation IS DISTINCT FROM 'invoke_agent' THEN coalesce(e.input_tokens, 0) + coalesce(e.output_tokens, 0) END), 0) <> 0))
   GROUP BY 1, 2, 3
 )
 SELECT cast(coalesce(u.day, s.day) AS varchar) AS day, coalesce(u.agent, s.agent) AS agent,
@@ -59,4 +66,8 @@ SELECT cast(coalesce(u.day, s.day) AS varchar) AS day, coalesce(u.agent, s.agent
        coalesce(s.sessions, 0) AS sessions, coalesce(u.tool_calls, 0) AS tool_calls, u.tokens, u.cost_usd
 FROM usage u
 FULL OUTER JOIN sessions s ON s.day = u.day AND s.agent = u.agent AND s.device_native_id = u.device_native_id
+-- Rows left all zero (only hidden sessions) would show people and devices with no activity.
+WHERE coalesce(s.sessions, 0) + coalesce(u.tool_calls, 0) > 0
+  OR coalesce(u.tokens, 0) <> 0
+  OR coalesce(u.cost_usd, 0) <> 0
 ORDER BY 1, 2, 3

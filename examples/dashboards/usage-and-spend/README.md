@@ -49,8 +49,11 @@ Prompt text leaves the lake only for the session you open.
 
 - **User** is the event's `user_email`, else the device's MDM owner. With neither, the row is
   *Unattributed*. GitHub Copilot never reports an email, so it relies on MDM.
-- **Sessions** are distinct `session_id`s, counted once on the UTC day they started.
-  **Prompts** are distinct `prompt_id` / `generation_id`. **Tool calls** are distinct
+- **Sessions** are distinct `session_id`s, counted once on the UTC day they started. A session with
+  no prompt, tool call, tokens or cost (only startup, hook or connection events) is left out, and so
+  is a user or device with nothing else in a day.
+  **Prompts** are distinct `prompt_id` / `generation_id`, plus Codex's `user_prompt` rows, which carry
+  neither (counted by `ts`). GitHub Copilot logs no prompt events, so it shows —. **Tool calls** are distinct
   `tool_call_id`s on `execute_tool` rows, plus Copilot's id-less tool spans. Calls the agent app makes
   to drive itself are left out (Claude's `ccd_*`, `cowork` and `visualize` servers, Codex's `codex_app`,
   Cursor's app control, built-in plumbing such as `ToolSearch`), by the same rule TraceForce's scout
@@ -79,6 +82,7 @@ A prompt runs from one user prompt to the next in the same session, and the mode
 and response in between are credited to it. This works for agents that emit no prompt id. Spend
 logged before a session's first prompt isn't credited to any prompt. The prompts are what each agent
 logs as one: Claude Code also logs its own task notifications as prompts, so they appear here too.
+GitHub Copilot's prompts come from its chat spans, so they're listed here though its Prompts count is —.
 
 All read the last 90 days, except `recent_sessions.sql`, which reads from the start of the date range.
 `sessions.sql`, `recent_sessions.sql`, `tools.sql` and `prompts.sql` have `{{person}}`-style
