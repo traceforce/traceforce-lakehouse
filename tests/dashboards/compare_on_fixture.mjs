@@ -99,7 +99,8 @@ function messageEvents() {
     ev(CC, null, "D9", "m4", -3 * D, { event_name: "beforeSubmitPrompt", content_input: userMsg("who") }));
   // t1: the incident timeline. A prompt stored twice, an unparseable one, one with a raw control character;
   // call c1 is three rows (decision, an MCP span named mcp_tool, a result naming the tool, with long arguments);
-  // c2 a rejected Bash call; c3 only a result; c5 a failed call; a row with an id but no tool event (not a call); id-less tool spans with and without an MCP
+  // c2 a rejected Bash call; c3 only a result; c5 a failed call; c6 a Claude Code MCP call whose decision row holds
+  // the placeholder, its span no arguments and its result the real ones (a dispatch with nested queryParams.q); a row with an id but no tool event (not a call); id-less tool spans with and without an MCP
   // server; replies with flags (two flags, ] inside quotes, never closed, a newline inside, stored twice).
   // Person filter: another person's row, rows without an email, an uppercase email; window: rows outside it.
   const t = (dt, email, o) => ev(CC, email, "D1", "t1", -2 * D + dt, o);
@@ -114,6 +115,10 @@ function messageEvents() {
     t(5, "ALICE@example.com", { event_name: "preToolUse", tool_call_id: "c2", tool_name: "Bash", decision: "reject", error_type: "denied", attrs_json: '{"source":"hook"}', tool_args: "rm -rf x" }),
     t(6, al, { event_name: "tool_result", tool_call_id: "c3" }),
     t(6.5, al, { event_name: "postToolUseFailure", tool_call_id: "c5", tool_name: "edit", error_type: "permission_denied" }),
+    t(6.6, al, { event_name: "tool_decision", tool_call_id: "c6", tool_name: "mcp_tool", mcp_server_name: "sf", decision: "accept", tool_args: '{"mcp_server_name":"sf","mcp_tool_name":"dispatch"}' }),
+    t(6.7, al, { operation: "execute_tool", signal: "span", tool_call_id: "c6", tool_name: "dispatch", mcp_server_name: "sf" }),
+    t(6.8, al, { event_name: "tool_result", tool_call_id: "c6", tool_name: "mcp_tool", mcp_server_name: "sf",
+      tool_args: '{"method":"GET","url":"/services/data/v60.0/query","skillId":"soql","queryParams":{"q":"SELECT Id FROM Account"}}' }),
     t(7.5, al, { event_name: "user_prompt", content_input: `[{"role":"user","parts":[{"content":"a\u0004b"}]}]` }),
     t(7, al, { event_name: "user_prompt", tool_call_id: "c4", content_input: userMsg("has an id") }),
     t(8, al, { operation: "execute_tool", signal: "span", mcp_server_name: "srv2" }),
@@ -198,8 +203,9 @@ const EVENTS = [
   ev(CU, "carol@example.com", "D6", "s7", -1 * H, { prompt_id: "p8", operation: "chat" }),
   // Blocks. Counted: a hook rejection (long tool_args, a fraction of a second in ts), a Cursor denial tagged
   // [Traceforce with an MCP server and no tool (person from the MDM owner), a masked prompt, a hook rejection with
-  // no tool. Not counted: another source, an accept, containment off, the message as an object or nested
-  // instead of a dotted key, attrs that aren't an object, an unmasked prompt, and one outside the window.
+  // no tool, a denied Read whose arguments are only on its span. Not counted: another source, an accept,
+  // containment off, the message as an object or nested instead of a dotted key, attrs that aren't an object, an
+  // unmasked prompt, and one outside the window.
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 400.123, { event_name: "tool_decision", decision: "reject", attrs_json: '{"source":"hook"}', tool_name: "Bash", tool_args: "a".repeat(598) + "\u{1F600}bc" }),
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 401, { event_name: "tool_decision", decision: "reject", attrs_json: '{"source":"config"}', tool_name: "Bash" }),
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 402, { event_name: "tool_decision", decision: "accept", attrs_json: '{"source":"hook"}', tool_name: "Bash" }),
@@ -212,6 +218,8 @@ const EVENTS = [
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 405, { event_name: "user_prompt", sd_enforcement: "block", content_input: "my key is ********" }),
   ev(CC, "alice@example.com", "D1", "s1", -2 * D + 406, { event_name: "user_prompt", sd_enforcement: "block", content_input: "nothing masked" }),
   ev(CC, "alice@example.com", "D1", "s1", -3 * D, { event_name: "tool_decision", decision: "reject", attrs_json: '{"source":"hook"}' }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 410, { event_name: "tool_decision", tool_call_id: "b1", decision: "reject", attrs_json: '{"source":"hook"}', tool_name: "Read" }),
+  ev(CC, "alice@example.com", "D1", "s1", -2 * D + 411, { operation: "execute_tool", signal: "span", tool_call_id: "b1", tool_name: "Read", tool_args: '{"file_path":"creds.txt"}' }),
   ev(CC, "alice@example.com", "D1", "s6", -95 * D, { event_name: "tool_decision", decision: "reject", attrs_json: '{"source":"hook"}', tool_name: "old" }),
   ...messageEvents(),
 ];

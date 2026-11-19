@@ -24,11 +24,13 @@ sample data and labels it as such.
 - **Incidents**: one row per session with findings, most severe first, then most recent. Each shows
   the user, agent, device and what was found.
 - **An incident**: click one to see its findings inside the session's activity. Each risky action is
-  attached to the exact tool call (by `tool_call_id`) with its command and how it was approved
-  (permission rules, the user, a hook). Sensitive-data and prompt-injection findings are attached to
+  attached to the exact tool call (by `tool_call_id`) with its arguments and how it was approved
+  (permission rules, the user, a hook). The arguments come from the call's fullest row (for Claude Code
+  the result: its decision row holds only a placeholder for an MCP call), shown as the command, query,
+  file path or URL in them, else as raw JSON. Sensitive-data and prompt-injection findings are attached to
   their message where the ids match, or placed at their time. The prompt that led to each finding,
   and two events either side, are shown; the rest collapse to a count (*Show every event* expands
-  them). Commands are cut at 2,000 characters.
+  them). Arguments are cut at 2,000 characters; click a flagged event to show all of its text.
 - **Findings per day** by kind, **top finding types**, **users** (click to filter), and
   **blocked by TraceForce**: denied attempts, which never become findings.
 
@@ -49,7 +51,8 @@ badge); a finding with no issue type ranks low. An incident takes its most sever
   logged, or findings older than the event logs) show *Unknown agent*, and their incident shows findings only.
 - **Blocks** are inferred from agent behavior, per the skill's `reference/enforcement.md`: Claude Code
   hook denials, tagged Cursor permission denials, and Claude Code prompts blocked for sensitive data.
-  Copilot and Cowork blocks, and Cursor prompt blocks, leave no event.
+  Copilot and Cowork blocks, and Cursor prompt blocks, leave no event. A blocked Claude Code MCP call
+  shows only the placeholder `{mcp_server_name, mcp_tool_name}`: none of its rows holds the arguments.
 - **Findings** come from daily snapshots of TraceForce's control plane, so a finding, or a status
   change made in the console, can take up to a day to appear. The header shows how current each
   source is.
