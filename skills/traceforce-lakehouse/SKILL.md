@@ -46,8 +46,23 @@ Azure (Databricks). The engine picks the script:
 neither cloud nor engine is named, ask. Do not infer either from which credentials are present — a
 machine often has several.
 
-Use the bundled script; do not reimplement it with raw `aws athena` / `bq` / Snowflake connector /
-Databricks API calls.
+An agent running inside the data platform (Databricks Genie One or Genie Code, Snowflake Cortex,
+a notebook) has no shell and no scripts: run SQL directly as the user, in the dialect its section
+below describes, and name tables in full:
+- Databricks: first `SET STATEMENT_TIMEOUT = 300;` (as the script does), then find the catalog
+  and use `<catalog>.traceforce.<table>`; if this returns more than one catalog, ask which
+  deployment to query:
+  `SELECT DISTINCT table_catalog FROM system.information_schema.tables WHERE table_schema = 'traceforce' AND table_name = 'agent_events'`
+- Snowflake: first, as the script does, `USE ROLE "traceforce_lakehouse_reader"; USE SECONDARY
+  ROLES NONE; USE WAREHOUSE "traceforce_lakehouse_query"; USE DATABASE "traceforce_lakehouse";
+  USE SCHEMA "traceforce"; ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 300;` (an older
+  deployment has only the warehouse `"traceforce_lakehouse"`), then
+  `"traceforce_lakehouse"."traceforce"."<table>"`.
+- BigQuery: `` `<project>`.traceforce_lakehouse.<table> ``; ask for the project if the dataset
+  isn't in the current one.
+
+Anywhere else, use the bundled script; do not reimplement it with raw `aws athena` / `bq` /
+Snowflake connector / Databricks API calls.
 
 ```bash
 "${CLAUDE_SKILL_DIR}/scripts/athena_query.sh" "SELECT agent, count(*) FROM agent_events WHERE ts > current_timestamp - interval '7' day GROUP BY 1"
@@ -100,7 +115,7 @@ single `SELECT`/`WITH`/`SHOW`/`DESCRIBE`/`EXPLAIN` statement, refusing stored-pr
 the `->>` operator. Do not work around it by connecting as another role.
 
 ```bash
-"${CLAUDE_SKILL_DIR}/scripts/snowflake_query.sh" "SELECT \"agent\", count(*) FROM \"agent_events\" WHERE \"ts\" > DATEADD('day', -7, CURRENT_TIMESTAMP()) GROUP BY 1"
+"${CLAUDE_SKILL_DIR}/scripts/snowflake_query.sh" "SELECT \"agent\", count(*) FROM \"agent_events\" WHERE \"ts\" > DATEADD('day', -7, SYSDATE()) GROUP BY 1"
 ```
 
 Needs Python 3 (`python3`, `python` or `py -3`) with `snowflake-connector-python`, and either all
@@ -113,7 +128,7 @@ key's variable). The connecting user must hold the reader role (README, the Snow
 The reference/* schema (columns, joins, identity, redaction, enforcement) is identical, but its
 example SQL is Athena/Trino. Translate to Snowflake SQL, quoting its names as above:
 - `json_extract_scalar(x, '$.gen_ai.tool.name')` -> `PARSE_JSON(x):"gen_ai.tool.name"::string` — **double-quote dotted keys**. The JSON columns are strings here, so `PARSE_JSON()` first.
-- `current_timestamp - interval '7' day` -> `DATEADD('day', -7, CURRENT_TIMESTAMP())`; `date_format(...)` -> `TO_CHAR(...)`.
+- "Now" and "today" in UTC: `SYSDATE()` and `SYSDATE()::date` (`CURRENT_TIMESTAMP()` / `CURRENT_DATE()` follow the session time zone, which only the script pins to UTC). `current_timestamp - interval '7' day` -> `DATEADD('day', -7, SYSDATE())`; `date_format(...)` -> `TO_CHAR(...)`.
 - `SHOW TABLES` -> `SHOW TABLES IN SCHEMA "traceforce"`; `DESCRIBE <table>` -> `DESCRIBE TABLE "<table>"`.
 - `CROSS JOIN UNNEST(CAST(json_parse(x) AS array(varchar)))` -> `, LATERAL FLATTEN(input => PARSE_JSON(x)) AS elem` (the value is `elem.VALUE`).
 - A lookup by a per-row JSON key, `json_extract_scalar(x, '$["' || key || '"].username')` -> `GET(PARSE_JSON(x), key):"username"::string` (e.g. `key` = `i."tenant"`).
