@@ -50,12 +50,26 @@ resource "databricks_external_location" "iceberg" {
 # it off. force_destroy: destroy must drop the catalog even with tables in it (the tables are made
 # by SQL, not Terraform). Catalogs live in the account-level metastore and outlive the workspace,
 # so a leftover traceforce_lakehouse would block a re-deploy. The customer's raw logs are untouched.
+# ISOLATED: other workspaces on the metastore can't see or use the catalog, whatever their grants.
+# The provider binds the workspace it runs in right after setting it (and again before deleting).
 resource "databricks_catalog" "lakehouse" {
   name                           = local.catalog_name
   storage_root                   = databricks_external_location.iceberg.url
+  isolation_mode                 = "ISOLATED"
   enable_predictive_optimization = "ENABLE"
   force_destroy                  = true
   comment                        = "TraceForce lakehouse"
+}
+
+# The module's workspace, explicit so the binding is in state.
+# The workspace ID is the number in the URL (adb-<id>.<n>.azuredatabricks.net). Everything that
+# needs the catalog at destroy (schema, tables, catalog grants) depends on this, so it is removed
+# only after them.
+resource "databricks_workspace_binding" "lakehouse" {
+  securable_name = databricks_catalog.lakehouse.name
+  securable_type = "catalog"
+  workspace_id   = regex("^adb-([0-9]+)\\.", azapi_resource.workspace.output.properties.workspaceUrl)[0]
+  binding_type   = "BINDING_TYPE_READ_WRITE"
 }
 
 resource "databricks_schema" "lakehouse" {
@@ -63,4 +77,6 @@ resource "databricks_schema" "lakehouse" {
   name          = local.schema_name
   force_destroy = true
   comment       = "TraceForce lakehouse: agent_events and the metadata mirrors"
+
+  depends_on = [databricks_workspace_binding.lakehouse]
 }

@@ -68,6 +68,8 @@ resource "databricks_grant" "reader_catalog" {
   catalog    = databricks_catalog.lakehouse.name
   principal  = each.value.name
   privileges = ["USE_CATALOG"]
+
+  depends_on = [databricks_workspace_binding.lakehouse]
 }
 
 resource "databricks_grant" "reader_schema" {
