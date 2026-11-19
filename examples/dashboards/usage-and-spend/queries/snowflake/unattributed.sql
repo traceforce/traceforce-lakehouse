@@ -53,6 +53,8 @@ usage AS (
   SELECT "day", "agent", "device_native_id",
          COUNT(DISTINCT CASE WHEN "operation" = 'execute_tool' THEN "tool_call_id" END)
            + COUNT_IF("operation" = 'execute_tool' AND "tool_call_id" IS NULL AND "signal" = 'span') AS "tool_calls",
+         -- Same rows activity.sql counts as prompts.
+         COUNT_IF(COALESCE("prompt_id", "generation_id") IS NOT NULL OR "event_name" = 'user_prompt') AS "prompt_rows",
          SUM(CASE WHEN "operation" IS DISTINCT FROM 'invoke_agent' THEN COALESCE("input_tokens", 0) + COALESCE("output_tokens", 0) END) AS "tokens",
          SUM("cost_usd") AS "cost_usd"
   FROM e GROUP BY 1, 2, 3
@@ -76,7 +78,7 @@ SELECT TO_CHAR(COALESCE(u."day", s."day"), 'YYYY-MM-DD') AS "day", COALESCE(u."a
 FROM usage u
 FULL OUTER JOIN sessions s ON s."day" = u."day" AND s."agent" = u."agent" AND s."device_native_id" = u."device_native_id"
 -- Rows left all zero (only hidden sessions) would show people and devices with no activity.
-WHERE COALESCE(s."sessions", 0) + COALESCE(u."tool_calls", 0) > 0
+WHERE COALESCE(s."sessions", 0) + COALESCE(u."prompt_rows", 0) + COALESCE(u."tool_calls", 0) > 0
   OR COALESCE(u."tokens", 0) <> 0
   OR COALESCE(u."cost_usd", 0) <> 0
 ORDER BY 1, 2, 3

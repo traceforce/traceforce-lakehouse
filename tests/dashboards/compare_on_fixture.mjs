@@ -202,6 +202,9 @@ const EVENTS = [
   ev(CU, null, "D5", "s16", -2 * D + 960, { event_name: "traceforce.enforcement", decision: "deny", signal: "log" }),
   ev(CC, null, "D5", "s17", -2 * D + 961, { operation: "execute_tool", tool_call_id: "a14", tool_name: "mcp_tool", signal: "log" }),
   ev(CC, null, "D5", "s17", -2 * D + 962, { operation: "execute_tool", tool_call_id: "a14", tool_name: "update_plan", mcp_server_name: "ccd_turn", signal: "span" }),
+  // Unattributed D8: s20 starts a day early, so D8's later day has only a Codex prompt and is kept by it alone.
+  ev(CX, null, "D8", "s20", -3 * D + 50, { prompt_id: "p20", operation: "chat" }),
+  ev(CX, null, "D8", "s20", -2 * D + 50, { event_name: "user_prompt", signal: "log" }),
   // s2: no email; the person comes from the device's MDM owner (stored in upper case).
   ev(CC, null, "D3", "s2", -1 * D, { model: "opus", prompt_id: "p2", operation: "chat", input_tokens: 10, cost_usd: 0.5 }),
   // s3, s4: no person. D4 has two live device records, a deleted one and agent accounts; D5 has an MDM

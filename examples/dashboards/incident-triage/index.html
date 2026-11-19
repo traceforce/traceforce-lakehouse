@@ -332,7 +332,7 @@
       const m = s.match(new RegExp(`"${k}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)(")?`));
       if (!m) continue;
       // Drop a \u escape cut off at the end (fewer than four digits); the capture never ends in a lone backslash.
-      try { return JSON.parse(`"${m[1].replace(/(?<!\\)((?:\\\\)*)\\u[0-9a-fA-F]{0,3}$/, "$1")}"`) + (m[2] ? "" : " …"); } catch (_) { return s; }
+      try { return JSON.parse(`"${m[1].replace(/((?:^|[^\\])(?:\\\\)*)\\u[0-9a-fA-F]{0,3}$/, "$1")}"`) + (m[2] ? "" : " …"); } catch (_) { return s; }
     }
     return s;
   }
