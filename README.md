@@ -722,7 +722,9 @@ The first load runs within the hour and covers the last few days.
 5. Install the skill in your coding agent (Claude Code: the two `/plugin` commands above; other
    agents: see [`AGENTS.md`](AGENTS.md)). Set `DATABRICKS_HOST` and `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID`
    to the `databricks_workspace_url` and `query_warehouse_id` outputs, then `az login` as the
-   reader. Tables live in `traceforce_lakehouse.traceforce`.
+   reader. Tables live in `traceforce_lakehouse.traceforce`. The catalog is bound to the module's
+   workspace: other workspaces on the same Unity Catalog metastore can't see or query it, whatever
+   their grants.
 
 The first load runs within the hour and covers the last few days; the metadata tables fill at the
 daily mirror, 12:30 UTC.

@@ -46,7 +46,7 @@ variable "iceberg_storage_account_name" {
 # --- The Databricks catalog this module creates ---
 
 variable "catalog_name" {
-  description = "Unity Catalog catalog name. Unique within the region's metastore: two lakehouses in one region under one Databricks account need different names. Pick it once: changing it later replaces the catalog and its grants."
+  description = "Unity Catalog catalog name. Unique within the region's metastore: two lakehouses in one region under one Databricks account need different names. Bound to the module's workspace only: other workspaces on the metastore can't see it. Pick it once: changing it later replaces the catalog and its grants."
   type        = string
   default     = "traceforce_lakehouse"
   validation {

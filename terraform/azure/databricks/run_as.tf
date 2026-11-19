@@ -96,6 +96,8 @@ resource "databricks_grant" "ingest_catalog" {
   catalog    = databricks_catalog.lakehouse.name
   principal  = databricks_service_principal.ingest.application_id
   privileges = ["USE_CATALOG"]
+
+  depends_on = [databricks_workspace_binding.lakehouse]
 }
 
 resource "databricks_grant" "ingest_schema" {
