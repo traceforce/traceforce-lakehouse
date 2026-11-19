@@ -49,7 +49,7 @@ machine often has several.
 An agent running inside the data platform (Databricks Genie One or Genie Code, Snowflake Cortex,
 a notebook) has no shell and no scripts: run SQL directly as the user, in the dialect its section
 below describes, and name tables in full:
-- Databricks: find the catalog first, then use `<catalog>.traceforce.<table>`; if this returns
+- Databricks: first `SET STATEMENT_TIMEOUT = 300;` (as the script does), then find the catalog, then use `<catalog>.traceforce.<table>`; if this returns
   more than one catalog, ask which deployment to query:
   `SELECT DISTINCT table_catalog FROM system.information_schema.tables WHERE table_schema = 'traceforce' AND table_name = 'agent_events'`
 - Snowflake: first, as the script does, `USE ROLE "traceforce_lakehouse_reader"; USE SECONDARY
