@@ -49,13 +49,15 @@ machine often has several.
 An agent running inside the data platform (Databricks Genie One or Genie Code, Snowflake Cortex,
 a notebook) has no shell and no scripts: run SQL directly as the user, in the dialect its section
 below describes, and name tables in full:
-- Databricks: first `SET STATEMENT_TIMEOUT = 300;` (as the script does), then find the catalog, then use `<catalog>.traceforce.<table>`; if this returns
-  more than one catalog, ask which deployment to query:
+- Databricks: first `SET STATEMENT_TIMEOUT = 300;` (as the script does), then find the catalog
+  and use `<catalog>.traceforce.<table>`; if this returns more than one catalog, ask which
+  deployment to query:
   `SELECT DISTINCT table_catalog FROM system.information_schema.tables WHERE table_schema = 'traceforce' AND table_name = 'agent_events'`
 - Snowflake: first, as the script does, `USE ROLE "traceforce_lakehouse_reader"; USE SECONDARY
   ROLES NONE; USE WAREHOUSE "traceforce_lakehouse_query"; USE DATABASE "traceforce_lakehouse";
-  USE SCHEMA "traceforce"; ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 300;` (an older deployment has only the warehouse `"traceforce_lakehouse"`),
-  then `"traceforce_lakehouse"."traceforce"."<table>"`.
+  USE SCHEMA "traceforce"; ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 300;` (an older
+  deployment has only the warehouse `"traceforce_lakehouse"`), then
+  `"traceforce_lakehouse"."traceforce"."<table>"`.
 - BigQuery: `` `<project>`.traceforce_lakehouse.<table> ``; ask for the project if the dataset
   isn't in the current one.
 
