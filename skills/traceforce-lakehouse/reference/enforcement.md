@@ -13,7 +13,10 @@ structured, append-only ledger, mirrored to the lakehouse as `enforcement_events
 excludes `action = 'allowed_after_warn'` (the user overrode the warning) AND any `deny_once` whose
 `(org_id, correlation_id)` has a matching `allowed_after_warn` — the hook stamps the same
 `correlation_id` on a warn and its later override, so an overridden warn's `deny_once` row must be
-suppressed too, or prevention is overstated. It covers
+suppressed too, or prevention is overstated. An `ask` row is the agent's own approval dialog, not a
+prevention on its own: resolve it by the user's answer in `agent_events` (the `tool_decision` on the
+same `tool_call_id` — reject = prevented, accept = overridden), and leave it unknown where no
+decision joins. It covers
 the hook-enforced agents (Claude Code, ChatGPT Codex, GitHub Copilot CLI, Cursor). The per-agent
 heuristics below remain the fallback for activity that predates the ledger (or a lakehouse where it
 is not yet populated), and for surfaces the hook does not cover — notably the Cowork inline proxy.
@@ -27,10 +30,18 @@ logs it looks identical to a native `ask` / `user_*` and to a user-installed hoo
 
 - A `tool_decision` `reject` with `source = 'hook'`, or any `ask` / `user_*`, with **no**
   `enforcement_events` row on the same `tool_use_id`, was **not** TraceForce — it was the agent's
-  own prompt or a user-installed hook.
+  own prompt or a user-installed hook. Caveat: the ledger mirrors to the lakehouse once a day while
+  `agent_events` loads hourly, so a recent TraceForce reject can appear here before its ledger row.
+  Treat a call newer than the last `enforcement_events` export as **unknown**, not "not TraceForce";
+  the hourly `traceforce.enforcement` rows below close most of that window.
 - A TraceForce `ask` row **plus** a `source = 'hook'` reject on the same `tool_use_id` means a
   **user hook** denied what TraceForce only asked about.
-- The enforcement records also surface in `agent_events` as hourly `traceforce.enforcement` rows.
+- The enforcement records also surface in `agent_events` as hourly `traceforce.enforcement` rows,
+  which carry the call's `tool_call_id` — so count a call as TraceForce's when either the ledger OR a
+  `traceforce.enforcement` row has that `tool_call_id`. These rows carry no `user_email` and (for
+  Codex) the turn id as `prompt_id`, and nothing excludes `event_name = 'traceforce.enforcement'`
+  from the usage counts yet, so they currently inflate activity/prompt counts and Unattributed —
+  exclude them there (follow-up).
 
 Caveats: older scout builds write **no** ledger rows (use the heuristics for them), and ledger rows
 are **unauthenticated claims** — the loopback receiver accepts any local process's record, so use
