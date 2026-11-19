@@ -35,8 +35,8 @@ git -C ~/traceforce-lakehouse pull && rm -rf ~/.agents/skills/traceforce-lakehou
 
 Add the `skills/traceforce-lakehouse` folder in the agent's skill settings, e.g. Genie One:
 Customizations > Skills > + New > Upload Skills (or a workspace admin copies it to
-`/Workspace/.assistant/skills/` so everyone in the workspace gets it); Cortex Code: Agent Settings >
-Skills. These agents query as each user, so readers need the module's grants; the helper scripts
+`/Workspace/.assistant/skills/` so everyone in the workspace gets it); Cortex Code in Snowsight: a
+workspace's Cortex Code panel > + > Upload Skill Folder(s). These agents query as each user, so readers need the module's grants; the helper scripts
 aren't used there.
 
 Only Claude Code is verified end to end so far.
