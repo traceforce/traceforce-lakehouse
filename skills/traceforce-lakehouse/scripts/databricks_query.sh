@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run one read-only SQL statement against the TraceForce lakehouse on Azure Databricks and print
-# the result as CSV, or (--runs) print the ingest and mirror jobs' recent runs. Needs python3 and,
-# for a person's login, the Azure CLI. No other packages.
+# the result as CSV, or (--runs) print the ingest and mirror jobs' recent runs. Needs Python 3
+# (python3, python or py -3) and, for a person's login, the Azure CLI or the Databricks CLI. No
+# other packages.
 #
 #   databricks_query.sh "SELECT count(*) FROM agent_events"
 #   databricks_query.sh -f query.sql
@@ -24,6 +25,7 @@
 # Never paste a token or secret into a chat; put it in the environment the agent is started from.
 #
 # Optional:
+#   TRACEFORCE_LAKEHOUSE_CATALOG            the module's catalog_name (default traceforce_lakehouse)
 #   TRACEFORCE_LAKEHOUSE_MAX_ROWS           rows to print (default 200; 0 = all, up to Databricks'
 #                                           25 MiB result limit)
 #   TRACEFORCE_LAKEHOUSE_STATEMENT_TIMEOUT  seconds before the script cancels the query (default
@@ -43,7 +45,11 @@
 # one of those keywords has to be backtick-quoted.
 set -euo pipefail
 
-CATALOG="traceforce_lakehouse"
+CATALOG="${TRACEFORCE_LAKEHOUSE_CATALOG:-traceforce_lakehouse}"
+if ! [[ "$CATALOG" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+  echo "invalid TRACEFORCE_LAKEHOUSE_CATALOG: $CATALOG -- must be the module's catalog_name (letters, digits and underscores)" >&2
+  exit 2
+fi
 SCHEMA="traceforce"
 MAX_ROWS="${TRACEFORCE_LAKEHOUSE_MAX_ROWS:-200}"
 if ! [[ "$MAX_ROWS" =~ ^[0-9]{1,9}$ ]]; then
@@ -74,7 +80,12 @@ case "${1:-}" in
     ;;
 esac
 
-command -v python3 >/dev/null 2>&1 || { echo "python3 is required (see the header)" >&2; exit 2; }
+# Run each, not just look it up: on Windows, python3 and python can be Store stubs that only print a hint.
+PY=""
+for p in python3 python "py -3"; do
+  if $p -c 'import sys; sys.exit(sys.version_info[0] != 3)' >/dev/null 2>&1; then PY="$p"; break; fi
+done
+[[ -n "$PY" ]] || { echo "Python 3 is required: none of python3, python or py -3 runs it (see the header)" >&2; exit 2; }
 
 if [[ -z "${DATABRICKS_HOST:-}" ]]; then
   echo "DATABRICKS_HOST is not set: set it to the module's databricks_workspace_url output (adb-<id>.<n>.azuredatabricks.net)" >&2
@@ -172,7 +183,7 @@ if more:
 bad = sorted(set(words) & WRITES)
 print((words[0] if words else "") + "|" + ",".join(bad))
 PY
-  SCAN="$(python3 -I "$TMP_DIR/scan.py" "$TMP_DIR/query.sql")"
+  SCAN="$($PY -I "$TMP_DIR/scan.py" "$TMP_DIR/query.sql")"
   FIRST="${SCAN%%|*}"
   FLAG="${SCAN#*|}"
   case "$FLAG" in
@@ -193,8 +204,8 @@ fi
 
 # In the background so Ctrl-C or a tool timeout's TERM reaches Python, which cancels the running
 # statement instead of leaving it running on the warehouse (as athena_query.sh does).
-python3 -I - "$MODE" "$TMP_DIR" "$MAX_ROWS" "$STATEMENT_TIMEOUT" "${RUNS:-5}" "$CATALOG" "$SCHEMA" <<'PY' &
-import base64, concurrent.futures, csv, datetime, json, os, signal, socket, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
+$PY -I - "$MODE" "$TMP_DIR" "$MAX_ROWS" "$STATEMENT_TIMEOUT" "${RUNS:-5}" "$CATALOG" "$SCHEMA" <<'PY' &
+import base64, concurrent.futures, csv, datetime, json, os, shutil, signal, socket, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
 
 mode, tmp, max_rows, timeout, runs, catalog, schema = sys.argv[1:8]
 max_rows, timeout, runs = int(max_rows), int(timeout), int(runs)
@@ -228,7 +239,7 @@ def auth_failed():
 def cli_token():
     """The Databricks CLI's login for this workspace (`databricks auth login`), or None."""
     try:
-        p = subprocess.run(["databricks", "auth", "token", "--host", base, "-o", "json"],
+        p = subprocess.run([shutil.which("databricks") or "databricks", "auth", "token", "--host", base, "-o", "json"],
                            capture_output=True, text=True, timeout=120)
         return json.loads(p.stdout)["access_token"] if p.returncode == 0 else None
     except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError):
@@ -258,7 +269,8 @@ def token():
     # A person: the Azure CLI first, then a Databricks CLI login for this workspace.
     az = True
     try:
-        p = subprocess.run(["az", "account", "get-access-token", "--resource", AZURE_DATABRICKS,
+        # which() finds Windows' az.cmd, which a bare "az" doesn't (only .exe is tried).
+        p = subprocess.run([shutil.which("az") or "az", "account", "get-access-token", "--resource", AZURE_DATABRICKS,
                             "--query", "accessToken", "-o", "tsv"], capture_output=True, text=True, timeout=120)
         if p.returncode == 0 and p.stdout.strip():
             return p.stdout.strip()
@@ -445,7 +457,7 @@ with open(os.path.join(tmp, "query.sql"), encoding="utf-8") as f:
 body = {
     "warehouse_id": os.environ["TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID"],
     "statement": sql,
-    "catalog": catalog,          # unqualified names resolve in traceforce_lakehouse.traceforce
+    "catalog": catalog,          # unqualified names resolve in <catalog>.traceforce
     "schema": schema,
     "disposition": "INLINE",
     "format": "JSON_ARRAY",

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run one read-only SQL statement against the TraceForce lakehouse through Snowflake and print
-# the result as CSV. Needs python3 with snowflake-connector-python installed.
+# the result as CSV. Needs Python 3 (python3, python or py -3) with snowflake-connector-python
+# installed.
 #
 #   snowflake_query.sh "SELECT count(*) FROM \"agent_events\""
 #   snowflake_query.sh -f query.sql
@@ -86,7 +87,12 @@ if [[ "$SQL" == *"->>"* ]]; then
   exit 2
 fi
 
-command -v python3 >/dev/null 2>&1 || { echo "python3 is required (see the header)" >&2; exit 2; }
+# Run each, not just look it up: on Windows, python3 and python can be Store stubs that only print a hint.
+PY=""
+for p in python3 python "py -3"; do
+  if $p -c 'import sys; sys.exit(sys.version_info[0] != 3)' >/dev/null 2>&1; then PY="$p"; break; fi
+done
+[[ -n "$PY" ]] || { echo "Python 3 is required: none of python3, python or py -3 runs it (see the header)" >&2; exit 2; }
 
 # Scan the bare tokens (outside string literals, quoted identifiers and comments): the first
 # keyword must be a read, and no PROCEDURE or CALL token may appear anywhere. Control/Unicode
@@ -94,7 +100,7 @@ command -v python3 >/dev/null 2>&1 || { echo "python3 is required (see the heade
 # Snowflake's lexer about where a comment ends (a bare CR never reaches either side: both file
 # reads are text-mode, which turns it into a newline). A column or JSON key named call/procedure
 # has to be double-quoted.
-SCAN="$(python3 -c '
+SCAN="$($PY -c '
 import re, sys
 try:
     sql = open(sys.argv[1], encoding="utf-8").read().lstrip("\ufeff")
@@ -187,15 +193,15 @@ PREAMBLE="USE ROLE \"$READER_ROLE\"; USE SECONDARY ROLES NONE; USE DATABASE \"$D
 
 # Capture the import's own error: a missing package gets the install command, a broken one
 # (e.g. a cryptography/pyOpenSSL mismatch) gets its real last line.
-if ! IMPORT_ERR="$(python3 -c 'import snowflake.connector' 2>&1 >/dev/null)"; then
+if ! IMPORT_ERR="$($PY -c 'import snowflake.connector' 2>&1 >/dev/null)"; then
   case "$IMPORT_ERR" in
-    *"No module named"*) echo "snowflake-connector-python is not installed: pip install snowflake-connector-python" >&2 ;;
+    *"No module named"*) echo "snowflake-connector-python is not installed: $PY -m pip install snowflake-connector-python" >&2 ;;
     *) echo "snowflake-connector-python failed to import: $(printf '%s\n' "$IMPORT_ERR" | tail -1)" >&2 ;;
   esac
   exit 2
 fi
 
-python3 - "$PREAMBLE" "$SQL_FILE" "$MAX_ROWS" "$HAVE_ENV_CREDS" "$READER_ROLE" "$WAREHOUSE" "$OLD_WAREHOUSE" <<'PY'
+$PY - "$PREAMBLE" "$SQL_FILE" "$MAX_ROWS" "$HAVE_ENV_CREDS" "$READER_ROLE" "$WAREHOUSE" "$OLD_WAREHOUSE" <<'PY'
 import csv
 import os
 import sys

@@ -291,7 +291,7 @@ Snowflake, `alarm_notification_email`), `create_glue_integration` (no Glue), and
    ```
 
    Any other agent (Cursor, Copilot, Codex): see [`AGENTS.md`](AGENTS.md). Querying needs
-   python3 with `snowflake-connector-python` and, as the step 3 user, either the five
+   Python 3 (`python3`, `python` or `py -3`) with `snowflake-connector-python` and, as the step 3 user, either the five
    `SNOWFLAKE_*` environment variables (listed in `snowflake_query.sh`) or a `connections.toml`
    connection. Then ask questions.
 
@@ -554,7 +554,7 @@ APIs — in practice **project Owner**.
    ```
 
    Any other agent (Cursor, Copilot, Codex): see [`AGENTS.md`](AGENTS.md). Querying needs
-   python3 with `snowflake-connector-python` and, as the step 4 user, either the five
+   Python 3 (`python3`, `python` or `py -3`) with `snowflake-connector-python` and, as the step 4 user, either the five
    `SNOWFLAKE_*` environment variables (listed in `snowflake_query.sh`) or a `connections.toml`
    connection. Then ask questions.
 
@@ -720,9 +720,22 @@ The first load runs within the hour and covers the last few days.
    the service principal. Access can take about 5 minutes.
 
 5. Install the skill in your coding agent (Claude Code: the two `/plugin` commands above; other
-   agents: see [`AGENTS.md`](AGENTS.md)). Set `DATABRICKS_HOST` and `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID`
+   agents: see [`AGENTS.md`](AGENTS.md)). Querying needs Python 3 (`python3`, `python` or
+   `py -3`). Set `DATABRICKS_HOST` and `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID`
    to the `databricks_workspace_url` and `query_warehouse_id` outputs, then `az login` as the
-   reader. Tables live in `traceforce_lakehouse.traceforce`.
+   reader. Tables live in `traceforce_lakehouse.traceforce`; if you set `catalog_name`, also set
+   `TRACEFORCE_LAKEHOUSE_CATALOG` to it.
+
+   On Windows the skill's scripts run in Git Bash. Without the Azure CLI, sign in with the
+   Databricks CLI instead, and set the variables with `setx` (it reaches only new processes, so
+   restart the agent afterwards):
+
+   ```
+   winget install Databricks.DatabricksCLI
+   databricks auth login --host https://adb-<id>.<n>.azuredatabricks.net
+   setx DATABRICKS_HOST adb-<id>.<n>.azuredatabricks.net
+   setx TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID <query_warehouse_id>
+   ```
 
 The first load runs within the hour and covers the last few days; the metadata tables fill at the
 daily mirror, 12:30 UTC.
