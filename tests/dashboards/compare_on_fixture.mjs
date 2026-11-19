@@ -289,8 +289,14 @@ const DIALECT = {
   },
 };
 // The first row's casts set each column's name and type; later rows are bare values, which UNION ALL converts
-// to those types. That keeps each query's SQL well under Linux's 128 KiB argument limit (see run).
+// to those types. That keeps each query's SQL well under Linux's 128 KiB argument limit (see run). Athena gets
+// one VALUES list instead: a query reading a long UNION ALL chain several times passes Trino's 150-stage cap
+// (Snowflake's VALUES takes only constants, and the timestamps aren't).
 function cte(d, name, cols, rows) {
+  if (d === DIALECT.aws) {
+    const vals = rows.map(r => `(${cols.map(([, t], i) => d.lit(r[i], t)).join(", ")})`).join(", ");
+    return `${name} AS (SELECT ${cols.map(([c, t]) => `CAST("${c}" AS ${d.cast[t]}) AS "${c}"`).join(", ")} FROM (VALUES ${vals}) AS v(${cols.map(([c]) => `"${c}"`).join(", ")}))`;
+  }
   const body = rows.map((r, n) => `SELECT ${cols.map(([c, t], i) => n ? d.lit(r[i], t) : `CAST(${d.lit(r[i], t)} AS ${d.cast[t]}) AS ${d.id(c)}`).join(", ")}`).join(" UNION ALL ");
   return `${d.id(name)} AS (${body})`;
 }
