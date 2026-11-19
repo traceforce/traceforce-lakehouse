@@ -725,8 +725,9 @@ The first load runs within the hour and covers the last few days.
    `databricks_workspace_url` and `query_warehouse_id` outputs, then `az login` as the reader.
    Tables live in `traceforce_lakehouse.traceforce`; if you set `catalog_name`, also set
    `TRACEFORCE_LAKEHOUSE_CATALOG` to it (the bundled dashboards still need the default name).
-   To use the skill from Databricks Genie One instead, upload the `skills/traceforce-lakehouse`
-   folder there (see [`AGENTS.md`](AGENTS.md)); it then queries as each reader, with no setup.
+   To use the skill from an agent inside Databricks (e.g. Genie One) instead, add the
+   `skills/traceforce-lakehouse` folder there (see [`AGENTS.md`](AGENTS.md)); it then queries as
+   each reader, with no setup.
 
    On Windows the skill's scripts run in Git Bash. Without the Azure CLI, sign in with the
    Databricks CLI instead. Install it, then open a new Git Bash window (the install changes PATH):

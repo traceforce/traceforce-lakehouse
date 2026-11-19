@@ -46,11 +46,15 @@ Azure (Databricks). The engine picks the script:
 neither cloud nor engine is named, ask. Do not infer either from which credentials are present — a
 machine often has several.
 
-Running inside Databricks (Genie One, Genie Code, a notebook) means no shell and no scripts: run
-Databricks SQL directly and follow "Azure (Databricks)" below for the dialect. Find the catalog
-first, then name every table `<catalog>.traceforce.<table>`; if this returns more than one catalog,
-ask which deployment to query:
-`SELECT DISTINCT table_catalog FROM system.information_schema.tables WHERE table_schema = 'traceforce' AND table_name = 'agent_events'`
+An agent running inside the data platform (Databricks Genie One or Genie Code, Snowflake Cortex,
+a notebook) has no shell and no scripts: run SQL directly as the user, in the dialect its section
+below describes, and name tables in full:
+- Databricks: find the catalog first, then use `<catalog>.traceforce.<table>`; if this returns
+  more than one catalog, ask which deployment to query:
+  `SELECT DISTINCT table_catalog FROM system.information_schema.tables WHERE table_schema = 'traceforce' AND table_name = 'agent_events'`
+- Snowflake: `"traceforce_lakehouse"."traceforce"."<table>"`, as a role that holds
+  `traceforce_lakehouse_reader`.
+- BigQuery: `traceforce_lakehouse.<table>`.
 
 Anywhere else, use the bundled script; do not reimplement it with raw `aws athena` / `bq` /
 Snowflake connector / Databricks API calls.
