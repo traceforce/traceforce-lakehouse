@@ -61,7 +61,7 @@ resource "databricks_catalog" "lakehouse" {
   comment                        = "TraceForce lakehouse"
 }
 
-# The module's workspace, explicit so the binding is in state and a removed one comes back on apply.
+# The module's workspace, explicit so the binding is in state.
 # The workspace ID is the number in the URL (adb-<id>.<n>.azuredatabricks.net). Everything that
 # needs the catalog at destroy (schema, tables, catalog grants) depends on this, so it is removed
 # only after them.
