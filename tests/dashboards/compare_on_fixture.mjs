@@ -100,7 +100,8 @@ function messageEvents() {
   // t1: the incident timeline. A prompt stored twice, an unparseable one, one with a raw control character;
   // call c1 is three rows (decision, an MCP span named mcp_tool, a result naming the tool, with long arguments);
   // c2 a rejected Bash call; c3 only a result; c5 a failed call; c6 a Claude Code MCP call whose decision row holds
-  // the placeholder, its span no arguments and its result the real ones (a dispatch with nested queryParams.q); a row with an id but no tool event (not a call); id-less tool spans with and without an MCP
+  // the placeholder, its span no arguments and its result the real ones (a dispatch with nested queryParams.q); c7
+  // the same with result arguments that sort below the placeholder, so only the ranked pick shows them; a row with an id but no tool event (not a call); id-less tool spans with and without an MCP
   // server; replies with flags (two flags, ] inside quotes, never closed, a newline inside, stored twice).
   // Person filter: another person's row, rows without an email, an uppercase email; window: rows outside it.
   const t = (dt, email, o) => ev(CC, email, "D1", "t1", -2 * D + dt, o);
@@ -119,6 +120,9 @@ function messageEvents() {
     t(6.7, al, { operation: "execute_tool", signal: "span", tool_call_id: "c6", tool_name: "dispatch", mcp_server_name: "sf" }),
     t(6.8, al, { event_name: "tool_result", tool_call_id: "c6", tool_name: "mcp_tool", mcp_server_name: "sf",
       tool_args: '{"method":"GET","url":"/services/data/v60.0/query","skillId":"soql","queryParams":{"q":"SELECT Id FROM Account"}}' }),
+    t(6.85, al, { event_name: "tool_decision", tool_call_id: "c7", tool_name: "mcp_tool", mcp_server_name: "sf", decision: "accept", tool_args: '{"mcp_server_name":"sf","mcp_tool_name":"describe"}' }),
+    t(6.9, al, { operation: "execute_tool", signal: "span", tool_call_id: "c7", tool_name: "describe", mcp_server_name: "sf" }),
+    t(6.95, al, { event_name: "tool_result", tool_call_id: "c7", tool_name: "mcp_tool", mcp_server_name: "sf", tool_args: '{"id":"001x"}' }),
     t(7.5, al, { event_name: "user_prompt", content_input: `[{"role":"user","parts":[{"content":"a\u0004b"}]}]` }),
     t(7, al, { event_name: "user_prompt", tool_call_id: "c4", content_input: userMsg("has an id") }),
     t(8, al, { operation: "execute_tool", signal: "span", mcp_server_name: "srv2" }),
@@ -182,11 +186,13 @@ const EVENTS = [
   ev(CX, "alice@example.com", "D1", "s8", -2 * D + 595, { event_name: "user_prompt", signal: "log" }),
   // Noise sessions, hidden: startup and connection events, an app call, an invoke_agent span's tokens, a zero cost.
   // dan has nothing else (no activity row); D7 is an unattributed device with nothing else (no device row).
+  // Kept: Codex s15, only a TraceForce enforcement row, and Cursor s2 (bob), only TraceForce-blocked failures.
   ev(CC, "alice@example.com", "D1", "s12", -2 * D + 700, { event_name: "mcp_server_connection", signal: "log", cost_usd: 0 }),
   ev(CC, "alice@example.com", "D1", "s12", -2 * D + 701, { operation: "execute_tool", tool_call_id: "a13", tool_name: "update_plan", mcp_server_name: "ccd_turn", signal: "span" }),
   ev(CC, "alice@example.com", "D1", "s12", -2 * D + 702, { operation: "invoke_agent", signal: "span", input_tokens: 9, output_tokens: 9 }),
   ev(CC, "dan@example.com", "D1", "s13", -2 * D + 800, { event_name: "hook_registered", signal: "log" }),
   ev(CU, null, "D7", "s14", -2 * D + 900, { event_name: "sessionStart", signal: "log" }),
+  ev(CX, "alice@example.com", "D1", "s15", -2 * D + 950, { event_name: "traceforce.enforcement", decision: "deny", signal: "log" }),
   // s2: no email; the person comes from the device's MDM owner (stored in upper case).
   ev(CC, null, "D3", "s2", -1 * D, { model: "opus", prompt_id: "p2", operation: "chat", input_tokens: 10, cost_usd: 0.5 }),
   // s3, s4: no person. D4 has two live device records, a deleted one and agent accounts; D5 has an MDM

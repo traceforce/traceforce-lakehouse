@@ -50,8 +50,9 @@ Prompt text leaves the lake only for the session you open.
 - **User** is the event's `user_email`, else the device's MDM owner. With neither, the row is
   *Unattributed*. GitHub Copilot never reports an email, so it relies on MDM.
 - **Sessions** are distinct `session_id`s, counted once on the UTC day they started. A session with
-  no prompt, tool call, tokens or cost (only startup, hook or connection events) is left out, and so
-  is a user or device with nothing else in a day.
+  no prompt, tool call, tokens or cost (only startup, hook or connection events) is left out, unless
+  TraceForce blocked something in it (`traceforce.enforcement`) or a tool attempt failed
+  (`postToolUseFailure`); so is a user or device with nothing else in a day.
   **Prompts** are distinct `prompt_id` / `generation_id`, plus Codex's `user_prompt` rows, which carry
   neither (counted by `ts`). GitHub Copilot logs no prompt events, so it shows —. **Tool calls** are distinct
   `tool_call_id`s on `execute_tool` rows, plus Copilot's id-less tool spans. Calls the agent app makes

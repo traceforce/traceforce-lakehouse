@@ -67,9 +67,9 @@ sessions AS (
     SELECT MIN("ts")::DATE AS "day", "agent", "person", "session_id"
     FROM e WHERE "session_id" IS NOT NULL
     GROUP BY 2, 3, 4
-    -- Hide noise sessions: no prompt, tool call, tokens or cost (only startup, hook or connection events).
+    -- Hide noise sessions: no prompt, tool call, tokens, cost, TraceForce block or failed tool attempt (only startup, hook or connection events).
     HAVING (COUNT(COALESCE("prompt_id", "generation_id")) > 0
-      OR COUNT_IF("event_name" IN ('user_prompt', 'beforeSubmitPrompt') OR ("signal" = 'span' AND "operation" = 'chat')) > 0
+      OR COUNT_IF("event_name" IN ('user_prompt', 'beforeSubmitPrompt', 'traceforce.enforcement', 'postToolUseFailure') OR ("signal" = 'span' AND "operation" = 'chat')) > 0
       OR COUNT(DISTINCT CASE WHEN "operation" = 'execute_tool' THEN "tool_call_id" END)
         + COUNT_IF("operation" = 'execute_tool' AND "tool_call_id" IS NULL AND "signal" = 'span') > 0
       OR COALESCE(SUM(e."cost_usd"), 0) <> 0

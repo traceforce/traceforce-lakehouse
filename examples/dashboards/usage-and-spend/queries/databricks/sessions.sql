@@ -60,10 +60,10 @@ SELECT
 FROM e
 GROUP BY agent, person, session_id
 HAVING min(ts) >= CAST(date_sub(to_date(timestampadd(MICROSECOND, unix_micros(current_timestamp()), TIMESTAMP_NTZ '1970-01-01 00:00:00')), 90) AS TIMESTAMP_NTZ)
-  -- Hide noise sessions: no prompt, tool call, tokens or cost (only startup, hook or connection events).
+  -- Hide noise sessions: no prompt, tool call, tokens, cost, TraceForce block or failed tool attempt (only startup, hook or connection events).
   -- e. keeps cost and tokens off the output aliases of the same name (BigQuery, Snowflake).
   AND (count(coalesce(prompt_id, generation_id)) > 0
-    OR count_if(event_name IN ('user_prompt', 'beforeSubmitPrompt') OR (signal = 'span' AND operation = 'chat')) > 0
+    OR count_if(event_name IN ('user_prompt', 'beforeSubmitPrompt', 'traceforce.enforcement', 'postToolUseFailure') OR (signal = 'span' AND operation = 'chat')) > 0
     OR count(DISTINCT CASE WHEN operation = 'execute_tool' THEN tool_call_id END)
       + count_if(operation = 'execute_tool' AND tool_call_id IS NULL AND signal = 'span') > 0
     OR coalesce(sum(e.cost_usd), 0) <> 0

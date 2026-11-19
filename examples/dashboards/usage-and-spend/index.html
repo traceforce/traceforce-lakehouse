@@ -95,7 +95,7 @@
 
   <footer>
     <p>Source: <code>agent_events</code> in the TraceForce lakehouse, with <code>device_owner_mappings</code> to attribute events with no email to the device's owner. Days are UTC. The date range ends today (UTC).</p>
-    <p>Cost is estimated from public list prices when an agent doesn't report it. Prompt counts aren't available for GitHub Copilot. Sessions with no prompts, tool calls, tokens or cost (only startup, hook or connection events) are left out.</p>
+    <p>Cost is estimated from public list prices when an agent doesn't report it. Prompt counts aren't available for GitHub Copilot. Sessions with no prompts, tool calls, tokens or cost (only startup, hook or connection events) are left out, unless TraceForce blocked something or a tool attempt failed in them.</p>
   </footer>
 </main>
 <script src="../shared/dashboard.js"></script>
