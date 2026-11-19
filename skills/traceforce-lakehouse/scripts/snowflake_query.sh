@@ -148,6 +148,7 @@ while i < n:
         i += 1
 print((words[0] if words else "") + "|" + ("procedure" if "PROCEDURE" in words or "CALL" in words else ""))
 ' "$SQL_FILE")"
+SCAN="${SCAN%$'\r'}"   # Windows Python ends the line with CRLF; $(...) strips only the LF
 FIRST="${SCAN%%|*}"
 ESCAPE="${SCAN#*|}"
 case "$ESCAPE" in
@@ -201,7 +202,7 @@ if ! IMPORT_ERR="$($PY -c 'import snowflake.connector' 2>&1 >/dev/null)"; then
   exit 2
 fi
 
-$PY - "$PREAMBLE" "$SQL_FILE" "$MAX_ROWS" "$HAVE_ENV_CREDS" "$READER_ROLE" "$WAREHOUSE" "$OLD_WAREHOUSE" <<'PY'
+$PY -X utf8 - "$PREAMBLE" "$SQL_FILE" "$MAX_ROWS" "$HAVE_ENV_CREDS" "$READER_ROLE" "$WAREHOUSE" "$OLD_WAREHOUSE" <<'PY'
 import csv
 import os
 import sys

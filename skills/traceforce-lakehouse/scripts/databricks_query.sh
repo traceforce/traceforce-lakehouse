@@ -184,6 +184,7 @@ bad = sorted(set(words) & WRITES)
 print((words[0] if words else "") + "|" + ",".join(bad))
 PY
   SCAN="$($PY -I "$TMP_DIR/scan.py" "$TMP_DIR/query.sql")"
+  SCAN="${SCAN%$'\r'}"   # Windows Python ends the line with CRLF; $(...) strips only the LF
   FIRST="${SCAN%%|*}"
   FLAG="${SCAN#*|}"
   case "$FLAG" in
@@ -204,7 +205,7 @@ fi
 
 # In the background so Ctrl-C or a tool timeout's TERM reaches Python, which cancels the running
 # statement instead of leaving it running on the warehouse (as athena_query.sh does).
-$PY -I - "$MODE" "$TMP_DIR" "$MAX_ROWS" "$STATEMENT_TIMEOUT" "${RUNS:-5}" "$CATALOG" "$SCHEMA" <<'PY' &
+$PY -I -X utf8 - "$MODE" "$TMP_DIR" "$MAX_ROWS" "$STATEMENT_TIMEOUT" "${RUNS:-5}" "$CATALOG" "$SCHEMA" <<'PY' &
 import base64, concurrent.futures, csv, datetime, json, os, shutil, signal, socket, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
 
 mode, tmp, max_rows, timeout, runs, catalog, schema = sys.argv[1:8]

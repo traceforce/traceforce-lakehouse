@@ -94,5 +94,15 @@ chmod +x "$STUB/python3" "$STUB/python"
 PATH="$STUB:$PATH" check allowed "python3 stub, falls back to python" "SELECT 1"
 PATH="$STUB:$PATH" check refused "python3 stub, scan still runs"      "DELETE FROM agents"
 
+# Windows Python writes CRLF: the scan's trailing \r must not refuse every query.
+CRLF="$(mktemp -d)"; trap 'rm -rf "$STUB" "$CRLF"' EXIT
+cat > "$CRLF/python3" <<EOF
+#!/bin/sh
+"$(command -v python3)" "\$@" | awk '{ printf "%s\r\n", \$0 }'
+EOF
+chmod +x "$CRLF/python3"
+PATH="$CRLF:$PATH" check allowed "CRLF python output, SELECT"         "SELECT 1"
+PATH="$CRLF:$PATH" check refused "CRLF python output, CALL"           "SELECT 1 FROM t WHERE x IN (CALL f())"
+
 echo
 [[ $fails -eq 0 ]] && echo "PASS" || { echo "FAIL ($fails)"; exit 1; }

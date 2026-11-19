@@ -40,14 +40,16 @@ Only Claude Code is verified end to end so far.
 - **GCP (BigQuery):** the gcloud CLI signed in (`gcloud auth login` + `gcloud auth
   application-default login`) with the lakehouse's project as your default
   (`gcloud config set project <id>`).
-- **Snowflake (AWS or Azure):** Python 3 (`python3`, `python` or `py -3`) with `snowflake-connector-python`, and either all five
-  `SNOWFLAKE_*` environment variables (listed in `snowflake_query.sh`) or a `connections.toml`
-  connection, for a user that holds the `traceforce_lakehouse_reader` role.
-- **Azure (Databricks):** Python 3 (`python3`, `python` or `py -3`), `DATABRICKS_HOST` and `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID` (the
-  module's `databricks_workspace_url` and `query_warehouse_id`), and the Azure CLI signed in
-  (`az login`), the Databricks CLI signed in (`databricks auth login`) or `DATABRICKS_CLIENT_ID` /
-  `DATABRICKS_CLIENT_SECRET` for a read-only service principal, listed in the module's reader
-  inputs (its Databricks OAuth secret, generated in Databricks; not an Entra client secret).
+- **Snowflake (AWS or Azure):** Python 3 (`python3`, `python` or `py -3`) with
+  `snowflake-connector-python`, and either all five `SNOWFLAKE_*` environment variables (listed in
+  `snowflake_query.sh`) or a `connections.toml` connection, for a user that holds the
+  `traceforce_lakehouse_reader` role.
+- **Azure (Databricks):** Python 3 (`python3`, `python` or `py -3`), `DATABRICKS_HOST` and
+  `TRACEFORCE_LAKEHOUSE_WAREHOUSE_ID` (the module's `databricks_workspace_url` and
+  `query_warehouse_id`), and the Azure CLI signed in (`az login`), the Databricks CLI signed in
+  (`databricks auth login`) or `DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET` for a read-only
+  service principal, listed in the module's reader inputs (its Databricks OAuth secret, generated
+  in Databricks; not an Entra client secret).
 - Read-only: `athena_query.sh` / `bq_query.sh` / `snowflake_query.sh` / `databricks_query.sh` refuse non-read statements
   (see each script's allowlist), and the query identity should be a read-only reader (on Azure,
   not the deployer or a workspace admin); on Snowflake the script also runs every query as the
