@@ -21,8 +21,8 @@ description: "Query the TraceForce lakehouse (Athena or Snowflake over Iceberg i
   the result (e.g. cost by agent omits Cursor). Otherwise don't.
 - Use `operation` for cross-agent questions; `event_name` vocabularies differ per agent.
 - Count distinct ids, not rows (the same record can be stored more than once): prompts by
-  `coalesce(prompt_id, generation_id)` plus Codex's id-less `user_prompt` rows by distinct `ts`
-  (GitHub Copilot has no prompt rows; its prompts are in `chat` spans), sessions by `session_id`
+  `coalesce(prompt_id, generation_id)` plus `user_prompt` rows with neither id, by distinct `ts`,
+  sessions by `session_id`
   (skip ones with only startup, hook or connection events, as the dashboards do, but keep any with a
   `traceforce.enforcement` or `postToolUseFailure` row), tool calls by distinct `tool_call_id` on `execute_tool` rows plus one
   per `execute_tool` span without one. For a person's tool use, leave out the agent app's calls to
@@ -211,6 +211,7 @@ covers flagged operations.
   cached input.
 - Findings link to the logs only when the event's `session_id` equals the conversation's
   external id; findings without a matching conversation exist.
+- GitHub Copilot logs no prompt rows; its prompts are in `chat` spans.
 - Copilot tool calls: `tool_call_id` and `tool_name` come from the span; count
   `signal = 'span' AND operation = 'execute_tool'` rows if `tool_call_id` is NULL.
 - Block vs warn per agent: `reference/enforcement.md`.
