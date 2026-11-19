@@ -206,22 +206,9 @@ fi
 # In the background so Ctrl-C or a tool timeout's TERM reaches Python, which cancels the running
 # statement instead of leaving it running on the warehouse (as athena_query.sh does).
 $PY -I -X utf8 - "$MODE" "$TMP_DIR" "$MAX_ROWS" "$STATEMENT_TIMEOUT" "${RUNS:-5}" "$CATALOG" "$SCHEMA" <<'PY' &
-import base64, concurrent.futures, csv, datetime, json, os, shutil, signal, socket, ssl, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
+import base64, concurrent.futures, csv, datetime, json, os, shutil, signal, socket, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
 
 mode, tmp, max_rows, timeout, runs, catalog, schema = sys.argv[1:8]
-# python.org's macOS Python has no CA certificates until its "Install Certificates.command" runs, and
-# every HTTPS call then fails as "self-signed certificate in certificate chain": use certifi's.
-_ca = ssl.get_default_verify_paths()
-if sys.platform == "darwin" and not (_ca.cafile or _ca.capath):
-    try:
-        import certifi
-    except ImportError:
-        print(f"this Python ({sys.executable}) has no CA certificates, so HTTPS to Databricks fails: run "
-              f'"/Applications/Python {sys.version_info[0]}.{sys.version_info[1]}/Install Certificates.command" '
-              "or `pip3 install certifi`, then retry", file=sys.stderr)
-        sys.exit(2)
-    urllib.request.install_opener(urllib.request.build_opener(
-        urllib.request.HTTPSHandler(context=ssl.create_default_context(cafile=certifi.where()))))
 max_rows, timeout, runs = int(max_rows), int(timeout), int(runs)
 host = os.environ["DATABRICKS_HOST"].strip().split("://", 1)[-1]   # any scheme, in any case
 host = host.split("/")[0].split("?")[0].split("#")[0]   # a browser address can carry a path or ?o=<id>
