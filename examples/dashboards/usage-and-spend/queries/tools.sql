@@ -7,7 +7,7 @@ WITH src AS (
     date(ev.ts) AS day,
     lower(replace(ev.agent, 'AGENT_IDENTITY_', '')) AS agent,
     coalesce(lower(ev.user_email), lower(m.owner_email)) AS person,
-    ev.tool_call_id, ev.tool_name, ev.mcp_server_name, ev.signal, ev.operation,
+    ev.ts, ev.tool_call_id, ev.tool_name, ev.mcp_server_name, ev.signal, ev.operation,
     regexp_replace(coalesce(ev.mcp_server_name, ''), '[^A-Za-z0-9_-]', '_') AS server_key
   FROM agent_events ev
   LEFT JOIN device_owner_mappings m ON m.device_native_id = ev.device_native_id
@@ -36,12 +36,17 @@ flagged AS (
     OR (server_key = '' AND tool_name IN ('ToolSearch', 'StructuredOutput', 'SubagentHandback', 'tool_search', 'tool_search_tool', 'message_compose_v1', 'present_files'))), false) AS app_call
   FROM src
 ),
--- Per call: Claude Code's decision and result rows say 'mcp_tool' and only its span names the tool.
+-- Per call: Claude Code's decision and result rows say 'mcp_tool' and only its span names the tool, so a call
+-- goes whole when any of its rows is the app's. An id-less row (a Copilot span) goes on its own flag.
 e AS (
-  SELECT f.* FROM flagged f
-  LEFT JOIN (SELECT DISTINCT tool_call_id FROM flagged WHERE app_call) a
-    ON a.tool_call_id = f.tool_call_id AND f.operation = 'execute_tool'
-  WHERE NOT f.app_call AND a.tool_call_id IS NULL
+  SELECT * FROM (
+    SELECT flagged.*,
+      -- ts only splits the id-less rows, whose value is unused, into small partitions.
+      max(CASE WHEN app_call THEN 1 ELSE 0 END)
+        OVER (PARTITION BY tool_call_id, operation, CASE WHEN tool_call_id IS NULL THEN ts END) AS call_app_call
+    FROM flagged
+  ) f
+  WHERE NOT app_call AND (tool_call_id IS NULL OR call_app_call = 0)
 ),
 calls AS (
   SELECT min(day) AS day, agent, person,
