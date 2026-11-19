@@ -38,9 +38,9 @@ calls AS (
     CASE WHEN max(mcp_server_name) IS NOT NULL
       THEN max(mcp_server_name) || '/' || coalesce(max(CASE WHEN tool_name <> 'mcp_tool' THEN tool_name END), max(tool_name))
       ELSE coalesce(max(CASE WHEN tool_name <> 'mcp_tool' THEN tool_name END), max(tool_name), 'tool') END AS tool,
-    tool_call_id, substr(substr(max(CASE WHEN tool_args IS NOT NULL THEN concat(CASE WHEN event_name = 'tool_result' THEN '9' WHEN event_name = 'tool_call' THEN '8'
+    tool_call_id, substr(max(CASE WHEN tool_args IS NOT NULL THEN concat(CASE WHEN event_name = 'tool_result' THEN '9' WHEN event_name = 'tool_call' THEN '8'
       WHEN event_name IN ('postToolUse', 'postToolUseFailure') THEN '7' WHEN event_name = 'afterMCPExecution' THEN '6'
-      WHEN event_name = 'preToolUse' THEN '5' WHEN signal = 'span' THEN '4' WHEN event_name = 'tool_decision' THEN '1' ELSE '2' END, tool_args) END), 2), 1, 2000) AS text,
+      WHEN event_name = 'preToolUse' THEN '5' WHEN signal = 'span' THEN '4' WHEN event_name = 'tool_decision' THEN '1' ELSE '2' END, tool_args) END), 2, 2000) AS text,
     max(decision) AS decision, max(decision_source) AS decision_source, max(error_type) AS error_type,
     NULL AS message_id
   FROM e

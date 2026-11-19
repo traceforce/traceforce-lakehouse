@@ -6,7 +6,7 @@ WITH src AS (
     ev."ts"::DATE AS "day",
     LOWER(REPLACE(ev."agent", 'AGENT_IDENTITY_', '')) AS "agent",
     COALESCE(LOWER(ev."user_email"), LOWER(m."owner_email")) AS "person",
-    ev."ts" AS "ts", ev."tool_call_id" AS "tool_call_id", ev."tool_name" AS "tool_name", ev."mcp_server_name" AS "mcp_server_name",
+    ev."ts" AS "ts", ev."session_id" AS "session_id", ev."tool_call_id" AS "tool_call_id", ev."tool_name" AS "tool_name", ev."mcp_server_name" AS "mcp_server_name",
     ev."signal" AS "signal", ev."operation" AS "operation",
     REGEXP_REPLACE(COALESCE(ev."mcp_server_name", ''), '[^A-Za-z0-9_-]', '_') AS "server_key"
   FROM "agent_events" ev
@@ -22,7 +22,8 @@ flagged AS (
     ("agent" IN ('claude', 'claude_code') AND (
       SUBSTR("server_key", 1, 4) = 'ccd_'
       OR "server_key" IN ('cowork', 'scheduled-tasks', 'hearthbot', 'claude-code-remote', 'Claude_Code_Remote',
-                          'claude_ai_Claude_Docs', '1a59c906-04da-521d-bda7-7f71b9f9e01c', 'visualize')
+                          'claude_ai_Claude_Docs', '1a59c906-04da-521d-bda7-7f71b9f9e01c')
+      OR ("server_key" = 'visualize' AND "tool_name" IN ('show_widget', 'read_me'))
       OR ("server_key" IN ('Claude_Browser', 'Claude_Preview') AND "tool_name" IN ('preview_start', 'preview_stop', 'preview_list', 'preview_logs'))
       OR ("server_key" = 'terminal' AND "tool_name" IN ('read_terminal', 'open_terminal_tab', 'list_terminal_tabs', 'stop_terminal_tab'))
       OR ("server_key" = 'memory' AND "tool_name" IN ('memory_read', 'memory_list', 'memory_write', 'memory_str_replace', 'memory_append', 'memory_delete'))))
@@ -42,9 +43,10 @@ flagged AS (
 e AS (
   SELECT * FROM (
     SELECT flagged.*,
+      -- session_id keeps Cursor's empty tool_call_id from linking calls across sessions;
       -- ts only splits the id-less rows, whose value is unused, into small partitions.
       MAX(CASE WHEN "app_call" THEN 1 ELSE 0 END)
-        OVER (PARTITION BY "tool_call_id", "operation", CASE WHEN "tool_call_id" IS NULL THEN "ts" END) AS "call_app_call"
+        OVER (PARTITION BY "session_id", "tool_call_id", "operation", CASE WHEN "tool_call_id" IS NULL THEN "ts" END) AS "call_app_call"
     FROM flagged
   ) f
   WHERE NOT "app_call" AND ("tool_call_id" IS NULL OR "call_app_call" = 0)

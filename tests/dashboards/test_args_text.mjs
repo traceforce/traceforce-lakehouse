@@ -30,5 +30,7 @@ test("argsText", () => {
   assert.equal(argsText(dispatch.slice(0, 100)), "SELECT Id FR …");
   assert.equal(argsText('{"bash_command":"rm","full_command":"rm x","description":"cut of'), "rm x");
   assert.equal(argsText('{"command":"a\\u00'), "a …");
+  assert.equal(argsText('{"command":"dir C:\\\\Users\\\\'), "dir C:\\Users\\ …");
+  assert.equal(argsText('{"command":"dir C:\\\\Users\\'), "dir C:\\Users …");
   assert.equal(argsText('{"note":"has \\"command\\": \\"x\\" inside","other":"cut'), '{"note":"has \\"command\\": \\"x\\" inside","other":"cut');
 });

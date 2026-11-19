@@ -327,11 +327,12 @@
       return firstString(a, ARG_KEYS) ?? nested.find(v => v !== undefined) ?? firstString(a, ["url"]) ?? s;
     } catch (_) { /* cut off, or not JSON */ }
     if (!/^\s*\{/.test(s)) return s;
+    // shortcut: cut-off args match a key at any depth, so a nested key can beat a top-level one; track depth if that shows up.
     for (const k of [...ARG_KEYS, "url"]) {
       const m = s.match(new RegExp(`"${k}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)(")?`));
       if (!m) continue;
-      // Drop an escape sequence cut off at the end (a lone backslash, or \u with fewer than four digits).
-      try { return JSON.parse(`"${m[1].replace(/\\(u[0-9a-fA-F]{0,3})?$/, "")}"`) + (m[2] ? "" : " …"); } catch (_) { return s; }
+      // Drop a \u escape cut off at the end (fewer than four digits); the capture never ends in a lone backslash.
+      try { return JSON.parse(`"${m[1].replace(/\\u[0-9a-fA-F]{0,3}$/, "")}"`) + (m[2] ? "" : " …"); } catch (_) { return s; }
     }
     return s;
   }

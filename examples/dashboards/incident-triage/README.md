@@ -25,8 +25,8 @@ sample data and labels it as such.
   the user, agent, device and what was found.
 - **An incident**: click one to see its findings inside the session's activity. Each risky action is
   attached to the exact tool call (by `tool_call_id`) with its arguments and how it was approved
-  (permission rules, the user, a hook). The arguments come from the call's fullest row (for Claude Code
-  the result: its decision row holds only a placeholder for an MCP call), shown as the command, query,
+  (permission rules, the user, a hook). The arguments come from the call's result row where it has one (for
+  Claude Code the decision row holds only a placeholder for an MCP call), shown as the command, query,
   file path or URL in them, else as raw JSON. Sensitive-data and prompt-injection findings are attached to
   their message where the ids match, or placed at their time. The prompt that led to each finding,
   and two events either side, are shown; the rest collapse to a count (*Show every event* expands

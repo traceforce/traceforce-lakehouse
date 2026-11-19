@@ -20,7 +20,8 @@ flagged AS (
     (agent IN ('claude', 'claude_code') AND (
       substr(server_key, 1, 4) = 'ccd_'
       OR server_key IN ('cowork', 'scheduled-tasks', 'hearthbot', 'claude-code-remote', 'Claude_Code_Remote',
-                        'claude_ai_Claude_Docs', '1a59c906-04da-521d-bda7-7f71b9f9e01c', 'visualize')
+                        'claude_ai_Claude_Docs', '1a59c906-04da-521d-bda7-7f71b9f9e01c')
+      OR (server_key = 'visualize' AND tool_name IN ('show_widget', 'read_me'))
       OR (server_key IN ('Claude_Browser', 'Claude_Preview') AND tool_name IN ('preview_start', 'preview_stop', 'preview_list', 'preview_logs'))
       OR (server_key = 'terminal' AND tool_name IN ('read_terminal', 'open_terminal_tab', 'list_terminal_tabs', 'stop_terminal_tab'))
       OR (server_key = 'memory' AND tool_name IN ('memory_read', 'memory_list', 'memory_write', 'memory_str_replace', 'memory_append', 'memory_delete'))))
@@ -40,9 +41,10 @@ flagged AS (
 e AS (
   SELECT * FROM (
     SELECT flagged.*,
+      -- session_id keeps Cursor's empty tool_call_id from linking calls across sessions;
       -- ts only splits the id-less rows, whose value is unused, into small partitions.
       max(CASE WHEN app_call THEN 1 ELSE 0 END)
-        OVER (PARTITION BY tool_call_id, operation, CASE WHEN tool_call_id IS NULL THEN ts END) AS call_app_call
+        OVER (PARTITION BY session_id, tool_call_id, operation, CASE WHEN tool_call_id IS NULL THEN ts END) AS call_app_call
     FROM flagged
   ) f
   WHERE NOT app_call AND (tool_call_id IS NULL OR call_app_call = 0)
@@ -69,10 +71,9 @@ sessions AS (
     FROM e WHERE session_id IS NOT NULL
     GROUP BY agent, person, session_id
     -- Hide noise sessions: no prompt, tool call, tokens, cost, TraceForce block or failed tool attempt (only startup, hook or connection events).
-    HAVING (count(coalesce(prompt_id, generation_id)) > 0
-      OR COUNTIF(event_name IN ('user_prompt', 'beforeSubmitPrompt', 'traceforce.enforcement', 'postToolUseFailure') OR (signal = 'span' AND operation = 'chat')) > 0
-      OR count(DISTINCT CASE WHEN operation = 'execute_tool' THEN tool_call_id END)
-        + COUNTIF(operation = 'execute_tool' AND tool_call_id IS NULL AND signal = 'span') > 0
+    HAVING (COUNTIF(coalesce(prompt_id, generation_id) IS NOT NULL
+          OR event_name IN ('user_prompt', 'beforeSubmitPrompt', 'traceforce.enforcement', 'postToolUseFailure') OR (signal = 'span' AND operation = 'chat')
+          OR (operation = 'execute_tool' AND (tool_call_id IS NOT NULL OR signal = 'span'))) > 0
       OR coalesce(sum(e.cost_usd), 0) <> 0
       OR coalesce(sum(CASE WHEN operation IS DISTINCT FROM 'invoke_agent' THEN coalesce(e.input_tokens, 0) + coalesce(e.output_tokens, 0) END), 0) <> 0)
   )

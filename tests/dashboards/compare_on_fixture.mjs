@@ -74,7 +74,7 @@ function messageEvents() {
     if (i < RESPONSE_CASES.length) out.push(ev(CC, al, "D1", "m1", -5 * D + i * 10 + 1, { event_name: RESPONSE_EVENTS[i % 3], signal: "log", content_output: RESPONSE_CASES[i], model: "opus", input_tokens: i, cost_usd: 0.5 }));
   }
   // Turn 0's totals: an invoke_agent row (its tokens and model aren't counted), a call made of two rows sharing
-  // an id, another call, and an id-less span (3 calls). Turn 1's models: repeated, out of order, and one with no
+  // an id, another call, an id-less span, and an app call left out (3 calls). Turn 1's models: repeated, out of order, and one with no
   // tokens or cost (not listed): "alpha, zeta".
   const m1 = (t, o) => ev(CC, al, "D1", "m1", -5 * D + t, { signal: "log", ...o });
   out.push(m1(2, { operation: "invoke_agent", signal: "span", model: "agentmodel", input_tokens: 999, output_tokens: 999, cost_usd: 1 }),
@@ -82,6 +82,8 @@ function messageEvents() {
     m1(4, { operation: "execute_tool", signal: "span", tool_call_id: "k1", tool_name: "read" }),
     m1(5, { operation: "execute_tool", tool_call_id: "k2", tool_name: "edit" }),
     m1(6, { operation: "execute_tool", signal: "span", tool_name: "bash" }),
+    m1(7, { operation: "execute_tool", tool_call_id: "k3", tool_name: "mcp_tool" }),
+    m1(8, { operation: "execute_tool", signal: "span", tool_call_id: "k3", tool_name: "update_plan", mcp_server_name: "ccd_turn" }),
     m1(12, { operation: "chat", model: "zeta", input_tokens: 5 }), m1(13, { operation: "chat", model: "alpha", output_tokens: 2 }),
     m1(14, { operation: "chat", model: "zeta", cost_usd: 0.25 }), m1(15, { operation: "chat", model: "nocost" }));
   // m2: Copilot chat spans. The same user message on several spans is one turn; a span with no user message
@@ -187,12 +189,16 @@ const EVENTS = [
   // Noise sessions, hidden: startup and connection events, an app call, an invoke_agent span's tokens, a zero cost.
   // dan has nothing else (no activity row); D7 is an unattributed device with nothing else (no device row).
   // Kept: Codex s15, only a TraceForce enforcement row, and Cursor s2 (bob), only TraceForce-blocked failures.
+  // Unattributed on D5 (which has other activity): s16 kept by only an enforcement row; s17 only an app call, hidden.
   ev(CC, "alice@example.com", "D1", "s12", -2 * D + 700, { event_name: "mcp_server_connection", signal: "log", cost_usd: 0 }),
   ev(CC, "alice@example.com", "D1", "s12", -2 * D + 701, { operation: "execute_tool", tool_call_id: "a13", tool_name: "update_plan", mcp_server_name: "ccd_turn", signal: "span" }),
   ev(CC, "alice@example.com", "D1", "s12", -2 * D + 702, { operation: "invoke_agent", signal: "span", input_tokens: 9, output_tokens: 9 }),
   ev(CC, "dan@example.com", "D1", "s13", -2 * D + 800, { event_name: "hook_registered", signal: "log" }),
   ev(CU, null, "D7", "s14", -2 * D + 900, { event_name: "sessionStart", signal: "log" }),
   ev(CX, "alice@example.com", "D1", "s15", -2 * D + 950, { event_name: "traceforce.enforcement", decision: "deny", signal: "log" }),
+  ev(CU, null, "D5", "s16", -2 * D + 960, { event_name: "traceforce.enforcement", decision: "deny", signal: "log" }),
+  ev(CC, null, "D5", "s17", -2 * D + 961, { operation: "execute_tool", tool_call_id: "a14", tool_name: "mcp_tool", signal: "log" }),
+  ev(CC, null, "D5", "s17", -2 * D + 962, { operation: "execute_tool", tool_call_id: "a14", tool_name: "update_plan", mcp_server_name: "ccd_turn", signal: "span" }),
   // s2: no email; the person comes from the device's MDM owner (stored in upper case).
   ev(CC, null, "D3", "s2", -1 * D, { model: "opus", prompt_id: "p2", operation: "chat", input_tokens: 10, cost_usd: 0.5 }),
   // s3, s4: no person. D4 has two live device records, a deleted one and agent accounts; D5 has an MDM
