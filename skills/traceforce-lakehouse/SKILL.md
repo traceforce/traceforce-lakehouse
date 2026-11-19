@@ -46,8 +46,14 @@ Azure (Databricks). The engine picks the script:
 neither cloud nor engine is named, ask. Do not infer either from which credentials are present — a
 machine often has several.
 
-Use the bundled script; do not reimplement it with raw `aws athena` / `bq` / Snowflake connector /
-Databricks API calls.
+Running inside Databricks (Genie One, Genie Code, a notebook) means no shell and no scripts: run
+Databricks SQL directly and follow "Azure (Databricks)" below for the dialect. Find the catalog
+first, then name every table `<catalog>.traceforce.<table>`; if this returns more than one catalog,
+ask which deployment to query:
+`SELECT DISTINCT table_catalog FROM system.information_schema.tables WHERE table_schema = 'traceforce' AND table_name = 'agent_events'`
+
+Anywhere else, use the bundled script; do not reimplement it with raw `aws athena` / `bq` /
+Snowflake connector / Databricks API calls.
 
 ```bash
 "${CLAUDE_SKILL_DIR}/scripts/athena_query.sh" "SELECT agent, count(*) FROM agent_events WHERE ts > current_timestamp - interval '7' day GROUP BY 1"

@@ -31,6 +31,13 @@ To update:
 git -C ~/traceforce-lakehouse pull && rm -rf ~/.agents/skills/traceforce-lakehouse && cp -R ~/traceforce-lakehouse/skills/traceforce-lakehouse ~/.agents/skills/
 ```
 
+## Databricks Genie One
+
+Upload the `skills/traceforce-lakehouse` folder (Customizations > Skills > + New > Upload Skills),
+or have a workspace admin copy it to `/Workspace/.assistant/skills/` so everyone in the workspace
+gets it. Genie queries as each user, so readers need the module's grants; the helper scripts aren't
+used there.
+
 Only Claude Code is verified end to end so far.
 
 ## Prerequisites
