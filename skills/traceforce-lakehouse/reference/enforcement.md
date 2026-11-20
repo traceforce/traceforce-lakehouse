@@ -1,14 +1,58 @@
 # Enforcement outcomes
 
-Was an action actually blocked (vs just warned)? Supabase carries no blocked/warned column —
-the findings tables record what was *detected*, and denied attempts are not stored as findings.
-So this outcome is derived from the agent_events logs, per agent, using the literals below.
+Was an action actually blocked (vs just warned)? The findings tables record only what was
+*detected*, and denied attempts are not stored as findings. As of ENG-654 the outcome is
+recorded directly — see the authoritative source below. Historically it had to be reconstructed
+from the agent_events logs per agent using the literals further down; that path is now the
+fallback, not the primary answer.
+
+**Authoritative source (ENG-654): the `enforcement_events` table.** Scout's hook now records what
+it enforced — block/warn × deny/ask/deny_once/allowed_after_warn, per control and surface — as a
+structured, append-only ledger, mirrored to the lakehouse as `enforcement_events` (see
+`tables/enforcement_events.md`). Prefer it for "what did TraceForce prevent". The Prevented view
+excludes `action = 'allowed_after_warn'` (the user overrode the warning) AND any `deny_once` whose
+`(org_id, correlation_id)` has a matching `allowed_after_warn` — the hook stamps the same
+`correlation_id` on a warn and its later override, so an overridden warn's `deny_once` row must be
+suppressed too, or prevention is overstated. An `ask` row is the agent's own approval dialog, not a
+prevention on its own: resolve it from `agent_events` on the same `tool_call_id` — Claude-family on
+the `tool_decision` (accept = overridden, reject = prevented), Copilot on its `execute_tool` span (a
+clean span = overridden; `error_type` `denied`/`cancelled` = prevented — its permission span has no
+call id, so key on the `execute_tool` span). Unknown only until such a row joins. It covers
+the hook-enforced agents (Claude Code, ChatGPT Codex, GitHub Copilot CLI, Cursor). The per-agent
+heuristics below remain the fallback for activity that predates the ledger (or a lakehouse where it
+is not yet populated), and for surfaces the hook does not cover — notably the Cowork inline proxy.
+
+**Telling TraceForce's enforcement apart from the user's own hooks and the agent's native prompts
+(ENG-1213).** A TraceForce warning is delivered *as the agent's own permission prompt* — in the
+logs it looks identical to a native `ask` / `user_*` and to a user-installed hook's `tool_decision`
+`reject` (`source = 'hook'`). The per-agent heuristics below **cannot** separate them (any
+`source = 'hook'` reject under block, and any reject under warn, both read as "ours"). The
+`enforcement_events` ledger is the only reliable discriminator, joined on `tool_use_id`:
+
+- A `tool_decision` `reject` with `source = 'hook'`, or any `ask` / `user_*`, with **no**
+  `enforcement_events` row on the same `tool_use_id`, was **not** TraceForce — it was the agent's
+  own prompt or a user-installed hook. Caveat: the ledger mirrors to the lakehouse once a day while
+  `agent_events` loads hourly, so a recent TraceForce reject can appear here before its ledger row.
+  Treat a call newer than the last `enforcement_events` export as **unknown**, not "not TraceForce";
+  the hourly `traceforce.enforcement` rows below close most of that window.
+- A TraceForce `ask` row **plus** a `source = 'hook'` reject on the same `tool_use_id` means a
+  **user hook** denied what TraceForce only asked about.
+- The enforcement records also surface in `agent_events` as hourly `traceforce.enforcement` rows,
+  which carry the call's `tool_call_id` — so count a call as TraceForce's when either the ledger OR a
+  `traceforce.enforcement` row has that `tool_call_id`. These rows carry no `user_email` and (for
+  Codex) the turn id as `prompt_id`, and nothing excludes `event_name = 'traceforce.enforcement'`
+  from the usage counts yet, so they currently inflate activity/prompt counts and Unattributed —
+  exclude them there (follow-up).
+
+Caveats: older scout builds write **no** ledger rows (use the heuristics for them), and ledger rows
+are **unauthenticated claims** — the loopback receiver accepts any local process's record, so use
+them to show what TraceForce enforced, never to suppress a finding or incident.
 
 > These are agent/collector *behavior* literals, not schema generated from the proto or
 > Terraform, so they can drift when scout or the collector changes. They are verified against
-> scout source; re-verify on a scout/collector upgrade. If scout and the binary processor ever
-> write a structured enforcement outcome into Supabase, mirror that column and prefer it over
-> these heuristics.
+> scout source; re-verify on a scout/collector upgrade. Scout and the binary-processor now DO
+> write a structured enforcement outcome into Supabase (ENG-654: `enforcement_events`); prefer
+> it, and use these heuristics only where it is absent (pre-ledger activity, uncovered surfaces).
 
 `sd_enforcement` and `containment_enforcement` are the policy MODE that was configured
 (warn or block), never the outcome. Whether something was actually blocked lives in the event:

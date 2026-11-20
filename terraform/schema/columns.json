@@ -701,6 +701,30 @@
       "metadata:string",
       "created_at:timestamp",
       "updated_at:timestamp"
+    ],
+    "enforcement_events": [
+      "id:string",
+      "org_id:string",
+      "device_id:string",
+      "sandbox_id:string",
+      "conversation_external_id:string",
+      "record_id:string",
+      "agent_type:string",
+      "control:string",
+      "surface:string",
+      "mode:string",
+      "action:string",
+      "tool_name:string",
+      "tool_use_id:string",
+      "message_external_id:string",
+      "correlation_id:string",
+      "risky_action_subcategory:string",
+      "sensitive_data_category:string",
+      "rule_id:string",
+      "description:string",
+      "detected_at:timestamp",
+      "customer_storage:string",
+      "created_at:timestamp"
     ]
   }
 }
