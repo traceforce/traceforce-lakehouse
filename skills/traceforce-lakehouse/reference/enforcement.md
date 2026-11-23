@@ -18,7 +18,11 @@ prevention on its own: resolve it from `agent_events` on the same `tool_call_id`
 the `tool_decision` (accept = overridden; a reject is prevented UNLESS `source = 'hook'` — a
 user-installed hook denying what TraceForce only asked, see the ENG-1213 bullet below), Copilot on its `execute_tool` span (a
 clean span = overridden; `error_type` `denied`/`cancelled` = prevented — its permission span has no
-call id, so key on the `execute_tool` span). Unknown only until such a row joins. It covers
+call id, so key on the `execute_tool` span). Unknown only until such a row joins. Scout mints a
+fresh `record_id` per PROCESS, so a double-registered hook (an exec-form and a shell-form copy of
+one `PreToolUse` for the same command) writes TWO `deny`/`ask` rows for ONE action; count prevention
+by distinct `(org_id, conversation_external_id, tool_use_id, control, surface, action)` when
+`tool_use_id` is present (the UI's `blockIdentity` dedup key), never by raw `record_id` row. It covers
 the hook-enforced agents (Claude Code, ChatGPT Codex, GitHub Copilot CLI, Cursor). The per-agent
 heuristics below remain the fallback for activity that predates the ledger (or a lakehouse where it
 is not yet populated), and for surfaces the hook does not cover — notably the Cowork inline proxy.

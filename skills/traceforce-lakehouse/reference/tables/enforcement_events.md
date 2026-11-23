@@ -9,7 +9,7 @@ Joins:
 - the enforced tool call: tool_use_id = agent_events.tool_call_id (same session) on tool-call surfaces; for prompt surfaces the turn is message_external_id (see its note)
 
 Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
-- (org_id, record_id): one row per hook enforcement; a redelivered upload no-ops
+- (org_id, record_id): the ledger's dedup key (a redelivered upload no-ops), NOT one prevention per action. Scout mints a fresh record_id in every PROCESS, so a double-registered hook (an exec-form and a shell-form copy of one PreToolUse fire for the same command) emits TWO deny/ask rows for ONE action. Count prevention by distinct (org_id, conversation_external_id, tool_use_id, control, surface, action) when tool_use_id is present (the Prevented view / UI blockIdentity dedup key), never by raw record_id row
 - (org_id, correlation_id) WHERE action = 'allowed_after_warn': one override per warning episode; a fresh warning after the deny-once marker expires gets a new correlation_id and its own override row
 
 | column | type | meaning |
