@@ -5,7 +5,7 @@ description: "Query the TraceForce lakehouse (Athena or Snowflake over Iceberg i
 
 # TraceForce lakehouse
 
-Needs shell access on the user's computer (Claude Code). Without it, say so instead of trying.
+Needs shell access on the user's computer. Without it, say so instead of trying.
 
 ## Rules
 

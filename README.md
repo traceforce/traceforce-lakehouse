@@ -16,8 +16,9 @@ In Claude Code:
 
 ## What the plugin runs
 
-Claude Code only (terminal, IDE, or the desktop app's Code tab): Claude chat and Cowork can't use your
-computer's cloud sign-in. The query skill runs `skills/traceforce-lakehouse/scripts/`, which send read-only
+It runs on your computer, in an agent that can run shell commands there (Claude Code, or the agents in
+[`AGENTS.md`](AGENTS.md)). It isn't supported in Claude chat or Cowork, which can't use your computer's
+cloud sign-in. The query skill runs `skills/traceforce-lakehouse/scripts/`, which send read-only
 SQL through your signed-in cloud CLI. The dashboards skill starts a local server on 127.0.0.1. Queries and
 results stay between your computer and your cloud.
 
