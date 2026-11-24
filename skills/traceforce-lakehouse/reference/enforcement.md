@@ -28,13 +28,10 @@ heuristics below remain the fallback for activity that predates the ledger (or a
 is not yet populated), and for surfaces the hook does not cover — notably the Cowork inline proxy.
 
 **Telling TraceForce's enforcement apart from the user's own hooks and the agent's native prompts
-(ENG-1213).** How a TraceForce *warning* surfaces depends on agent and surface: Claude Code and
+(ENG-1213).** How a TraceForce *warning* surfaces depends on agent and surface: only Claude Code and
 GitHub Copilot CLI **tool-call** warns are delivered *as the agent's own permission prompt* (a native
-`ask` / `user_*`). Codex and Cursor tool-call warns, and **prompt / @-file** warns on the agents that
-hook the prompt (Claude Code, Codex, Cursor), are `deny_once` denials instead. **GitHub Copilot has NO
-prompt-surface sensitive-data enforcement** — scout hooks Copilot only on tool calls / file reads
-(there is no prompt-submission hook), so a credential in a Copilot prompt is never scanned, warned, or
-recorded (0 ledger rows); Copilot coverage is **file_read / tool_call only**. Separately, a TraceForce *block* is a hard deny that on Claude looks
+`ask` / `user_*`). Codex and Cursor warns, and **every** prompt-surface or @-file warn on any agent,
+are `deny_once` denials instead. Separately, a TraceForce *block* is a hard deny that on Claude looks
 identical to a user-installed hook's `tool_decision` `reject` (`source = 'hook'`). So the per-agent
 heuristics below **cannot** separate them on their own (a `source = 'hook'` reject may be TraceForce's
 block OR the user's hook; a reject on a native `ask` / `user_*` may be a TraceForce tool-call warn OR
