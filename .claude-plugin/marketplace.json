@@ -1,5 +1,6 @@
 {
   "name": "traceforce",
+  "description": "TraceForce plugins for Claude Code.",
   "owner": {
     "name": "TraceForce"
   },

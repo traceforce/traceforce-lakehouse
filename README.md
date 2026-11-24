@@ -14,6 +14,19 @@ In Claude Code:
 | `/traceforce-lakehouse:traceforce-lakehouse` | Answers questions about agent activity in plain English, read-only, and drills down into specific prompts and tool calls. |
 | `/traceforce-lakehouse:dashboards` | Opens the usage-and-spend and incident-triage dashboards in your browser. AWS (Athena), GCP, Azure (Databricks) and Snowflake (AWS or Azure). |
 
+## What the plugin runs
+
+The plugin works in Claude Code (the terminal, the IDE extensions, or the desktop app's Code tab). It
+isn't supported in Claude chat or Cowork, which can't use the cloud sign-in on your computer.
+
+- The query skill runs the scripts in `skills/traceforce-lakehouse/scripts/` on your computer. They
+  send read-only SQL to your lakehouse through the cloud CLI or connector you're signed in to (AWS CLI,
+  `bq`, the Snowflake Python connector, or Databricks' API) and refuse any statement that isn't a read.
+- The dashboards skill starts a local server (`examples/dashboards/serve.mjs`) that listens on
+  127.0.0.1 only and queries the lakehouse the same way.
+- Queries and results go only between your computer and your own cloud. The plugin sends nothing to
+  TraceForce or anywhere else.
+
 ## What is in the lake
 
 - `agent_events`: one row per log record or span from every agent scout writes telemetry for
