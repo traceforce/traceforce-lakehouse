@@ -153,7 +153,10 @@ SELECT
   element_at(a, 'generation.id')                                         AS generation_id,
   element_at(a, 'gen_ai.tool.name')                                      AS tool_name,
   element_at(a, 'gen_ai.tool.type')                                      AS tool_type,
-  element_at(a, 'gen_ai.tool.call.id')                                   AS tool_call_id,
+  -- traceforce.enforcement rows carry the call id as raw tool_use_id (the hook skips the transform
+  -- that maps it onto gen_ai.tool.call.id for native events), so COALESCE to recover it for the hourly
+  -- fallback join; native rows already have gen_ai.tool.call.id so this is a no-op for them (ENG-1213).
+  COALESCE(element_at(a, 'gen_ai.tool.call.id'), element_at(a, 'tool_use_id')) AS tool_call_id,
   COALESCE(element_at(a, 'mcp.server.name'),
            -- Claude family connection events carry the server under a bare key
            CASE WHEN element_at(a, 'event.name') = 'mcp_server_connection' THEN element_at(a, 'server_name') END,

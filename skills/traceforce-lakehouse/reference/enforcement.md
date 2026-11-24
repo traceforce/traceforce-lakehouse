@@ -47,15 +47,17 @@ the agent's own prompt). The `enforcement_events` ledger is the only reliable di
   TraceForce"; the hourly `traceforce.enforcement` rows below close part — not all — of that gap.
 - A TraceForce `ask` row **plus** a `source = 'hook'` reject on the same `tool_use_id` means a
   **user hook** denied what TraceForce only asked about.
-- The enforcement records also surface in `agent_events` as hourly `traceforce.enforcement` rows, but
-  the `tool_call_id` join works **only for Claude Code**: `ingest_agent_events` reads `tool_call_id`
-  solely from `$.gen_ai.tool.call.id`, and only Claude's transform maps the hook's `tool_use_id` onto
-  that key. Codex carries it under `call_id`, Cursor's is empty on enforcement records, and Copilot's
-  trace pipeline has no transform — so `tool_call_id` is NULL for those three and the join never
-  matches (pending an ingest `COALESCE(gen_ai.tool.call.id, tool_use_id)` or a collector remap; see
-  traceforce-scout#961). These rows also carry no `user_email` and (for Codex) the turn id as
-  `prompt_id`, and nothing excludes `event_name = 'traceforce.enforcement'` from the usage counts yet,
-  so they inflate activity/prompt counts and Unattributed — exclude them there (follow-up).
+- The enforcement records also surface in `agent_events` as hourly `traceforce.enforcement` rows,
+  carrying the call's `tool_call_id` for **all four agents**. The hook emits the id as raw
+  `tool_use_id` (it skips the transform that maps native events onto `gen_ai.tool.call.id`), so
+  `ingest_agent_events` now reads `tool_call_id` as `COALESCE(gen_ai.tool.call.id, tool_use_id)` —
+  native rows already have `gen_ai.tool.call.id` (no-op for them), and Claude/Codex/Cursor/Copilot
+  enforcement rows recover it from `tool_use_id`. (Only a prompt or @-file enforcement, which has no
+  tool call, stays NULL.) So count a call as TraceForce's when either the ledger OR a
+  `traceforce.enforcement` row has that `tool_call_id`. These rows also carry no `user_email` and (for
+  Codex) the turn id as `prompt_id`, and nothing excludes `event_name = 'traceforce.enforcement'` from
+  the usage counts yet, so they inflate activity/prompt counts and Unattributed — exclude them there
+  (follow-up).
 
 Caveats: older scout builds write **no** ledger rows (use the heuristics for them), and ledger rows
 are **unauthenticated claims** — the loopback receiver accepts any local process's record, so use

@@ -190,7 +190,9 @@ BEGIN
       a['generation.id']                                                       AS generation_id,
       a['gen_ai.tool.name']                                                    AS tool_name,
       a['gen_ai.tool.type']                                                    AS tool_type,
-      a['gen_ai.tool.call.id']                                                 AS tool_call_id,
+      -- enforcement rows carry the call id as raw tool_use_id (hook skips the gen_ai.tool.call.id
+      -- transform); COALESCE recovers it for the hourly fallback join, no-op for native rows (ENG-1213).
+      COALESCE(a['gen_ai.tool.call.id'], a['tool_use_id'])                     AS tool_call_id,
       coalesce(a['mcp.server.name'],
                -- Claude family connection events carry the server under a bare key
                CASE WHEN a['event.name'] = 'mcp_server_connection' THEN a['server_name'] END,
