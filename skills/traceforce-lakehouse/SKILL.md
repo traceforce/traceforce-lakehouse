@@ -5,7 +5,8 @@ description: "Query the TraceForce lakehouse (Athena or Snowflake over Iceberg i
 
 # TraceForce lakehouse
 
-Needs shell access on the user's computer. Without it, say so instead of trying.
+Needs the user's cloud CLI, installed and signed in, where commands run (normally their own computer). If
+it isn't there, for example in a hosted sandbox, tell the user it has to run on their computer.
 
 ## Rules
 
