@@ -28,26 +28,34 @@ heuristics below remain the fallback for activity that predates the ledger (or a
 is not yet populated), and for surfaces the hook does not cover — notably the Cowork inline proxy.
 
 **Telling TraceForce's enforcement apart from the user's own hooks and the agent's native prompts
-(ENG-1213).** A TraceForce warning is delivered *as the agent's own permission prompt* — in the
-logs it looks identical to a native `ask` / `user_*` and to a user-installed hook's `tool_decision`
-`reject` (`source = 'hook'`). The per-agent heuristics below **cannot** separate them (any
-`source = 'hook'` reject under block, and any reject under warn, both read as "ours"). The
-`enforcement_events` ledger is the only reliable discriminator, joined on `tool_use_id`:
+(ENG-1213).** How a TraceForce *warning* surfaces depends on agent and surface: only Claude Code and
+GitHub Copilot CLI **tool-call** warns are delivered *as the agent's own permission prompt* (a native
+`ask` / `user_*`). Codex and Cursor warns, and **every** prompt-surface or @-file warn on any agent,
+are `deny_once` denials instead. Separately, a TraceForce *block* is a hard deny that on Claude looks
+identical to a user-installed hook's `tool_decision` `reject` (`source = 'hook'`). So the per-agent
+heuristics below **cannot** separate them on their own (a `source = 'hook'` reject may be TraceForce's
+block OR the user's hook; a reject on a native `ask` / `user_*` may be a TraceForce tool-call warn OR
+the agent's own prompt). The `enforcement_events` ledger is the only reliable discriminator, joined on
+`tool_use_id` (but see the per-agent join caveat below):
 
 - A `tool_decision` `reject` with `source = 'hook'`, or any `ask` / `user_*`, with **no**
-  `enforcement_events` row on the same `tool_use_id`, was **not** TraceForce — it was the agent's
-  own prompt or a user-installed hook. Caveat: the ledger mirrors to the lakehouse once a day while
-  `agent_events` loads hourly, so a recent TraceForce reject can appear here before its ledger row.
-  Treat a call newer than the last `enforcement_events` export as **unknown**, not "not TraceForce";
-  the hourly `traceforce.enforcement` rows below close most of that window.
+  `enforcement_events` row on the same `tool_use_id`, is **unknown** — a missing row does NOT prove it
+  wasn't TraceForce. Ledger rows go missing in normal operation: the hook POSTs the record best-effort
+  with no retry (a collector restart drops it), the exporter skips a session with no device GUID or
+  scan credentials, a lambda savepoint can roll the insert back, and the ledger mirrors to the
+  lakehouse DAILY while `agent_events` loads hourly. So treat absence as unknown, never as "not
+  TraceForce"; the hourly `traceforce.enforcement` rows below close part — not all — of that gap.
 - A TraceForce `ask` row **plus** a `source = 'hook'` reject on the same `tool_use_id` means a
   **user hook** denied what TraceForce only asked about.
-- The enforcement records also surface in `agent_events` as hourly `traceforce.enforcement` rows,
-  which carry the call's `tool_call_id` — so count a call as TraceForce's when either the ledger OR a
-  `traceforce.enforcement` row has that `tool_call_id`. These rows carry no `user_email` and (for
-  Codex) the turn id as `prompt_id`, and nothing excludes `event_name = 'traceforce.enforcement'`
-  from the usage counts yet, so they currently inflate activity/prompt counts and Unattributed —
-  exclude them there (follow-up).
+- The enforcement records also surface in `agent_events` as hourly `traceforce.enforcement` rows, but
+  the `tool_call_id` join works **only for Claude Code**: `ingest_agent_events` reads `tool_call_id`
+  solely from `$.gen_ai.tool.call.id`, and only Claude's transform maps the hook's `tool_use_id` onto
+  that key. Codex carries it under `call_id`, Cursor's is empty on enforcement records, and Copilot's
+  trace pipeline has no transform — so `tool_call_id` is NULL for those three and the join never
+  matches (pending an ingest `COALESCE(gen_ai.tool.call.id, tool_use_id)` or a collector remap; see
+  traceforce-scout#961). These rows also carry no `user_email` and (for Codex) the turn id as
+  `prompt_id`, and nothing excludes `event_name = 'traceforce.enforcement'` from the usage counts yet,
+  so they inflate activity/prompt counts and Unattributed — exclude them there (follow-up).
 
 Caveats: older scout builds write **no** ledger rows (use the heuristics for them), and ledger rows
 are **unauthenticated claims** — the loopback receiver accepts any local process's record, so use
