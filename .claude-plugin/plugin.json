@@ -1,10 +1,11 @@
 {
   "name": "traceforce-lakehouse",
-  "description": "Query your TraceForce AI-agent activity lakehouse (read-only Athena or Snowflake over Iceberg in AWS, BigQuery over Iceberg in GCP, or Snowflake or Databricks over Iceberg in Azure) in plain language.",
-  "version": "1.0.17",
+  "description": "Ask questions about your TraceForce AI-agent activity lakehouse and open its dashboards, read-only. Runs on your computer with your own lakehouse sign-in (Claude Code, not Claude chat).",
+  "version": "1.0.18",
   "author": {
     "name": "TraceForce"
   },
   "homepage": "https://github.com/traceforce/traceforce-lakehouse",
+  "repository": "https://github.com/traceforce/traceforce-lakehouse",
   "license": "Apache-2.0"
 }
