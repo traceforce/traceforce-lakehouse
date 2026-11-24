@@ -7,8 +7,7 @@ allowed-tools: Bash(node ${CLAUDE_PLUGIN_ROOT}/examples/dashboards/serve.mjs *)
 
 # Open the TraceForce dashboards
 
-This needs shell commands on the user's computer (Claude Code). If you can't run them, say that it needs
-Claude Code rather than attempting the steps.
+Needs shell access on the user's computer (Claude Code). Without it, say so instead of trying.
 
 The server is `${CLAUDE_PLUGIN_ROOT}/examples/dashboards/serve.mjs` (Node 18+, no packages). It queries
 the lakehouse live: through Athena with the user's AWS credentials (`--cloud aws`, the default), or

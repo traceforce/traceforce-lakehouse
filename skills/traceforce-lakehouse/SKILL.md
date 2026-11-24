@@ -5,9 +5,7 @@ description: "Query the TraceForce lakehouse (Athena or Snowflake over Iceberg i
 
 # TraceForce lakehouse
 
-This skill runs its queries as shell scripts on the user's computer, with the user's own cloud sign-in, so it
-works only where you can run shell commands there (Claude Code). If you can't, say that it needs Claude Code
-rather than attempting the queries.
+Needs shell access on the user's computer (Claude Code). Without it, say so instead of trying.
 
 ## Rules
 

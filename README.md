@@ -16,16 +16,10 @@ In Claude Code:
 
 ## What the plugin runs
 
-The plugin works in Claude Code (the terminal, the IDE extensions, or the desktop app's Code tab). It
-isn't supported in Claude chat or Cowork, which can't use the cloud sign-in on your computer.
-
-- The query skill runs the scripts in `skills/traceforce-lakehouse/scripts/` on your computer. They
-  send read-only SQL to your lakehouse through the cloud CLI or connector you're signed in to (AWS CLI,
-  `bq`, the Snowflake Python connector, or Databricks' API) and refuse any statement that isn't a read.
-- The dashboards skill starts a local server (`examples/dashboards/serve.mjs`) that listens on
-  127.0.0.1 only and queries the lakehouse the same way.
-- Queries and results go only between your computer and your own cloud. The plugin sends nothing to
-  TraceForce or anywhere else.
+Claude Code only (terminal, IDE, or the desktop app's Code tab): Claude chat and Cowork can't use your
+computer's cloud sign-in. The query skill runs `skills/traceforce-lakehouse/scripts/`, which send read-only
+SQL through your signed-in cloud CLI. The dashboards skill starts a local server on 127.0.0.1. Queries and
+results stay between your computer and your cloud.
 
 ## What is in the lake
 
