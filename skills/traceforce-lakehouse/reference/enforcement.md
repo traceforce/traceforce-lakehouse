@@ -40,11 +40,13 @@ the agent's own prompt). The `enforcement_events` ledger is the only reliable di
 
 - A `tool_decision` `reject` with `source = 'hook'`, or any `ask` / `user_*`, with **no**
   `enforcement_events` row on the same `tool_use_id`, is **unknown** — a missing row does NOT prove it
-  wasn't TraceForce. Ledger rows go missing in normal operation: the hook POSTs the record best-effort
-  with no retry (a collector restart drops it), the exporter skips a session with no device GUID or
-  scan credentials, a lambda savepoint can roll the insert back, and the ledger mirrors to the
-  lakehouse DAILY while `agent_events` loads hourly. So treat absence as unknown, never as "not
-  TraceForce"; the hourly `traceforce.enforcement` rows below close part — not all — of that gap.
+  wasn't TraceForce. Ledger rows go missing in normal operation: the whole ledger is behind the
+  `enable_enforcement_events` feature flag (default OFF — an org not opted in has an EMPTY table while
+  TraceForce enforces normally), the hook POSTs the record best-effort with no retry (a collector
+  restart drops it), the exporter skips a session with no device GUID or scan credentials, a lambda
+  savepoint can roll the insert back, and the ledger mirrors to the lakehouse DAILY while
+  `agent_events` loads hourly. So treat absence as unknown, never as "not TraceForce"; the hourly
+  `traceforce.enforcement` rows below close part — not all — of that gap.
 - A TraceForce `ask` row **plus** a `source = 'hook'` reject on the same `tool_use_id` means a
   **user hook** denied what TraceForce only asked about.
 - The enforcement records also surface in `agent_events` as hourly `traceforce.enforcement` rows,
