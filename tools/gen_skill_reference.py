@@ -72,9 +72,9 @@ COMMON = {
 # Link lifecycle, shared by agent_instances_accounts and mcp_server_agent_instances.
 LINK_LAST_SEEN = ("Most recent scan that reported this link (UTC); older than the install's last_seen_at = "
                   "not in the install's latest scan. Links not reported since the column was added (2026-11-05 or shortly after) carry that one backfill timestamp, not their real last report.")
-LINK_DELETED = ("Soft delete. NULL = live. An unreported link stays live until its last_seen_at is 2 weeks behind its device's "
-                "(or sandbox's) last_seen_at, then is set. A later report clears it and refreshes last_seen_at. "
-                "Also set, to its device's (or sandbox's) deleted_at, when that is deleted.")
+LINK_DELETED = ("Soft delete. NULL = live. Set when a scan shows the install, MCP server or sign-in is gone, "
+                "or after 7 days of scans that no longer report the link. A later report clears it. "
+                "Also set when its device (or sandbox) is deleted.")
 TABLES = {
     "devices": dict(
         purpose="One row per device TraceForce has seen (laptops, workstations).",
@@ -272,7 +272,7 @@ TABLES = {
                "cloud_agent_id": "The cloud agent the issue is about (that table is not in the lake); set only on cloud-agent issues, which have no device_id.",
                "issue_type_control_id": "→ issue_type_controls.id", "agent_type": "Which agent product.", "plan": "Account plan as text, same vocabulary as agent_accounts.plan.",
                "issue_status": "'active' / 'resolved' / 'dismissed' ('unknown' = unset). Open, as the console counts it, is 'active'.",
-               "metadata": "JSON text, camelCase keys set as the issue changes: resolutionReason ('issue_resolved' / 'entity_deleted') and resolvedAt; dismissalReason ('false_positive' / 'risk_accepted' / 'other'), dismissalComment, dismissedBy (the console user's email) and dismissedAt; reopenedBy and reopenedAt. '{}' or NULL before any of these.",
+               "metadata": "JSON text, camelCase keys set as the issue changes: resolutionReason ('issue_resolved' / 'entity_deleted' / 'expired', meaning an incident with no new findings or account activity for 30 days) and resolvedAt; dismissalReason ('false_positive' / 'risk_accepted' / 'other'), dismissalComment, dismissedBy (the console user's email) and dismissedAt; reopenedBy and reopenedAt. '{}' or NULL before any of these.",
                "last_seen_at": "Most recent scan that still raised the issue (UTC)."}),
     "mcp_server_issues": dict(
         purpose="One row per MCP server issue: an issue type raised on one MCP server instance, open or closed.",
