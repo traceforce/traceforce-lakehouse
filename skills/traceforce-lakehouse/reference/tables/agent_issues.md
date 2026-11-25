@@ -24,7 +24,7 @@ Unique in the source (Iceberg does not enforce it; the mirror is keyed by `id`):
 | `agent_type` | string | Which agent product. |
 | `plan` | string | Account plan as text, same vocabulary as agent_accounts.plan. |
 | `issue_status` | string | 'active' / 'resolved' / 'dismissed' ('unknown' = unset). Open, as the console counts it, is 'active'. |
-| `metadata` | string | JSON text, camelCase keys set as the issue changes: resolutionReason ('issue_resolved' / 'entity_deleted' / 'expired': an incident with no new finding or account activity for 30 days) and resolvedAt; dismissalReason ('false_positive' / 'risk_accepted' / 'other'), dismissalComment, dismissedBy (the console user's email) and dismissedAt; reopenedBy and reopenedAt. '{}' or NULL before any of these. |
+| `metadata` | string | JSON text, camelCase keys set as the issue changes: resolutionReason ('issue_resolved' / 'entity_deleted' / 'expired', meaning an incident with no new findings or account activity for 30 days) and resolvedAt; dismissalReason ('false_positive' / 'risk_accepted' / 'other'), dismissalComment, dismissedBy (the console user's email) and dismissedAt; reopenedBy and reopenedAt. '{}' or NULL before any of these. |
 | `last_seen_at` | timestamp | Most recent scan that still raised the issue (UTC). |
 | `created_at` | timestamp | Row created (UTC). |
 | `updated_at` | timestamp | Row last updated (UTC). |
