@@ -45,7 +45,7 @@ provider "snowflake" {
 }
 
 module "traceforce_lakehouse" {
-  source      = "../../../terraform/aws/snowflake" # customers: github.com/traceforce/traceforce-lakehouse//terraform/aws/snowflake?ref=1.8.0
+  source      = "../../../terraform/aws/snowflake" # customers: github.com/traceforce/traceforce-lakehouse//terraform/aws/snowflake?ref=1.9.0
   logs_bucket = "acme-traceforce-logs"
   logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
