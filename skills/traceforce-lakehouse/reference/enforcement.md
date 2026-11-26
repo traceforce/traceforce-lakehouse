@@ -9,7 +9,11 @@ fallback, not the primary answer.
 **Authoritative source (ENG-654): the `enforcement_events` table.** Scout's hook now records what
 it enforced — block/warn × deny/ask/deny_once/allowed_after_warn, per control and surface — as a
 structured, append-only ledger, mirrored to the lakehouse as `enforcement_events` (see
-`tables/enforcement_events.md`). Prefer it for "what did TraceForce prevent". The Prevented view
+`tables/enforcement_events.md`). Prefer it for "what did TraceForce prevent" — **when it has
+coverage**: the ledger is feature-flagged (`enable_enforcement_events`, default OFF) and newer than
+the activity it audits, so an EMPTY table, or a question about a period before the ledger's own
+`MIN(detected_at)`, means "not recorded", never "nothing prevented". In those cases fall back to
+the per-agent `agent_events` heuristics below and say so: the answer's coverage is partial. The Prevented view
 excludes `action = 'allowed_after_warn'` (the user overrode the warning) AND any `deny_once` whose
 `(org_id, correlation_id)` has a matching `allowed_after_warn` — the hook stamps the same
 `correlation_id` on a warn and its later override, so an overridden warn's `deny_once` row must be
