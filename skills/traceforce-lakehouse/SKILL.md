@@ -5,6 +5,9 @@ description: "Query the TraceForce lakehouse (Athena or Snowflake over Iceberg i
 
 # TraceForce lakehouse
 
+Needs the user's lakehouse sign-in (cloud CLI, or Snowflake or Databricks credentials) where commands run,
+normally their own computer. In a hosted sandbox without it, tell the user it has to run on their computer.
+
 ## Rules
 
 - Read-only: `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `EXPLAIN` only (BigQuery: `SELECT`/`WITH`
