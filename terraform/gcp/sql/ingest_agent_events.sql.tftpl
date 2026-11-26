@@ -87,7 +87,10 @@ flat AS (
     JSON_VALUE(a, '$."generation.id"')                                      AS generation_id,
     JSON_VALUE(a, '$."gen_ai.tool.name"')                                   AS tool_name,
     JSON_VALUE(a, '$."gen_ai.tool.type"')                                   AS tool_type,
-    JSON_VALUE(a, '$."gen_ai.tool.call.id"')                                AS tool_call_id,
+    -- traceforce.enforcement rows carry the call id as raw tool_use_id (the hook skips the transform
+    -- onto gen_ai.tool.call.id); COALESCE recovers it for the hourly fallback join. No-op for native
+    -- rows, which already have gen_ai.tool.call.id (ENG-1213).
+    COALESCE(JSON_VALUE(a, '$."gen_ai.tool.call.id"'), JSON_VALUE(a, '$."tool_use_id"')) AS tool_call_id,
     COALESCE(JSON_VALUE(a, '$."mcp.server.name"'),
              CASE WHEN JSON_VALUE(a, '$."event.name"') = 'mcp_server_connection'
                   THEN JSON_VALUE(a, '$."server_name"') END,

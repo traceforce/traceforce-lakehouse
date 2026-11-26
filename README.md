@@ -98,7 +98,7 @@ IAM resources in that account; deploy in the bucket's region.
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws/athena?ref=1.8.0"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws/athena?ref=1.9.0"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
@@ -233,7 +233,7 @@ Snowflake, `alarm_notification_email`), `create_glue_integration` (no Glue), and
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws/snowflake?ref=1.8.0"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform/aws/snowflake?ref=1.9.0"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
@@ -379,7 +379,7 @@ APIs — in practice **project Owner**.
    }
 
    module "traceforce_lakehouse" {
-     source      = "github.com/traceforce/traceforce-lakehouse//terraform/gcp?ref=1.8.0"
+     source      = "github.com/traceforce/traceforce-lakehouse//terraform/gcp?ref=1.9.0"
      logs_bucket = "acme-traceforce-logs"
      logs_prefix = "traceforce" # "" if TraceForce writes at the bucket root
 
@@ -494,7 +494,7 @@ APIs — in practice **project Owner**.
    }
 
    module "traceforce_lakehouse" {
-     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure/snowflake?ref=1.8.0"
+     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure/snowflake?ref=1.9.0"
 
      # Must be globally unique across all of Azure (storage account names share one namespace
      # account-wide) and stable for the life of the deployment: changing it later destroys and
@@ -684,7 +684,7 @@ The first load runs within the hour and covers the last few days.
    }
 
    module "traceforce_lakehouse" {
-     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure/databricks?ref=1.8.0"
+     source = "github.com/traceforce/traceforce-lakehouse//terraform/azure/databricks?ref=1.9.0"
 
      # Must be globally unique across all of Azure (storage account names share one namespace
      # account-wide) and stable for the life of the deployment: changing it later destroys and

@@ -1,7 +1,7 @@
 {
   "name": "traceforce-lakehouse",
   "description": "Ask questions about your TraceForce AI-agent activity lakehouse and open its dashboards, read-only. Runs on your computer with your own lakehouse sign-in (Claude Code, not Claude chat).",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "author": {
     "name": "TraceForce"
   },
